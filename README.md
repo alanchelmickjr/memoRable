@@ -4,8 +4,10 @@
 [![NPM Version](https://img.shields.io/npm/v/memorable.svg)](https://www.npmjs.com/package/memorable)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Hume.ai](https://img.shields.io/badge/Powered%20by-Hume.ai-FF69B4)](https://hume.ai)
+[![Demo](https://img.shields.io/badge/Live%20Demo-mindfulmoments.io-blue)](https://mindfulmoments.io)
 
-An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence.
+An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
 
 ## 🌟 Features
 
@@ -22,16 +24,32 @@ An advanced AI memory system enabling personalized, context-aware interactions t
   - Conversation history
   - Geospatial integration
 
-- **Emotional Intelligence**
-  - 83 emotional vector processing
+- **Advanced Emotional Intelligence**
+  - 83 distinct emotional vectors including:
+    - Core emotions (joy, sadness, anger, etc.)
+    - Complex emotions (nostalgia, contemplation, aesthetic appreciation)
+    - Social emotions (empathic pain, adoration, triumph)
+    - Cognitive states (concentration, confusion, realization)
   - Multi-modal emotion detection
   - Cross-referenced emotional context
   - Real-time emotional state analysis
+  - Color-coded emotional visualization
 
 - **Three-tier Memory Architecture**
   - Raw data storage (MongoDB)
   - Vector embeddings (Weaviate)
   - Active memory buffer (Redis)
+
+- **Custom Model Training**
+  - Personalized emotional pattern recognition
+  - User-specific interaction learning
+  - Adaptive response calibration
+  - Continuous model improvement
+  - Fine-tuning capabilities for:
+    - Emotional recognition accuracy
+    - Personal interaction style
+    - Context sensitivity
+    - Response generation
 
 ## 🏗️ Architecture
 
@@ -58,6 +76,7 @@ graph TD
 - Docker
 - Ollama (AI models)
 - TensorFlow.js
+- Hume.ai (emotion analysis)
 - Custom embedding solutions
 
 ## 📋 Prerequisites
@@ -68,6 +87,7 @@ graph TD
 - Redis
 - Weaviate
 - Ollama
+- Hume.ai API key
 
 ## 🚀 Quick Start
 
@@ -129,7 +149,7 @@ memorable/
 ├── tests/                # Test files
 ├── docker/               # Docker configuration
 ├── docs/                 # Documentation
-└── scripts/              # Utility scripts
+└── scripts/             # Utility scripts
 ```
 
 ## 🔧 Configuration
@@ -140,6 +160,7 @@ The system can be configured through environment variables:
 - `REDIS_URL`: Redis connection URL
 - `WEAVIATE_URL`: Weaviate instance URL
 - `OLLAMA_API_KEY`: Ollama API key
+- `HUME_API_KEY`: Hume.ai API key
 - `PORT`: Application port (default: 3000)
 
 ## 📖 Documentation
@@ -150,6 +171,8 @@ Detailed documentation is available in the [docs](./docs) directory:
 - [API Reference](./docs/api.md)
 - [Development Guide](./docs/development.md)
 - [Deployment Guide](./docs/deployment.md)
+- [Emotion Processing Guide](./docs/emotions.md)
+- [Custom Model Training](./docs/custom-models.md)
 
 ## 🤝 Contributing
 
@@ -163,8 +186,13 @@ Detailed documentation is available in the [docs](./docs) directory:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## 🌟 Try it Live
+
+Experience MemoRable in action at [mindfulmoments.io](https://mindfulmoments.io) - a mindfulness and mirroring application that helps you understand how AI and the world perceive you, supporting your personal development and success journey.
+
 ## 🙏 Acknowledgments
 
+- [Hume.ai](https://hume.ai) team for their incredible emotion AI technology
 - TensorFlow.js team for machine learning capabilities
 - Weaviate team for vector database functionality
 - MongoDB team for time series database support

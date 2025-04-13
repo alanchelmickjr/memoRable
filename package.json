@@ -2,11 +2,24 @@
   "name": "memorable",
   "version": "1.0.0",
   "description": "An AI memory system enabling personalized, context-aware interactions through advanced memory management and emotional intelligence",
-  "main": "src/index.js",
   "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -20,7 +33,11 @@
     "docker:restart": "docker-compose restart",
     "docker:clean": "docker-compose down -v",
     "docker:rebuild": "docker-compose build --no-cache",
-    "prepare": "husky install"
+    "prepare": "husky install && npm run build",
+    "prepublishOnly": "npm test && npm run lint",
+    "preversion": "npm run lint",
+    "version": "npm run format && git add -A src",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "ai",
@@ -29,14 +46,16 @@
     "context-aware",
     "multi-modal",
     "vector-database",
-    "machine-learning"
+    "machine-learning",
+    "hume-ai",
+    "emotion-detection",
+    "real-time-processing"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@tensorflow/tfjs-node": "^5.0.0",
     "dotenv": "^16.0.0",
-    "express": "^4.18.0",
     "mongodb": "^6.0.0",
     "redis": "^4.6.0",
     "weaviate-client": "^2.14.0",
@@ -49,25 +68,15 @@
     "moment": "^2.29.4",
     "winston": "^3.10.0",
     "joi": "^17.9.0",
-    "cors": "^2.8.5",
-    "helmet": "^7.0.0",
-    "compression": "^1.7.4",
-    "morgan": "^1.10.0",
-    "body-parser": "^1.20.0",
-    "express-rate-limit": "^6.7.0",
-    "express-validator": "^7.0.0",
-    "jsonwebtoken": "^9.0.0",
-    "bcryptjs": "^2.4.3",
-    "multer": "^1.4.5-lts.1",
-    "sharp": "^0.32.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "node-fetch": "^3.3.0",
-    "ws": "^8.13.0",
-    "socket.io": "^4.6.0"
+    "ws": "^8.13.0"
   },
   "devDependencies": {
     "@babel/core": "^7.22.0",
     "@babel/preset-env": "^7.22.0",
+    "@rollup/plugin-babel": "^6.0.0",
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-json": "^6.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
     "eslint": "^8.40.0",
     "eslint-config-prettier": "^8.8.0",
     "eslint-plugin-jest": "^27.2.0",
@@ -76,25 +85,30 @@
     "lint-staged": "^13.2.0",
     "nodemon": "^2.0.22",
     "prettier": "^2.8.8",
-    "supertest": "^6.3.0"
+    "rollup": "^3.25.0",
+    "rollup-plugin-terser": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@tensorflow/tfjs-node": ">=5.0.0",
+    "mongodb": ">=6.0.0",
+    "redis": ">=4.6.0",
+    "weaviate-client": ">=2.14.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/memorable.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/memorable/issues"
+  },
+  "homepage": "https://github.com/yourusername/memorable#readme",
   "lint-staged": {
     "*.js": [
       "eslint --fix",
       "prettier --write"
     ]
-  },
-  "jest": {
-    "testEnvironment": "node",
-    "transform": {},
-    "extensionsToTreatAsEsm": [
-      ".js"
-    ],
-    "moduleNameMapper": {
-      "^(\\.{1,2}/.*)\\.js$": "$1"
-    }
   }
 }

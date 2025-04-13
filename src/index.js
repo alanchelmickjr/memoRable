@@ -1,86 +1,128 @@
-import dotenv from 'dotenv';
-import express from 'express';
-import { setupDatabase } from './config/database.js';
-import { setupRedis } from './config/redis.js';
-import { setupWeaviate } from './config/weaviate.js';
-import { setupLogger } from './utils/logger.js';
-import { MemoryManager } from './core/memoryManager.js';
-import { EmotionProcessor } from './core/emotionProcessor.js';
-import { InputProcessor } from './core/inputProcessor.js';
-import { AttentionSystem } from './core/attentionSystem.js';
-import { PredictiveBehavior } from './core/predictiveBehavior.js';
+import emotionalContextService from './services/emotionalContextService.js';
+import humeService from './services/humeService.js';
+import videoStreamService from './services/videoStreamService.js';
+import customModelService from './services/customModelService.js';
+import modelSelectionService from './services/modelSelectionService.js';
+import { expressionColors, emotionToVector, vectorToEmotion } from './constants/emotions.js';
 
-// Load environment variables
-dotenv.config();
-
-const app = express();
-const logger = setupLogger();
-
-// Initialize core systems
-async function initializeSystems() {
-  try {
-    // Setup databases
-    await setupDatabase();
-    await setupRedis();
-    await setupWeaviate();
-
-    // Initialize core components
-    const memoryManager = new MemoryManager();
-    const emotionProcessor = new EmotionProcessor();
-    const inputProcessor = new InputProcessor();
-    const attentionSystem = new AttentionSystem();
-    const predictiveBehavior = new PredictiveBehavior();
-
-    // Connect components
-    await memoryManager.initialize();
-    await emotionProcessor.initialize();
-    await inputProcessor.initialize();
-    await attentionSystem.initialize();
-    await predictiveBehavior.initialize();
-
-    logger.info('All systems initialized successfully');
-    return {
-      memoryManager,
-      emotionProcessor,
-      inputProcessor,
-      attentionSystem,
-      predictiveBehavior
+class MemoRable {
+  constructor(config = {}) {
+    this.config = {
+      humeApiKey: config.humeApiKey || process.env.HUME_API_KEY,
+      mongoUri: config.mongoUri || process.env.MONGODB_URI,
+      redisUrl: config.redisUrl || process.env.REDIS_URL,
+      weaviateUrl: config.weaviateUrl || process.env.WEAVIATE_URL,
+      ...config
     };
-  } catch (error) {
-    logger.error('Failed to initialize systems:', error);
-    throw error;
+  }
+
+  async initialize() {
+    // Initialize all services
+    await emotionalContextService.initialize();
+    await humeService.connect();
+    await customModelService.initialize();
+    return this;
+  }
+
+  // Emotion Processing
+  async processEmotion(input, type, contextId = null) {
+    return emotionalContextService.processEmotion(input, type, contextId);
+  }
+
+  async startEmotionalContext(contextId, options = {}) {
+    return emotionalContextService.startContext(contextId, options);
+  }
+
+  async stopEmotionalContext(contextId) {
+    return emotionalContextService.stopContext(contextId);
+  }
+
+  // Video Stream Processing
+  async startVideoStream(streamId, onEmotionUpdate, config = {}) {
+    return videoStreamService.startStream(streamId, onEmotionUpdate, config);
+  }
+
+  async addVideoFrame(streamId, frameData, timestamp) {
+    return videoStreamService.addFrame(streamId, frameData, timestamp);
+  }
+
+  async stopVideoStream(streamId) {
+    return videoStreamService.stopStream(streamId);
+  }
+
+  // Custom Model Management
+  async createCustomModel(userId, config) {
+    return customModelService.createTrainingJob(userId, config);
+  }
+
+  async getCustomModels(userId) {
+    return customModelService.getActiveModels(userId);
+  }
+
+  // Utility Functions
+  getEmotionColor(emotion) {
+    return expressionColors[emotion];
+  }
+
+  emotionToVector(emotion) {
+    return emotionToVector(emotion);
+  }
+
+  vectorToEmotion(vector) {
+    return vectorToEmotion(vector);
+  }
+
+  // Cleanup
+  async cleanup() {
+    await emotionalContextService.cleanup();
+    await humeService.close();
+    await videoStreamService.cleanup();
+    await customModelService.cleanup();
   }
 }
 
-// Start server
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Example usage:
+/*
+const memorable = new MemoRable({
+  humeApiKey: 'your-hume-api-key',
+  // Optional: override other configurations
 });
 
-// Start the application
-async function startApplication() {
-  try {
-    const systems = await initializeSystems();
-    
-    // Add error handling middleware
-    app.use((err, req, res, next) => {
-      logger.error('Unhandled error:', err);
-      res.status(500).json({ error: 'Internal server error' });
-    });
+await memorable.initialize();
 
-    // Start listening
-    app.listen(PORT, () => {
-      logger.info(`MemoRable AI system listening on port ${PORT}`);
-    });
-  } catch (error) {
-    logger.error('Failed to start application:', error);
-    process.exit(1);
-  }
-}
+// Start an emotional context
+const contextId = 'user123';
+await memorable.startEmotionalContext(contextId, {
+  useVideo: true,
+  useVoice: true
+});
 
-startApplication();
+// Process emotions
+await memorable.processEmotion('I am happy', 'text', contextId);
+
+// Process video frames
+const streamId = 'video123';
+await memorable.startVideoStream(streamId, (emotionData) => {
+  console.log('Emotion update:', emotionData);
+});
+
+// Add video frames
+await memorable.addVideoFrame(streamId, frameData);
+
+// Cleanup
+await memorable.cleanup();
+*/
+
+export default MemoRable;
+
+// Also export individual services for advanced usage
+export {
+  emotionalContextService,
+  humeService,
+  videoStreamService,
+  customModelService,
+  modelSelectionService,
+  expressionColors,
+  emotionToVector,
+  vectorToEmotion
+};
