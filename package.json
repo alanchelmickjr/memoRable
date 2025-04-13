@@ -1,5 +1,5 @@
 {
-  "name": "memorable",
+  "name": "memoRable",
   "version": "1.0.0",
   "description": "An AI memory system enabling personalized, context-aware interactions through advanced memory management and emotional intelligence",
   "type": "module",
@@ -54,12 +54,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@tensorflow/tfjs-node": "^5.0.0",
+    "@tensorflow/tfjs-node": "^4.22.0",
     "dotenv": "^16.0.0",
     "mongodb": "^6.0.0",
     "redis": "^4.6.0",
     "weaviate-client": "^2.14.0",
-    "ollama": "^1.0.0",
+    "ollama": "^0.5.14",
     "node-nlp": "^4.27.0",
     "face-api.js": "^0.22.2",
     "node-webcam": "^0.8.1",
@@ -89,7 +89,7 @@
     "rollup-plugin-terser": "^7.0.2"
   },
   "peerDependencies": {
-    "@tensorflow/tfjs-node": ">=5.0.0",
+    "@tensorflow/tfjs-node": ">=4.22.0",
     "mongodb": ">=6.0.0",
     "redis": ">=4.6.0",
     "weaviate-client": ">=2.14.0"
