@@ -6,6 +6,9 @@
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Hume.ai](https://img.shields.io/badge/Powered%20by-Hume.ai-FF69B4)](https://hume.ai)
 [![Demo](https://img.shields.io/badge/Live%20Demo-mindfulmoments.io-blue)](https://mindfulmoments.io)
+[![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Redis](https://img.shields.io/badge/Redis-%23DC382D.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
+[![Weaviate](https://img.shields.io/badge/Weaviate-%23FF5F1F.svg?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/)
 
 An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
 
@@ -181,12 +184,12 @@ The system can be configured through environment variables:
 
 Detailed documentation is available in the [docs](./docs) directory:
 
-- [Architecture Overview](./docs/architecture.md)
-- [API Reference](./docs/api.md)
-- [Development Guide](./docs/development.md)
-- [Deployment Guide](./docs/deployment.md)
-- [Emotion Processing Guide](./docs/emotions.md)
-- [Custom Model Training](./docs/custom-models.md)
+- [Technical Architecture](./docs/technical-architecture.md)
+- [Deployment Guide](./docs/deployment-guide.md)
+- [API Reference](./docs/api-reference.md)
+- [Development Guide](./docs/development-guide.md)
+- [Emotion Processing](./docs/emotion-processing.md)
+- [Custom Models](./docs/custom-models.md)
 
 ## 🤝 Contributing
 
