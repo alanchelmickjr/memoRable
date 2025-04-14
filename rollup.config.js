@@ -2,7 +2,7 @@ import { babel } from '@rollup/plugin-babel';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import resolve from '@rollup/plugin-node-resolve';
-import { terser } from 'rollup-plugin-terser';
+import terser from '@rollup/plugin-terser';
 import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json'));
@@ -58,9 +58,12 @@ export default [
       terser({
         ecma: 2020,
         module: true,
-        warnings: true,
         compress: {
-          passes: 2
+          passes: 2,
+          unsafe: true
+        },
+        format: {
+          comments: false
         }
       })
     ]
@@ -80,9 +83,12 @@ export default [
       terser({
         ecma: 2020,
         module: false,
-        warnings: true,
         compress: {
-          passes: 2
+          passes: 2,
+          unsafe: true
+        },
+        format: {
+          comments: false
         }
       })
     ]
