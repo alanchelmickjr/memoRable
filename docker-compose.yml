@@ -33,11 +33,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 4G
+          cpus: '8'
+          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "16G"; else echo "4G"; fi}
         reservations:
-          cpus: '1'
-          memory: 2G
+          cpus: '4'
+          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "8G"; else echo "2G"; fi}
     healthcheck:
       test: /usr/local/bin/health.sh
       interval: 30s
@@ -167,9 +167,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 8G
+          cpus: '8'
+          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "24G"; else echo "8G"; fi}
         reservations:
+          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "16G"; else echo "4G"; fi}
           devices:
             - driver: nvidia
               count: all
@@ -191,6 +192,101 @@ services:
     networks:
       - memorable_net
 
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3001:3000"
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:latest
+    command:
+      - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/memorable?authSource=admin'
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
 volumes:
   mongodb_data:
     driver: local
@@ -201,6 +297,10 @@ volumes:
   weaviate_data:
     driver: local
   ollama_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
     driver: local
 
 networks:
