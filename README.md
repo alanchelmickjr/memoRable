@@ -11,11 +11,25 @@ An advanced AI memory system enabling personalized, context-aware interactions t
 
 ## 🌟 Features
 
+- **TaskHopper System**
+  - Intelligent task management and prioritization
+  - Step-by-step progress tracking
+  - AI task integration and automation
+  - Task relationship mapping
+  - Automated task archival
+
 - **Multi-modal Input Processing**
   - Text, vision, audio, and video processing
   - AI response handling
   - File management
   - Extensible sensor framework
+
+- **Night Processing Intelligence**
+  - Automated pattern analysis (1 AM - 4 AM)
+  - Model performance optimization
+  - Cache warming strategies
+  - Memory usage predictions
+  - Task pattern analysis
 
 - **Contextual Indexing**
   - Environmental data tracking
