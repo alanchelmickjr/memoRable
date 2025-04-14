@@ -1,6 +1,6 @@
 {
   "name": "@alanhelmick/memorable",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An AI memory system enabling personalized, context-aware interactions through advanced memory management and emotional intelligence",
   "type": "module",
   "main": "dist/index.js",
