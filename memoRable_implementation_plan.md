@@ -7,6 +7,7 @@ sequenceDiagram
     participant User
     participant Identity
     participant Response
+    participant Confidence
     participant ModelSelection
     participant NightProcessing
     participant MongoDB
@@ -24,21 +25,22 @@ sequenceDiagram
     else Cache miss
         ModelSelection->>Response: Process new response
         Response->>Response: Apply preferences
+        Response->>Confidence: Quick confidence check
+        Confidence->>MongoDB: Update patterns & metrics
         Response->>MongoDB: Store refined response
     end
     Response-->>User: Return refined response
     
-    Note over User,MongoDB: Response Updates
-    Response->>Response: Monitor response window
-    alt Better response found
-        Response->>Response: Update/retract response
-        Response-->>User: Notify of update
-    end
-
+    Note over User,MongoDB: Pattern Learning
+    Confidence->>Confidence: Track 21-day patterns
+    Confidence->>Confidence: Monitor mental health
+    Confidence->>Confidence: Update attention metrics
+    
     Note over User,MongoDB: Night Processing
     NightProcessing->>MongoDB: Analyze patterns
     NightProcessing->>ModelSelection: Optimize models
     NightProcessing->>Response: Update response patterns
+    NightProcessing->>Confidence: Clean up old patterns
 ```
 
 ## Immediate Action Items
@@ -71,7 +73,16 @@ sequenceDiagram
 - ✓ Added response updates/retractions
 - ✓ Implemented comprehensive testing
 
-### 4. Docker Configuration Enhancement (Priority: High)
+### 4. Confidence and Pattern Learning (Completed)
+- ✓ Implemented quick confidence scoring
+- ✓ Added 21-day pattern tracking
+- ✓ Created mental health monitoring
+- ✓ Implemented attention decay system
+- ✓ Added pattern categorization
+- ✓ Created comprehensive testing
+- ✓ Integrated with response refinement
+
+### 5. Docker Configuration Enhancement (Priority: High)
 - Add model preloading scripts
 - Configure resource limits for different environments
 - Implement model caching strategy
@@ -81,7 +92,7 @@ sequenceDiagram
 - Set up night processing scheduling
 - Add identity service security measures
 
-### 5. Vercel Deployment Setup (Priority: High)
+### 6. Vercel Deployment Setup (Priority: High)
 - Create vercel.json configuration
   ```json
   {
@@ -109,35 +120,35 @@ sequenceDiagram
 - Configure MongoDB Atlas connection
 - Set up secure passphrase handling
 
-### 6. Environment-Specific Configuration (Priority: Medium)
+### 7. Environment-Specific Configuration (Priority: Medium)
 - Implement environment detection improvements
 - Add resource allocation profiles
 - Configure model fallback chains
 - Setup monitoring thresholds
 - Configure identity service modes
 
-### 7. Monitoring System Implementation (Priority: Medium)
+### 8. Monitoring System Implementation (Priority: Medium)
 - Set up centralized logging
 - Implement performance metrics collection
 - Add system health monitoring
 - Configure alerting thresholds
 - Add user interaction monitoring
 
-### 8. Documentation Updates (Priority: Medium)
+### 9. Documentation Updates (Priority: Medium)
 - Document deployment procedures
 - Update configuration guides
 - Add troubleshooting guides
 - Create environment setup instructions
 - Document identity management
 
-### 9. Testing Pipeline (Priority: Medium)
+### 10. Testing Pipeline (Priority: Medium)
 - Implement model integration tests
 - Add performance benchmarks
 - Create load testing scripts
 - Set up continuous testing
 - Add security testing
 
-### 10. Backup and Recovery (Priority: Low)
+### 11. Backup and Recovery (Priority: Low)
 - Implement model state backup
 - Create recovery procedures
 - Document failover processes
@@ -154,6 +165,7 @@ gantt
     ModelSelection Integration    :done, 2025-04-13, 1d
     MongoDB Night Processing     :done, 2025-04-13, 1d
     Identity & Response Management :done, 2025-04-13, 1d
+    Confidence & Pattern Learning :done, 2025-04-13, 1d
     section Infrastructure
     Docker Enhancement     :active, 2025-04-14, 4d
     Vercel Setup          :2025-04-18, 2d
@@ -176,6 +188,8 @@ gantt
    - MongoDB performance under load
    - Passphrase security
    - Response refinement accuracy
+   - Pattern learning accuracy
+   - Mental health monitoring reliability
 
 2. **Medium Priority Risks**
    - Integration testing coverage
@@ -184,12 +198,14 @@ gantt
    - Task pattern analysis accuracy
    - Night processing window timing
    - User preference conflicts
+   - Attention decay balance
 
 3. **Low Priority Risks**
    - Backup system reliability
    - Recovery time objectives
    - Documentation maintenance
    - Cache storage limits
+   - Pattern storage growth
 
 ## Next Review Points
 
@@ -198,5 +214,6 @@ gantt
 3. After monitoring system implementation
 4. First week of night processing results
 5. Initial user interaction analysis
+6. First 21-day pattern analysis
 
 Would you like to proceed with implementing the Docker configuration enhancements next?
