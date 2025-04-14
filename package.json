@@ -1,5 +1,5 @@
 {
-  "name": "memoRable",
+  "name": "@alanhelmick/memoRable",
   "version": "1.0.0",
   "description": "An AI memory system enabling personalized, context-aware interactions through advanced memory management and emotional intelligence",
   "type": "module",
