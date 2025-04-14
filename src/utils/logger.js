@@ -16,10 +16,12 @@ const logColors = {
 
 let logger = null;
 
-export function setupLogger() {
+export async function setupLogger() {
   if (logger) {
     return logger;
   }
+  
+  await createLogsDirectory();
 
   // Add colors to Winston
   winston.addColors(logColors);
@@ -81,13 +83,14 @@ export function setupLogger() {
   return logger;
 }
 
-// Create logs directory if it doesn't exist
-import { mkdir } from 'fs/promises';
-try {
-  await mkdir('logs', { recursive: true });
-} catch (error) {
-  if (error.code !== 'EEXIST') {
-    console.error('Failed to create logs directory:', error);
+export async function createLogsDirectory() {
+  const { mkdir } = await import('fs/promises');
+  try {
+    await mkdir('logs', { recursive: true });
+  } catch (error) {
+    if (error.code !== 'EEXIST') {
+      console.error('Failed to create logs directory:', error);
+    }
   }
 }
 
