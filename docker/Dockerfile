@@ -31,8 +31,19 @@ RUN npm run build --if-present
 
 # Create basic health check script
 RUN echo '#!/bin/sh\n\
-curl -f http://localhost:3000/health\n\
-exit $?' > /usr/local/bin/health.sh && \
+response=$(curl -s http://localhost:3000/health)\n\
+if [ $? -ne 0 ]; then\n\
+  echo "Failed to connect to health endpoint"\n\
+  exit 1\n\
+fi\n\
+\n\
+healthy=$(echo $response | grep -o "\"healthy\":true")\n\
+if [ -z "$healthy" ]; then\n\
+  echo "One or more services unhealthy"\n\
+  exit 1\n\
+fi\n\
+\n\
+exit 0' > /usr/local/bin/health.sh && \
 chmod +x /usr/local/bin/health.sh
 
 # Expose port

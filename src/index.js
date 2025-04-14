@@ -4,6 +4,7 @@ import videoStreamService from './services/videoStreamService.js';
 import customModelService from './services/customModelService.js';
 import modelSelectionService from './services/modelSelectionService.js';
 import { expressionColors, emotionToVector, vectorToEmotion } from './constants/emotions.js';
+import { checkHealth } from './utils/healthCheck.js';
 
 class MemoRable {
   constructor(config = {}) {
@@ -22,6 +23,10 @@ class MemoRable {
     await humeService.connect();
     await customModelService.initialize();
     return this;
+  }
+
+  async checkHealth() {
+    return checkHealth();
   }
 
   // Emotion Processing
@@ -124,5 +129,6 @@ export {
   modelSelectionService,
   expressionColors,
   emotionToVector,
-  vectorToEmotion
+  vectorToEmotion,
+  checkHealth
 };
