@@ -7,7 +7,6 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - "${PORT:-3000}:3000"
-      - "3001:3001"  # Model status endpoint
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/memorable?authSource=admin
@@ -19,12 +18,9 @@ services:
       - MEMORY_WINDOW_SHORT=${MEMORY_WINDOW_SHORT:-1200000}
       - MEMORY_WINDOW_MEDIUM=${MEMORY_WINDOW_MEDIUM:-3600000}
       - MEMORY_WINDOW_LONG=${MEMORY_WINDOW_LONG:-86400000}
-      - MODEL_CACHE_SIZE=${MODEL_CACHE_SIZE:-1000}
-      - MODEL_CACHE_TTL=${MODEL_CACHE_TTL:-3600}
     volumes:
       - .:/usr/src/app
       - /usr/src/app/node_modules
-      - model_cache:/usr/src/app/cache
     depends_on:
       mongodb:
         condition: service_healthy
@@ -205,8 +201,6 @@ volumes:
   weaviate_data:
     driver: local
   ollama_data:
-    driver: local
-  model_cache:
     driver: local
 
 networks:
