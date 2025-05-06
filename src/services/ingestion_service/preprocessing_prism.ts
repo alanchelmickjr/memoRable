@@ -61,10 +61,16 @@ export interface PreprocessingSuccess {
 /**
  * Represents a failed preprocessing outcome.
  */
+export interface PreprocessingErrorDetail {
+  message: string;
+  originalContentType?: ContentType;
+  step?: string; // e.g., 'normalization', 'entityExtraction'
+}
+
 export interface PreprocessingFailure {
   success: false;
-  error: string;
-  details?: any;
+  error: PreprocessingErrorDetail; // Changed from string to a structured object
+  details?: any; // For additional raw error info, like the original error object
 }
 
 /**
@@ -106,6 +112,20 @@ export class PreprocessingPrism {
     this.logger.info(`PreprocessingPrism: Starting processing for sourceSystem: ${rawInput.sourceSystem}, contentType: ${rawInput.contentType}`);
 
     try {
+      // FR3.2.10: Handle unsupported content types
+      if (!this.isSupportedContentType(rawInput.contentType)) {
+        const errorMessage = `Unsupported content type: ${rawInput.contentType}`;
+        this.logger.warn(`PreprocessingPrism: ${errorMessage}`, { rawInput });
+        return {
+          success: false,
+          error: {
+            message: errorMessage,
+            originalContentType: rawInput.contentType,
+            step: 'contentTypeCheck'
+          }
+        };
+      }
+
       const processedData: Partial<ProcessedInputData> = {
         sourceSystem: rawInput.sourceSystem,
         sourceIdentifier: rawInput.sourceIdentifier,
@@ -127,40 +147,68 @@ export class PreprocessingPrism {
 
       // 2. Entity Extraction (FR3.2.2) - if applicable for content type
       if (this.canExtractEntities(rawInput.contentType)) {
-        processedData.detectedEntities = await this.entityExtractor.extract(processedData.normalizedContent);
-        if (processedData.detectedEntities && processedData.detectedEntities.length > 0) {
-          processedData.derivedTags = processedData.detectedEntities.map(entity => `${entity.type}:${entity.name}`);
-          this.logger.info(`PreprocessingPrism: Entity extraction complete. Found ${processedData.detectedEntities.length} entities.`);
-        } else {
-          this.logger.info('PreprocessingPrism: No entities extracted or applicable.');
+        try {
+          processedData.detectedEntities = await this.entityExtractor.extract(processedData.normalizedContent);
+          if (processedData.detectedEntities && processedData.detectedEntities.length > 0) {
+            processedData.derivedTags = processedData.detectedEntities.map(entity => `${entity.type}:${entity.name}`);
+            this.logger.info(`PreprocessingPrism: Entity extraction complete. Found ${processedData.detectedEntities.length} entities.`);
+          } else {
+            this.logger.info('PreprocessingPrism: No entities extracted or applicable.');
+          }
+        } catch (entityError) {
+          this.logger.error('PreprocessingPrism: Error during entity extraction. Continuing without entities.', { error: entityError, agentId: rawInput.agentId, sourceIdentifier: rawInput.sourceIdentifier });
+          processedData.detectedEntities = []; // Default to empty array on error
+          processedData.derivedTags = [];    // Default to empty array on error
         }
       }
 
       // 3. Emotional Analysis (FR3.2.3) - if applicable
       if (this.canAnalyzeEmotion(rawInput.contentType)) {
-        processedData.derivedEmotionalContext = await this.emotionAnalyzer.analyze(processedData.normalizedContent);
-        this.logger.info('PreprocessingPrism: Emotional analysis complete.');
+        try {
+          processedData.derivedEmotionalContext = await this.emotionAnalyzer.analyze(processedData.normalizedContent);
+          this.logger.info('PreprocessingPrism: Emotional analysis complete.');
+        } catch (emotionError) {
+          this.logger.error('PreprocessingPrism: Error during emotional analysis. Continuing without emotional context.', { error: emotionError, agentId: rawInput.agentId, sourceIdentifier: rawInput.sourceIdentifier });
+          processedData.derivedEmotionalContext = {}; // Default to empty object
+        }
       }
 
       // 4. Aggregate Context (FR3.2.4)
-      const aggregatedContexts = await this.contextAggregator.aggregateContext(rawInput.agentId, rawInput.eventTimestamp);
-      processedData.aggregatedTemporalContext = aggregatedContexts.temporalContext;
-      processedData.aggregatedSpatialContext = aggregatedContexts.spatialContext;
-      processedData.aggregatedReasoningContext = aggregatedContexts.reasoningContext;
-      this.logger.info('PreprocessingPrism: Context aggregation complete.');
+      try {
+        const aggregatedContexts = await this.contextAggregator.aggregateContext(rawInput.agentId, rawInput.eventTimestamp);
+        processedData.aggregatedTemporalContext = aggregatedContexts.temporalContext;
+        processedData.aggregatedSpatialContext = aggregatedContexts.spatialContext;
+        processedData.aggregatedReasoningContext = aggregatedContexts.reasoningContext;
+        this.logger.info('PreprocessingPrism: Context aggregation complete.');
+      } catch (contextError) {
+         this.logger.error('PreprocessingPrism: Error during context aggregation. Continuing with minimal temporal context.', { error: contextError, agentId: rawInput.agentId, sourceIdentifier: rawInput.sourceIdentifier });
+         // Provide a default temporal context as it's crucial
+         processedData.aggregatedTemporalContext = { eventTimestamp: rawInput.eventTimestamp };
+         processedData.aggregatedSpatialContext = {};
+         processedData.aggregatedReasoningContext = {};
+      }
       
       // 5. Determine final content type for Memento (FR3.2.5)
       // For now, assume it's the same as original, can be refined
       processedData.determinedContentTypeForMemento = rawInput.contentType;
 
       // 6. Content Summarization (FR3.2.6) - Optional
-      // if (this.contentSummarizer && this.canSummarizeContent(rawInput.contentType)) {
-      //   processedData.processedContentSummary = await this.contentSummarizer.summarize(
-      //     processedData.normalizedContent,
-      //     rawInput.contentType
-      //   );
-      //   this.logger.info('PreprocessingPrism: Content summarization complete.');
-      // }
+      if (this.contentSummarizer && this.canSummarizeContent(rawInput.contentType)) {
+        if (typeof processedData.normalizedContent === 'string') {
+          try {
+            processedData.processedContentSummary = await this.contentSummarizer.summarize(
+              processedData.normalizedContent,
+              rawInput.contentType
+            );
+            this.logger.info('PreprocessingPrism: Content summarization complete.');
+          } catch (summarizerError) {
+            this.logger.error('PreprocessingPrism: Error during content summarization. Continuing without summary.', { error: summarizerError, agentId: rawInput.agentId, sourceIdentifier: rawInput.sourceIdentifier });
+            processedData.processedContentSummary = undefined; // Explicitly set to undefined or null
+          }
+        } else {
+          this.logger.warn('PreprocessingPrism: Skipping summarization as normalizedContent is not a string.');
+        }
+      }
 
 
       // Ensure all required fields for ProcessedInputData are present
@@ -177,7 +225,15 @@ export class PreprocessingPrism {
     } catch (error) {
       const errorMessage = `Preprocessing failed: ${error instanceof Error ? error.message : String(error)}`;
       this.logger.error('PreprocessingPrism: Error during processing.', { error: errorMessage, rawInput });
-      return { success: false, error: errorMessage, details: error };
+      return {
+        success: false,
+        error: {
+          message: errorMessage,
+          originalContentType: rawInput.contentType, // Include contentType if available
+          step: 'unknown' // Or try to determine step if possible
+        },
+        details: error
+      };
     }
   }
 
@@ -206,8 +262,22 @@ export class PreprocessingPrism {
    * @param {ContentType} contentType - The content type to check.
    * @returns {boolean} True if content can be summarized, false otherwise.
    */
-  // private canSummarizeContent(contentType: ContentType): boolean {
-  //   // Placeholder: enable for long text
-  //   return contentType === 'Text';
-  // }
+ private canSummarizeContent(contentType: ContentType): boolean {
+   // Placeholder: enable for long text
+   return contentType === 'Text';
+ }
+
+ private isSupportedContentType(contentType: ContentType): boolean {
+   // Define supported content types for processing.
+   // This is a simplified check; a more robust mechanism might involve a configuration.
+   const supportedTypes: ContentType[] = [
+     "Text",
+     "AudioTranscript",
+     // "ImageDescriptor", // Assuming not yet fully supported for all steps
+     // "CodeChange",
+     // "SystemLog",
+     // "UserInteraction",
+   ];
+   return supportedTypes.includes(contentType);
+ }
 }

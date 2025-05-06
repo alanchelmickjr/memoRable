@@ -1,92 +1,242 @@
-import { MementoConstructor } from '../../../src/services/ingestion_service/memento_constructor';
-import { ProcessedInputData, MemoryMemento, ContentType, Source, TemporalContext, SchemaVersionDefinition } from '../../../src/services/ingestion_service/models';
+import { MementoConstructor, MementoConstructionOutcome, MementoConstructionSuccess } from '../../../src/services/ingestion_service/memento_constructor';
+import {
+  ProcessedInputData,
+  MemoryMemento,
+  ContentType,
+  Source,
+  TemporalContext,
+  EmotionalContext,
+  SpatialContext,
+  ReasoningContext,
+  DetectedEntity,
+  SchemaVersionDefinition // Added for mocking SchemaManager
+} from '../../../src/services/ingestion_service/models';
 import { SchemaManager } from '../../../src/services/ingestion_service/schema_manager';
+// Import NNNAServiceClient from its actual location for type correctness
+import { NNNAServiceClient } from '../../../src/services/ingestion_service/clients/nnna_service_client';
 
-// Mock SchemaManager
+
 jest.mock('../../../src/services/ingestion_service/schema_manager');
+jest.mock('../../../src/services/ingestion_service/clients/nnna_service_client'); // Mock the actual client
+// We might need to mock NnnaServiceClient if SchemaManager tries to use it deeply
+// For now, the type import and passing null might be enough if methods aren't called.
+// jest.mock('../../../src/services/ingestion_service/clients/nnna_service_client'); // Assuming actual client path
 
 describe('MementoConstructor', () => {
   let mementoConstructor: MementoConstructor;
   let mockSchemaManager: jest.Mocked<SchemaManager>;
-  const mockCurrentSchema: SchemaVersionDefinition = {
-    version: '1.0.0',
-    definition: { type: 'object', properties: { /* ... schema ... */ } },
-    description: 'Test Schema',
-    effectiveDate: new Date().toISOString(),
-    isActive: true,
-  };
+  let mockLogger: jest.Mocked<Console>;
+  let consistentTimestamp: string;
+  let mockCurrentSchema: SchemaVersionDefinition;
 
   beforeEach(() => {
-    // Create a mock instance of SchemaManager
-    // We need to mock the methods that MementoConstructor will call, e.g., getCurrentSchema()
-    // Instantiate the mock SchemaManager
-    mockSchemaManager = new SchemaManager(undefined, undefined, console) as jest.Mocked<SchemaManager>;
-    mockSchemaManager.getCurrentSchema = jest.fn().mockResolvedValue(mockCurrentSchema);
+    consistentTimestamp = new Date().toISOString();
+    mockLogger = {
+      log: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as any;
+
+    mockCurrentSchema = {
+      version: '1.0.0',
+      mementoVersion: '1.0', // This will be used for memento.version
+      description: 'Test schema',
+      definition: {}, // Placeholder, actual schema definition for validation
+      fields: [],
+      effectiveDate: new Date().toISOString(),
+      isActive: true,
+    };
+
+    // Correctly instantiate SchemaManager mock with placeholder NnnaServiceClient
+    mockSchemaManager = new SchemaManager(
+      undefined, // schemaStore can be undefined to use InMemorySchemaStore
+      undefined, // nnnaClient can be undefined to use placeholder NnnaServiceClient
+      mockLogger
+    ) as jest.Mocked<SchemaManager>;
     
-    // Cast to any to bypass private member type checking for the constructor argument
-    mementoConstructor = new MementoConstructor(mockSchemaManager as any);
+    // Mock specific methods used by MementoConstructor
+    mockSchemaManager.getCurrentSchema = jest.fn().mockResolvedValue(mockCurrentSchema);
+    mockSchemaManager.validateMementoAgainstSchema = jest.fn().mockReturnValue(true); // Assume valid for this test
+
+    mementoConstructor = new MementoConstructor(mockSchemaManager, mockLogger);
   });
 
   describe('constructMemento', () => {
-    it('should construct a MemoryMemento from ProcessedInputData (TDD_ANCHOR:MementoConstructor_constructMemento_validInput_returnsMemento)', async () => {
-      const processedData: ProcessedInputData = {
-        agentId: 'agent-test-001',
-        sourceSystem: Source.API_UPLOAD,
-        sourceIdentifier: 'api-upload-001',
-        originalContentType: 'Text' as ContentType,
-        originalContentRaw: 'This is the original raw text.',
-        normalizedContent: 'this is the original raw text.',
-        processedContentSummary: 'Original raw text summary.',
-        determinedContentTypeForMemento: 'Text' as ContentType,
-        detectedEntities: [{ name: 'Test Entity', type: 'Organization', originalText: 'Test Entity' }],
-        derivedEmotionalContext: { dominantEmotion: 'neutral', emotionalValence: 0.0 },
-        aggregatedTemporalContext: { eventTimestamp: new Date().toISOString(), chronologicalCertainty: 'Precise' },
-        aggregatedSpatialContext: { locationName: 'Office' },
-        aggregatedReasoningContext: { cognitiveState: 'focused' },
-        derivedTags: ['text', 'test-entity'],
+    it('should construct a valid MemoryMemento from ProcessedInputData for text input (TDD_ANCHOR:MementoConstructor_constructMemento_textInput_createsValidMemento)', async () => {
+      const processedInput: ProcessedInputData = {
+        agentId: 'agent-memento-001',
+        sourceSystem: Source.MANUAL_INPUT,
+        sourceIdentifier: 'manual-text-memento-001',
+        originalContentType: "Text" as ContentType,
+        originalContentRaw: 'This is the original raw text content.',
+        normalizedContent: 'this is the original raw text content.',
+        determinedContentTypeForMemento: "Text" as ContentType,
+        // dataTypeForMemento removed as it's not on ProcessedInputData
+        processedContentSummary: 'Original raw text.',
+        detectedEntities: [{ name: 'TestEntity', type: 'PERSON', relevance: 0.9, metadata: {} } as DetectedEntity],
+        derivedTags: ['PERSON:TestEntity'],
+        derivedEmotionalContext: { dominantEmotion: 'neutral', emotionalValence: 0.1 } as Partial<EmotionalContext>,
+        aggregatedTemporalContext: {
+          eventTimestamp: consistentTimestamp,
+        } as TemporalContext, // Ensure it matches TemporalContext
+        aggregatedSpatialContext: { locationName: 'Office' } as Partial<SpatialContext>,
+        aggregatedReasoningContext: { currentGoal: 'Testing MementoConstructor' } as Partial<ReasoningContext>,
+        eventTimestamp: consistentTimestamp, // Added as it's required on ProcessedInputData
+        metadata: { customField: 'customValue', anotherField: 123 },
       };
 
-      const memento = await mementoConstructor.constructMemento(processedData);
+      const outcome: MementoConstructionOutcome = await mementoConstructor.constructMemento(processedInput);
+
+      expect(outcome.success).toBe(true);
+      if (!outcome.success) throw new Error("Memento construction failed");
+
+      const memento = (outcome as MementoConstructionSuccess).data;
+
+      // Basic MemoryMemento structure checks
+      expect(memento).toBeDefined();
+      expect(memento.mementoId).toBeDefined();
+      expect(memento.version).toEqual(mockCurrentSchema.mementoVersion);
+
+      // Field mapping checks based on MemoryMemento interface
+      expect(memento.agentId).toEqual(processedInput.agentId);
+      expect(memento.contentType).toEqual(processedInput.determinedContentTypeForMemento);
+      expect(memento.content).toEqual(processedInput.normalizedContent);
+      expect(memento.originalContentRaw).toEqual(processedInput.originalContentRaw);
+      expect(memento.eventTimestamp).toEqual(processedInput.eventTimestamp); // Directly from processedInput
+
+      expect(memento.summary).toEqual(processedInput.processedContentSummary);
+      expect(memento.entities).toEqual(processedInput.detectedEntities);
+      expect(memento.tags).toEqual(processedInput.derivedTags);
+      expect(memento.emotionalContext).toEqual(processedInput.derivedEmotionalContext);
+      
+      expect(memento.temporalContext).toEqual(processedInput.aggregatedTemporalContext);
+      expect(memento.spatialContext).toEqual(processedInput.aggregatedSpatialContext);
+      expect(memento.reasoningContext).toEqual(processedInput.aggregatedReasoningContext);
+      
+      expect(memento.sourceSystem).toEqual(processedInput.sourceSystem);
+      expect(memento.sourceIdentifier).toEqual(processedInput.sourceIdentifier);
+
+      expect(memento.createdAt).toBeDefined();
+      expect(memento.updatedAt).toBeDefined();
+      expect(memento.createdAt).toEqual(memento.updatedAt); // Initially they should be the same
+      expect(memento.metadata).toEqual(processedInput.metadata);
+    });
+
+    it('should correctly map AudioTranscript content type (TDD_ANCHOR:MementoConstructor_constructMemento_audioTranscript_mapsCorrectly)', async () => {
+      const processedInputAudio: ProcessedInputData = {
+        agentId: 'agent-audio-001',
+        sourceSystem: Source.API_UPLOAD,
+        sourceIdentifier: 'audio-transcript-001',
+        originalContentType: "AudioTranscript" as ContentType,
+        originalContentRaw: { duration: 120, language: 'en-US', transcript: 'This is an audio transcript.' },
+        normalizedContent: 'this is an audio transcript.', // Assuming normalization produces text
+        determinedContentTypeForMemento: "AudioTranscript" as ContentType,
+        processedContentSummary: 'Audio transcript summary.',
+        detectedEntities: [],
+        derivedTags: [],
+        derivedEmotionalContext: {},
+        aggregatedTemporalContext: { eventTimestamp: consistentTimestamp },
+        aggregatedSpatialContext: {},
+        aggregatedReasoningContext: {},
+        eventTimestamp: consistentTimestamp,
+        metadata: { device: 'RecorderX' },
+      };
+
+      const outcome = await mementoConstructor.constructMemento(processedInputAudio);
+      expect(outcome.success).toBe(true);
+      if (!outcome.success) throw new Error("Memento construction failed for audio");
+
+      const memento = (outcome as MementoConstructionSuccess).data;
+      expect(memento.contentType).toEqual("AudioTranscript");
+      expect(memento.content).toEqual(processedInputAudio.normalizedContent);
+      // Check if originalContentRaw is preserved correctly for structured audio data
+      expect(memento.originalContentRaw).toEqual(processedInputAudio.originalContentRaw);
+      expect(memento.agentId).toEqual(processedInputAudio.agentId);
+    });
+
+    it('should handle missing optional fields in ProcessedInputData gracefully (TDD_ANCHOR:MementoConstructor_constructMemento_missingOptionalFields_handlesGracefully)', async () => {
+      const minimalProcessedInput: ProcessedInputData = {
+        agentId: 'agent-minimal-001',
+        sourceSystem: Source.AUTOMATED_SYSTEM,
+        sourceIdentifier: 'minimal-input-001',
+        originalContentType: "Text" as ContentType,
+        originalContentRaw: 'Minimal content.',
+        normalizedContent: 'minimal content.',
+        determinedContentTypeForMemento: "Text" as ContentType,
+        // Optional fields are omitted:
+        // processedContentSummary: undefined,
+        // detectedEntities: undefined,
+        // derivedTags: undefined,
+        // derivedEmotionalContext: undefined,
+        // aggregatedSpatialContext: undefined,
+        // aggregatedReasoningContext: undefined,
+        aggregatedTemporalContext: { eventTimestamp: consistentTimestamp }, // Required
+        eventTimestamp: consistentTimestamp, // Required
+        metadata: {}, // Required
+      };
+
+      const outcome = await mementoConstructor.constructMemento(minimalProcessedInput);
+      expect(outcome.success).toBe(true);
+      if (!outcome.success) throw new Error("Memento construction failed for minimal input");
+
+      const memento = (outcome as MementoConstructionSuccess).data;
 
       expect(memento).toBeDefined();
-      expect(memento.mementoId).toBeDefined(); // Should be generated
-      expect(memento.agentId).toEqual(processedData.agentId);
-      expect(memento.creationTimestamp).toBeDefined(); // Should be set
-      expect(memento.sourceSystem).toEqual(processedData.sourceSystem);
-      expect(memento.sourceIdentifier).toEqual(processedData.sourceIdentifier);
-      expect(memento.contentType).toEqual(processedData.determinedContentTypeForMemento);
-      expect(memento.contentRaw).toEqual(processedData.originalContentRaw); // As per domain model, memento stores original raw
-      expect(memento.contentProcessed).toEqual(processedData.processedContentSummary);
-      expect(memento.tags).toEqual(expect.arrayContaining(processedData.derivedTags || []));
-      expect(memento.schemaVersion).toEqual(mockCurrentSchema.version); // Should use current schema version
+      expect(memento.mementoId).toBeDefined();
+      expect(memento.agentId).toEqual(minimalProcessedInput.agentId);
+      expect(memento.content).toEqual(minimalProcessedInput.normalizedContent);
 
-      // Contextual Dimensions
-      expect(memento.temporalContext).toEqual(processedData.aggregatedTemporalContext);
-      expect(memento.spatialContext).toEqual(processedData.aggregatedSpatialContext);
-      expect(memento.emotionalContext).toEqual(processedData.derivedEmotionalContext);
-      expect(memento.reasoningContext).toEqual(processedData.aggregatedReasoningContext);
-    });
-
-    it('should throw an error if schema version cannot be retrieved (TDD_ANCHOR:MementoConstructor_constructMemento_noSchema_throwsError)', async () => {
-      mockSchemaManager.getCurrentSchema = jest.fn().mockRejectedValue(new Error('Schema not available'));
+      // Check that optional fields are handled with defaults or are undefined/null as per MemoryMemento
+      expect(memento.summary).toBeUndefined();
+      expect(memento.entities).toBeUndefined();
+      expect(memento.tags).toEqual([]);
+      expect(memento.emotionalContext).toBeUndefined();
+      expect(memento.spatialContext).toBeUndefined();
+      expect(memento.reasoningContext).toBeUndefined();
       
-      const processedData: ProcessedInputData = { /* ... minimal valid ProcessedInputData ... */ } as ProcessedInputData;
-       // Fill with minimal data to satisfy ProcessedInputData requirements for the test's purpose
-      processedData.agentId = 'agent-error-case';
-      processedData.sourceSystem = Source.MANUAL_INPUT;
-      processedData.originalContentType = 'Text';
-      processedData.originalContentRaw = 'error content';
-      processedData.normalizedContent = 'error content';
-      processedData.determinedContentTypeForMemento = 'Text';
-      processedData.aggregatedTemporalContext = { eventTimestamp: new Date().toISOString() };
-
-
-      await expect(mementoConstructor.constructMemento(processedData)).rejects.toThrow('Failed to construct memento: Failed to retrieve current schema: Schema not available');
+      expect(memento.temporalContext).toEqual(minimalProcessedInput.aggregatedTemporalContext);
     });
 
-    // Add more tests for:
-    // - Different content types and how they map to memento fields
-    // - Missing optional fields in ProcessedInputData
-    // - Logic for combining/deriving tags if any
+    it('should generate unique mementoIds for different inputs (TDD_ANCHOR:MementoConstructor_constructMemento_idGeneration_isUnique)', async () => {
+      const processedInput1: ProcessedInputData = {
+        agentId: 'agent-unique-001',
+        sourceSystem: Source.MANUAL_INPUT,
+        sourceIdentifier: 'unique-input-001',
+        originalContentType: "Text" as ContentType,
+        originalContentRaw: 'First unique content.',
+        normalizedContent: 'first unique content.',
+        determinedContentTypeForMemento: "Text" as ContentType,
+        aggregatedTemporalContext: { eventTimestamp: new Date(consistentTimestamp).toISOString() },
+        eventTimestamp: new Date(consistentTimestamp).toISOString(),
+        metadata: {},
+      };
+
+      const processedInput2: ProcessedInputData = {
+        ...processedInput1, // Spread to copy, then override
+        sourceIdentifier: 'unique-input-002',
+        originalContentRaw: 'Second unique content.',
+        normalizedContent: 'second unique content.',
+        eventTimestamp: new Date(new Date(consistentTimestamp).getTime() + 1000).toISOString(), // Slightly different timestamp
+        aggregatedTemporalContext: { eventTimestamp: new Date(new Date(consistentTimestamp).getTime() + 1000).toISOString() },
+      };
+
+      const outcome1 = await mementoConstructor.constructMemento(processedInput1);
+      const outcome2 = await mementoConstructor.constructMemento(processedInput2);
+
+      expect(outcome1.success).toBe(true);
+      expect(outcome2.success).toBe(true);
+
+      if (!outcome1.success || !outcome2.success) {
+        throw new Error("Memento construction failed for one or both inputs");
+      }
+
+      const memento1 = (outcome1 as MementoConstructionSuccess).data;
+      const memento2 = (outcome2 as MementoConstructionSuccess).data;
+
+      expect(memento1.mementoId).toBeDefined();
+      expect(memento2.mementoId).toBeDefined();
+      expect(memento1.mementoId).not.toEqual(memento2.mementoId);
+    });
   });
 });

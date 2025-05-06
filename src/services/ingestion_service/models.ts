@@ -167,21 +167,39 @@ export interface MemoryMemento {
   // Core Attributes
   mementoId: string; // UUID
   agentId: string; // UUID
-  creationTimestamp: string; // ISO8601Timestamp
+  version: string; // Version of this memento's structure, from SchemaVersionDefinition.mementoVersion
+  createdAt: string; // ISO8601Timestamp - When the memento was created in our system
+  updatedAt: string; // ISO8601Timestamp - When the memento was last updated
+  eventTimestamp: string; // ISO8601Timestamp - When the original event occurred
+
   sourceSystem: string;
   sourceIdentifier?: string;
   contentType: ContentType;
-  contentRaw: string | object; // Type depends on contentType
-  contentProcessed?: string | object;
+  content: string | object; // Normalized/primary content for the memento
+  originalContentRaw?: string | object; // Optional: store the absolute raw input
+  summary?: string | object; // Optional: summary of the content
+  
   tags?: string[];
-  schemaVersion: string;
-
-  // Contextual Dimensions
-  temporalContext?: TemporalContext;
-  spatialContext?: SpatialContext;
-  emotionalContext?: EmotionalContext;
-  reasoningContext?: ReasoningContext;
+  entities?: DetectedEntity[]; // Using a more detailed DetectedEntity type
+  emotionalContext?: Partial<EmotionalContext>; // Using Partial as it's built incrementally
+  temporalContext?: TemporalContext; // This is the aggregated one
+  spatialContext?: Partial<SpatialContext>;
+  reasoningContext?: Partial<ReasoningContext>;
+  metadata?: Record<string, any>; // Other arbitrary metadata associated with the memento
+  // schemaVersion: string; // Replaced by 'version' to align with mementoVersion
 }
+
+/**
+ * Represents a detected entity with more detail.
+ */
+export interface DetectedEntity {
+  name: string;
+  type: string;
+  originalText?: string; // The text span from which the entity was extracted
+  relevance?: number;    // Confidence score or relevance
+  metadata?: Record<string, any>; // Additional metadata about the entity
+}
+
 
 /**
  * Represents data as it arrives at the POST /ingest endpoint.
@@ -191,9 +209,9 @@ export interface RawInputData {
   sourceIdentifier?: string;
   contentType: ContentType;
   contentRaw: any; // The raw payload, type depends on contentType
-  eventTimestamp?: string; // ISO8601Timestamp, if provided by the source
+  eventTimestamp: string; // ISO8601Timestamp, if provided by the source - making this required for ProcessedInputData
   agentId: string; // UUID, provided in request or derived from authenticated context
-  metadata?: Record<string, any>; // Any other source-specific metadata
+  metadata: Record<string, any>; // Any other source-specific metadata - making this required for ProcessedInputData
 }
 
 /**
@@ -209,24 +227,37 @@ export interface ProcessedInputData {
 
   // Derived/Enriched Fields
   normalizedContent: string | object; // Cleaned and normalized version of contentRaw
-  processedContentSummary?: string | object; // For MemoryMemento.contentProcessed
-  detectedEntities?: Array<{ name: string; type: string; originalText: string }>;
-  derivedEmotionalContext?: Partial<EmotionalContext>; // Structure similar to MemoryMemento.emotionalContext
-  aggregatedTemporalContext: TemporalContext; // Structure similar to MemoryMemento.temporalContext
-  aggregatedSpatialContext?: Partial<SpatialContext>; // Structure similar to MemoryMemento.spatialContext
-  aggregatedReasoningContext?: Partial<ReasoningContext>; // Structure similar to MemoryMemento.reasoningContext
-  determinedContentTypeForMemento: ContentType; // Final content type for the memento
+  processedContentSummary?: string | object; // For MemoryMemento.summary
+  detectedEntities?: DetectedEntity[]; // Using the new DetectedEntity interface
+  derivedEmotionalContext?: Partial<EmotionalContext>;
+  aggregatedTemporalContext: TemporalContext;
+  aggregatedSpatialContext?: Partial<SpatialContext>;
+  aggregatedReasoningContext?: Partial<ReasoningContext>;
+  determinedContentTypeForMemento: ContentType;
   derivedTags?: string[];
+  eventTimestamp: string; // Ensure this is carried through from RawInputData
+  metadata: Record<string, any>; // Ensure this is carried through
 }
 
 /**
  * Represents the definition of a specific version of the MemoryMemento schema.
  * Managed by NNNA and consumed by the Ingestion Service.
  */
-export interface SchemaVersionDefinition {
-  version: string; // e.g., "1.0.0", "1.1.0"
+export interface SchemaFieldDefinition {
+  name: string;
+  type: DataType | string; // Allow for custom string types if necessary
+  required?: boolean;
   description?: string;
-  definition: object; // JSON Schema definition for this version of MemoryMemento
+  // Allow other properties for more complex schema definitions (e.g., nested fields, enums)
+  [key: string]: any;
+}
+
+export interface SchemaVersionDefinition {
+  version: string; // Overall version of this schema document, e.g., "1.0.0", "1.1.0"
+  mementoVersion: string; // Version of the MemoryMemento structure this schema defines, e.g., "1.0", "1.1"
+  description?: string;
+  definition: object; // Full JSON Schema definition for this version of MemoryMemento
+  fields: SchemaFieldDefinition[]; // Simplified field list for quick validation/mapping
   effectiveDate: string; // ISO8601Timestamp
   isActive: boolean;
 }

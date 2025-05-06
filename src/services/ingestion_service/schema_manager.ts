@@ -3,7 +3,7 @@
  * This class is responsible for managing MemoryMemento schema versions.
  */
 
-import { SchemaVersionDefinition } from './models';
+import { SchemaVersionDefinition, DataType, SchemaFieldDefinition } from './models'; // Added DataType and SchemaFieldDefinition
 // import { NnnaServiceClient } from './clients/nnna_service_client'; // For future NNNA interaction
 // import { MongoClient, Db } from 'mongodb'; // Example for a schema store
 // import { Logger } from '../../utils/logger'; // Assuming a shared logger utility
@@ -36,8 +36,18 @@ class InMemorySchemaStore implements SchemaStoreClient {
   constructor() {
     // Initialize with a default schema
     const defaultSchema: SchemaVersionDefinition = {
-      version: '1.0.0',
+      version: '1.0.0', // Overall schema document version
+      mementoVersion: '1.0', // Version of the memento structure
       description: 'Initial default MemoryMemento schema',
+      fields: [ // Add a basic fields array
+        { name: 'mementoId', type: DataType.TEXT, required: true }, // Using DataType enum
+        { name: 'agentId', type: DataType.TEXT, required: true },
+        { name: 'creationTimestamp', type: DataType.TEXT, required: true }, // Assuming TEXT for string dates in simplified view
+        { name: 'schemaVersion', type: DataType.TEXT, required: true },
+        { name: 'sourceSystem', type: DataType.TEXT, required: true },
+        { name: 'contentType', type: DataType.TEXT, required: true }, // Or a more specific custom type string if needed
+        { name: 'contentRaw', type: DataType.GENERIC, required: true }, // Changed to DataType.GENERIC
+      ] as SchemaFieldDefinition[], // Added 'as SchemaFieldDefinition[]' for stricter typing
       definition: {
         type: 'object',
         properties: {
@@ -164,14 +174,24 @@ export class SchemaManager {
         // Create and use a hardcoded default if none exists in the store
         const fallbackSchema: SchemaVersionDefinition = {
           version: '1.0.0', // Consistent with InMemorySchemaStore's default
+          mementoVersion: '1.0', // Version of the memento structure
           description: 'Fallback default MemoryMemento schema',
-          definition: { /* ... (same as InMemorySchemaStore default definition) ... */ 
+          fields: [
+            { name: 'mementoId', type: DataType.TEXT, required: true },
+            { name: 'agentId', type: DataType.TEXT, required: true },
+            { name: 'creationTimestamp', type: DataType.TEXT, required: true },
+            { name: 'schemaVersion', type: DataType.TEXT, required: true }, // This refers to mementoVersion
+            { name: 'sourceSystem', type: DataType.TEXT, required: true },
+            { name: 'contentType', type: DataType.TEXT, required: true },
+            { name: 'contentRaw', type: DataType.GENERIC, required: true },
+          ] as SchemaFieldDefinition[],
+          definition: { /* ... (same as InMemorySchemaStore default definition) ... */
             type: 'object',
             properties: {
               mementoId: { type: 'string', format: 'uuid' },
               agentId: { type: 'string', format: 'uuid' },
               creationTimestamp: { type: 'string', format: 'date-time' },
-              schemaVersion: { type: 'string' },
+              schemaVersion: { type: 'string' }, // This refers to mementoVersion
               sourceSystem: { type: 'string' },
               contentType: { type: 'string' },
               contentRaw: { type: ['string', 'object'] },
