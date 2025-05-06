@@ -293,3 +293,48 @@ export interface MementoAcceptedDetail {
 // The old IngestionResponse is effectively replaced by ApiSuccessResponseBody<MementoAcceptedDetail>
 // or ApiSuccessResponseBody<IngestionAcceptedResponseData> depending on the context.
 // For the 202 response, IngestionAcceptedResponseData is more appropriate.
+
+/**
+ * Represents the type of data being ingested, for validation purposes.
+ */
+export enum DataType {
+  TEXT = "TEXT",
+  AUDIO = "AUDIO",
+  IMAGE = "IMAGE",
+  VIDEO = "VIDEO",
+  CODE = "CODE",
+  SYSTEM_LOG = "SYSTEM_LOG",
+  USER_INTERACTION = "USER_INTERACTION",
+  GENERIC = "GENERIC",
+}
+
+/**
+ * Represents the source of the ingestion request, for validation purposes.
+ */
+export enum Source {
+  MANUAL_INPUT = "MANUAL_INPUT",
+  API_UPLOAD = "API_UPLOAD",
+  AUTOMATED_SYSTEM = "AUTOMATED_SYSTEM",
+  WEB_SCRAPER = "WEB_SCRAPER",
+  EMAIL_INGESTION = "EMAIL_INGESTION",
+}
+
+/**
+ * Represents the result of a validation operation.
+ */
+export interface ValidationResult {
+  isValid: boolean;
+  errors?: Array<{ field: string; message: string }>;
+}
+
+/**
+ * Represents the structure of an ingestion request specifically for the validator function.
+ */
+export interface ValidatorIngestionRequest {
+  userId: string;
+  source: Source;
+  timestamp: string; // ISO8601 Timestamp
+  dataType: DataType;
+  data: any; // Structure depends on dataType
+  metadata?: Record<string, any>;
+}
