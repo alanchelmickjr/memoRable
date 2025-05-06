@@ -150,22 +150,6 @@ services:
 
   # memorable_t2v_transformer: # Removed as DEFAULT_VECTORIZER_MODULE for Weaviate is 'none'
 
-  memorable_ingestion_service: # New service: Ingestion Infinity-Loop
-    build:
-      context: .
-      dockerfile: src/services/ingestion_service/Dockerfile # Assumed Dockerfile path
-    container_name: memorable_ingestion_service_app
-    ports:
-      - "3002:3002" # Placeholder port, adjust if needed
-    env_file:
-      - .env # Load environment variables from .env file
-    depends_on:
-      - memorable_weaviate
-      - memorable_mongo
-    networks:
-      - memorable_net
-    restart: unless-stopped # Example restart policy
-
   memorable_embedding_service: # New service: Embedding Essence
     build:
       context: .
@@ -213,6 +197,45 @@ services:
     # And have a crontab file copied into the image.
     restart: unless-stopped
 
+  memorable_ingestion_service:
+    build:
+      context: .
+      dockerfile: src/services/ingestion_service/Dockerfile
+    container_name: memorable_ingestion_service_app
+    ports:
+      - "8001:8001" # Default port for Ingestion Service
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
+      - WEAVIATE_URL=http://memorable_weaviate:8080
+      - EMBEDDING_SERVICE_URL=http://memorable_embedding_service:3003 # Consistent with embedding_service definition
+      - NNNA_SERVICE_URL=http://memorable_nnna_service:3005 # Assuming NNNA service internal port
+      - INGESTION_SERVICE_PORT=8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO} # Added LOG_LEVEL
+      # Add other necessary environment variables
+    volumes:
+      - ./src/services/ingestion_service:/usr/src/app/src/services/ingestion_service
+      - ./src/common:/usr/src/app/src/common # If common utilities are used
+      - ./src/utils:/usr/src/app/src/utils # If shared utils are used
+      - ./src/core:/usr/src/app/src/core # If shared core components are used
+    depends_on:
+      memorable_mongo:
+        condition: service_healthy
+      memorable_weaviate:
+        condition: service_healthy
+      memorable_embedding_service: # Added dependency
+        condition: service_started # Or service_healthy if it has a healthcheck
+      memorable_nnna_service:      # Added dependency
+        condition: service_started # Or service_healthy if it has a healthcheck
+    networks:
+      - memorable_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/ingest/health"] # Corrected healthcheck path
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   memorable_ollama: # Renamed from 'ollama'
     image: ollama/ollama:latest
