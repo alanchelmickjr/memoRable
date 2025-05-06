@@ -1,7 +1,8 @@
-version: '3.8'
+# This Docker Compose file defines the services for the memoRable - Total Recall project.
+# It includes databases (MongoDB, Weaviate), application services, and monitoring tools.
 
 services:
-  app:
+  memorable_app: # Renamed from 'app'
     build:
       context: .
       dockerfile: docker/Dockerfile
@@ -9,9 +10,9 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/memorable?authSource=admin
-      - REDIS_URL=redis://redis:6379
-      - WEAVIATE_URL=http://weaviate:8080
+      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
+      - REDIS_URL=redis://memorable_redis:6379
+      - WEAVIATE_URL=http://memorable_weaviate:8080
       - OLLAMA_API_KEY=${OLLAMA_API_KEY}
       - EMOTION_THRESHOLD=${EMOTION_THRESHOLD:-0.7}
       - EMOTION_UPDATE_INTERVAL=${EMOTION_UPDATE_INTERVAL:-5000}
@@ -22,11 +23,11 @@ services:
       - .:/usr/src/app
       - /usr/src/app/node_modules
     depends_on:
-      mongodb:
+      memorable_mongo:
         condition: service_healthy
-      redis:
+      memorable_redis:
         condition: service_healthy
-      weaviate:
+      memorable_weaviate:
         condition: service_healthy
     networks:
       - memorable_net
@@ -34,26 +35,26 @@ services:
       resources:
         limits:
           cpus: '8'
-          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "16G"; else echo "4G"; fi}
+          memory: ${MEMORABLE_APP_MEMORY_LIMIT:-4G} # Adjusted for clarity, default to 4G, can be overridden
         reservations:
           cpus: '4'
-          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "8G"; else echo "2G"; fi}
+          memory: ${MEMORABLE_APP_MEMORY_RESERVATION:-2G} # Adjusted for clarity, default to 2G
     healthcheck:
-      test: /usr/local/bin/health.sh
+      test: /usr/local/bin/health.sh # Assuming this script exists and is relevant
       interval: 30s
       timeout: 10s
       retries: 3
     labels:
       - "autoheal=true"
 
-  night-processor:
+  memorable_night_processor: # Renamed from 'night-processor'
     build:
       context: .
       dockerfile: docker/Dockerfile
     command: node src/services/nightProcessingService.js
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/memorable?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
     deploy:
       resources:
         limits:
@@ -61,24 +62,25 @@ services:
           memory: 2G
     restart: always
     depends_on:
-      - app
-      - mongodb
+      - memorable_app
+      - memorable_mongo
     networks:
       - memorable_net
     labels:
-      - "com.docker.scheduling.cron=0 1 * * * America/Los_Angeles"
+      - "com.docker.scheduling.cron=0 1 * * * America/Los_Angeles" # Example cron, adjust as needed
       - "com.docker.scheduling.duration=3h"
 
-  mongodb:
+  memorable_mongo: # Renamed from 'mongodb'
     image: mongo:latest
+    container_name: memorable_mongo_db # Explicit container name
     ports:
       - "27017:27017"
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
     volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
+      - memorable_mongo_data:/data/db
+      - memorable_mongo_config:/data/configdb
     networks:
       - memorable_net
     deploy:
@@ -95,15 +97,16 @@ services:
       retries: 5
       start_period: 40s
 
-  redis:
+  memorable_redis: # Renamed from 'redis'
     image: redis:alpine
+    container_name: memorable_redis_cache # Explicit container name
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
-      - redis_data:/data
+      - memorable_redis_data:/data
     networks:
       - memorable_net
     deploy:
@@ -117,20 +120,21 @@ services:
       timeout: 5s
       retries: 5
 
-  weaviate:
-    image: semitechnologies/weaviate:latest
+  memorable_weaviate: # Renamed from 'weaviate'
+    image: semitechnologies/weaviate:latest # Official Weaviate image
+    container_name: memorable_weaviate_db # Explicit container name
     ports:
-      - "8080:8080"
+      - "8080:8080" # Default Weaviate port
     environment:
       - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
-      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
-      - DEFAULT_VECTORIZER_MODULE=text2vec-transformers
-      - ENABLE_MODULES=text2vec-transformers
-      - TRANSFORMERS_INFERENCE_API=http://t2v-transformer:8080
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED='true' # As requested
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate # As requested
+      - DEFAULT_VECTORIZER_MODULE=none # Corrected: Removed single quotes
+      # ENABLE_MODULES and TRANSFORMERS_INFERENCE_API removed as vectorizer is 'none'
+      - CLUSTER_HOSTNAME=memorable_weaviate_node1 # Example for potential clustering
       - LIMIT_MEMORY=${WEAVIATE_MEMORY:-4Gi}
     volumes:
-      - weaviate_data:/var/lib/weaviate
+      - memorable_weaviate_data:/var/lib/weaviate # Persistent data
     networks:
       - memorable_net
     deploy:
@@ -144,45 +148,102 @@ services:
       timeout: 5s
       retries: 5
 
-  t2v-transformer:
-    image: semitechnologies/transformers-inference:sentence-transformers-multi-qa-MiniLM-L6-cos-v1
-    environment:
-      - ENABLE_CUDA=0
+  # memorable_t2v_transformer: # Removed as DEFAULT_VECTORIZER_MODULE for Weaviate is 'none'
+
+  memorable_ingestion_service: # New service: Ingestion Infinity-Loop
+    build:
+      context: .
+      dockerfile: src/services/ingestion_service/Dockerfile # Assumed Dockerfile path
+    container_name: memorable_ingestion_service_app
+    ports:
+      - "3002:3002" # Placeholder port, adjust if needed
+    env_file:
+      - .env # Load environment variables from .env file
+    depends_on:
+      - memorable_weaviate
+      - memorable_mongo
     networks:
       - memorable_net
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
+    restart: unless-stopped # Example restart policy
 
-  ollama:
+  memorable_embedding_service: # New service: Embedding Essence
+    build:
+      context: .
+      dockerfile: src/services/embedding_service/Dockerfile # Assumed Dockerfile path
+    container_name: memorable_embedding_service_app
+    ports:
+      - "3003:3003" # Placeholder port, adjust if needed
+    env_file:
+      - .env # Load environment variables (e.g., OPENAI_API_KEY)
+    networks:
+      - memorable_net
+    restart: unless-stopped
+
+  memorable_retrieval_service: # New service: Conscious Current
+    build:
+      context: .
+      dockerfile: src/services/retrieval_service/Dockerfile # Assumed Dockerfile path
+    container_name: memorable_retrieval_service_app
+    ports:
+      - "3004:3004" # Placeholder port, adjust if needed
+    env_file:
+      - .env
+    depends_on:
+      - memorable_weaviate
+      - memorable_mongo
+    networks:
+      - memorable_net
+    restart: unless-stopped
+
+  memorable_nnna_service: # New service: Nocturnal Nurturing & Network Attunement
+    build:
+      context: .
+      dockerfile: src/services/nnna_service/Dockerfile # Assumed Dockerfile path
+    container_name: memorable_nnna_service_app
+    env_file:
+      - .env
+    depends_on:
+      - memorable_weaviate
+      - memorable_mongo
+    networks:
+      - memorable_net
+    # This service might be triggered by an internal cron or an external scheduler.
+    # For Docker-based cron, you might use a command like:
+    # command: /bin/sh -c "crond -f -d 8 && echo 'Cron started'"
+    # And have a crontab file copied into the image.
+    restart: unless-stopped
+
+
+  memorable_ollama: # Renamed from 'ollama'
     image: ollama/ollama:latest
+    container_name: memorable_ollama_llm # Explicit container name
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama
+      - memorable_ollama_data:/root/.ollama
     networks:
       - memorable_net
     deploy:
       resources:
         limits:
           cpus: '8'
-          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "24G"; else echo "8G"; fi}
+          memory: ${OLLAMA_MEMORY_LIMIT:-8G} # Default to 8G, can be overridden
         reservations:
-          memory: ${if [ "${NODE_ENV:-development}" = "production" ]; then echo "16G"; else echo "4G"; fi}
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+          memory: ${OLLAMA_MEMORY_RESERVATION:-4G} # Default to 4G
+          # GPU allocation example, uncomment and adjust if NVIDIA GPU is available
+          # devices:
+          #   - driver: nvidia
+          #     count: all
+          #     capabilities: [gpu]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  autoheal:
+  memorable_autoheal: # Renamed from 'autoheal'
     image: willfarrell/autoheal
+    container_name: memorable_autoheal_monitor
     environment:
       - AUTOHEAL_CONTAINER_LABEL=autoheal
       - AUTOHEAL_INTERVAL=5
@@ -191,17 +252,20 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - memorable_net
+    restart: always
 
-  prometheus:
+  memorable_prometheus: # Renamed from 'prometheus'
     image: prom/prometheus:latest
+    container_name: memorable_prometheus_monitoring
     volumes:
-      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml # Ensure this path is correct
+      - memorable_prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle' # Allows for hot-reloading of config
     ports:
       - "9090:9090"
     networks:
@@ -211,51 +275,71 @@ services:
         limits:
           cpus: '1'
           memory: 2G
+    restart: unless-stopped
 
-  grafana:
+  memorable_grafana: # Renamed from 'grafana'
     image: grafana/grafana:latest
+    container_name: memorable_grafana_dashboard
     volumes:
-      - grafana_data:/var/lib/grafana
+      - memorable_grafana_data:/var/lib/grafana
+      # For provisioning dashboards and datasources, you can mount config files:
+      # - ./docker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      # - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      # - ./docker/grafana/dashboards:/var/lib/grafana/dashboards # If using file-based dashboard provisioning
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin} # Use .env for password
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Example: Point Grafana to Prometheus
+      - GF_DATASOURCES_DEFAULT_PROMETHEUS_URL=http://memorable_prometheus:9090
     ports:
-      - "3001:3000"
+      - "3001:3000" # Exposing Grafana on 3001 to avoid conflict with app on 3000
     networks:
       - memorable_net
+    depends_on:
+      - memorable_prometheus
     deploy:
       resources:
         limits:
           cpus: '1'
           memory: 1G
+    restart: unless-stopped
 
-  mongodb-exporter:
+  memorable_mongodb_exporter: # Renamed from 'mongodb-exporter'
     image: percona/mongodb_exporter:latest
+    container_name: memorable_mongo_exporter
     command:
-      - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongodb:27017/memorable?authSource=admin'
+      - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin'
     networks:
       - memorable_net
+    depends_on:
+      - memorable_mongo
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 256M
+    restart: unless-stopped
 
-  redis-exporter:
+  memorable_redis_exporter: # Renamed from 'redis-exporter'
     image: oliver006/redis_exporter:latest
+    container_name: memorable_redis_exporter
     environment:
-      - REDIS_ADDR=redis://redis:6379
+      - REDIS_ADDR=redis://memorable_redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     networks:
       - memorable_net
+    depends_on:
+      - memorable_redis
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 256M
+    restart: unless-stopped
 
-  node-exporter:
+  memorable_node_exporter: # Renamed from 'node-exporter'
     image: prom/node-exporter:latest
+    container_name: memorable_node_exporter
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -271,14 +355,20 @@ services:
         limits:
           cpus: '0.5'
           memory: 256M
+    pid: host # Required for some metrics
+    restart: unless-stopped
 
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+  memorable_cadvisor: # Renamed from 'cadvisor'
+    image: gcr.io/cadvisor/cadvisor:latest # Using gcr.io/cadvisor/cadvisor as per common practice
+    container_name: memorable_cadvisor_monitor
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:rw
+      - /var/run:/var/run:rw # Changed to rw as cAdvisor might need to write
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    # ports: # cAdvisor typically exposes on 8080, but Weaviate uses it.
+             # Prometheus will scrape it directly via Docker network.
+             # If direct access is needed, map to a different host port e.g. "8081:8080"
     networks:
       - memorable_net
     deploy:
@@ -286,23 +376,26 @@ services:
         limits:
           cpus: '0.5'
           memory: 512M
+    privileged: true # cAdvisor often needs privileged mode to access Docker stats
+    restart: unless-stopped
 
 volumes:
-  mongodb_data:
+  memorable_mongo_data: # Renamed
     driver: local
-  mongodb_config:
+  memorable_mongo_config: # Renamed
     driver: local
-  redis_data:
+  memorable_redis_data: # Renamed
     driver: local
-  weaviate_data:
+  memorable_weaviate_data: # Renamed
     driver: local
-  ollama_data:
+  memorable_ollama_data: # Renamed
     driver: local
-  prometheus_data:
+  memorable_prometheus_data: # Renamed
     driver: local
-  grafana_data:
+  memorable_grafana_data: # Renamed
     driver: local
 
 networks:
   memorable_net:
     driver: bridge
+    name: memorable_network # Explicit network name

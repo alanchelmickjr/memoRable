@@ -1,209 +1,487 @@
 # MemoRable - Total Recall: Technical Architecture
 
-## System Overview
+## 1. Introduction
 
-MemoRable - Total Recall is an advanced AI memory system designed to provide agents with human-like, comprehensive memory capabilities. It functions as a sophisticated **"context conductor,"** meticulously managing and interleaving temporal, spatial, emotional, and reasoning contexts to empower AI agents with focused task execution and a coherent sense of identity derived from memory.
+MemoRable - Total Recall is an advanced AI memory system designed to provide agents with comprehensive, contextually rich, and adaptive recall capabilities. This document outlines the system architecture, detailing its components, data flows, service boundaries, and operational considerations. It builds upon the foundational concepts in the project's [`README.md`](../README.md), [`memoRable_implementation_plan.md`](../memoRable_implementation_plan.md), and is primarily derived from the detailed specifications in [`docs/total_recall_specification.md`](./total_recall_specification.md).
 
-The architecture is built on **first-principles thinking** to address the novel challenges of creating true "total recall" for AI. A key innovation is the **Dual-Model Memory Architecture**:
-*   **Subconscious Scanner Model (Gemini)**: A powerful model (e.g., Gemini) with a large context window continuously scans and processes the entirety of an agent's long-term memory. It identifies patterns, relationships, and potential relevancies, acting as a background "subconscious" process.
-*   **Conscious Access Model**: This model, likely smaller and more agile, directly interfaces with the agent's active tasks. When specific memories or insights are needed, it queries the pre-processed information and relevant data surfaced by the Subconscious Scanner.
-*   **Adaptable Context Windows**: The system employs adaptable context windows for different models and tasks. This allows for efficient processing, where routine information might be handled with less "attentional" load, and frequently repeated actions can become near-autonomic.
+The architecture adheres to the **Universal Vectorization Principle**, ensuring all incoming data is initially vectorized and stored comprehensively. It employs a microservices-based approach, containerized with Docker, and emphasizes modularity, scalability, and security.
 
-**Deployment Strategy**:
-MemoRable is designed as an **npm installable package**, providing core memory services that can be integrated into various AI agent projects. While **Docker and Docker Compose are utilized extensively for development and testing environments** (orchestrating services like MongoDB for persistent storage and Weaviate for vector search), the core system is architected for flexible deployment. Initial production targets include stateless environments like Vercel, with adaptability for stateful deployments as well. This approach ensures broad applicability and ease of integration.
+## 2. Core Architectural Principles
 
-## Core Components
+*   **Context as a First-Class Citizen**: Rich, interwoven contexts (temporal, spatial, emotional, reasoning) are central to memory representation and retrieval.
+*   **Memory-Derived Identity & Personality**: Agent coherence and personality emerge from accumulated, processed, and synthesized memories.
+*   **Adaptive Ingestion & Schema**: The system learns and adapts its data capture and schema based on the evolving relevance and utility of information, primarily driven by the "Nocturnal Nurturing & Network Attunement" (NNNA) process.
+*   **Dual Storage Strategy**:
+    *   **MongoDB**: Primary store for complete, structured "Memory Mementos" and journaling.
+    *   **Weaviate**: Vector database for semantic search and similarity-based retrieval of embeddings.
+*   **Microservices & Dockerization**: Components are designed as independent services, orchestrated by Docker Compose for development, testing, and deployment flexibility.
+*   **Alliterative Naming**: Components and concepts utilize alliterative names for clarity and memorability (e.g., "Embedding Essence," "Conscious Current").
+*   **Security by Design**: Security considerations are integrated throughout the architecture, from data handling to API access.
 
-### 1. Service Layer
+## 3. High-Level System Diagram
 
-#### ModelSelectionService
-- Handles dynamic model selection and switching
-- Implements memoization for response caching
-- Manages model state and performance metrics
-- Provides warm-up functionality for models
+```mermaid
+graph TD
+    subgraph InputSources [Input Sources]
+        IS_Text[Text Input]
+        IS_Git[Git Commits / Codebase Chronicle]
+        IS_Audio[Audio (via STT)]
+        IS_Other[Other Future Sources]
+    end
 
-## 💡 Core Architectural Principles
+    subgraph Services
+        II [Ingestion Infinity-Loop]
+        EE [Embedding Essence]
+        NNNA [Nocturnal Nurturing & Network Attunement]
+        CC [Conscious Current / Contextual Retrieval]
+        SS [Subconscious Synthesis / Personality Service]
+        AIface[Agent Interface]
+    end
 
-The technical architecture of MemoRable - Total Recall is founded on several key principles:
+    subgraph DataStores
+        WDB[(Weaviate Vector DB)]
+        MDB[(MongoDB - Mementos & Journals)]
+    end
 
-*   **Context as a First-Class Citizen**: The system is designed to act as a "context conductor." All memory items are rich with interwoven temporal, spatial, emotional, and reasoning contexts, enabling nuanced understanding and retrieval.
-*   **Memory-Derived Identity**: The architecture supports the core concept that an agent's personality and coherence emerge from its accumulated and accessible memories.
-*   **Dual-Model Memory Processing (Conscious/Subconscious Paradigm)**:
-    *   **Subconscious Scanner (Gemini Focus)**: A dedicated, powerful model (initially targeting Gemini due to its large context window capabilities) is responsible for the continuous, comprehensive scanning and indexing of the long-term memory corpus. This "subconscious" layer proactively identifies patterns, relationships, and potential relevancies.
-    *   **Conscious Access Model**: This model serves the agent's immediate operational needs. It queries the insights and distilled information provided by the Subconscious Scanner, enabling rapid access to relevant memories without needing to process the entire memory store itself for every query.
-    *   **Adaptable Context Windows & Autonomic Processing**: The interaction between these models leverages adaptable context windows. The Subconscious Scanner utilizes a broad window for its deep dives, while the Conscious Access Model can operate with more focused, dynamically adjusted windows. This design aims to mimic cognitive efficiency, where less critical or routine information is processed with lower "attentional" load, and highly repeated actions can become almost autonomic, freeing the Conscious Access Model for higher-order tasks.
-*   **Layered Data Persistence**:
-    *   **MongoDB**: Serves as the robust, persistent store for raw, detailed memory data.
-    *   **Weaviate**: Provides high-performance vector search capabilities for semantic memory retrieval.
-    *   **Redis**: Acts as a high-speed cache for frequently accessed data and session information.
-*   **Dockerized Development & Flexible Deployment**: The entire system is developed and tested within a Dockerized environment, ensuring consistency. However, the core memory services are designed as an npm-installable package, allowing for flexible deployment in various environments, including stateless (e.g., Vercel) and stateful server architectures.
-*   **Modularity and Extensibility**: Services are designed to be modular, allowing for independent development, scaling, and a clear separation of concerns.
-*   **First-Principles Innovation**: Given the novel aspiration of "total recall," the architecture prioritizes innovative solutions derived from first principles rather than solely relying on existing paradigms.
-*   **Alliterative Naming**: Where appropriate, components and concepts (e.g., "Memory Mesh," "Contextual Core," "Subconscious Scanner," "Conscious Conductor") will use alliterative naming to enhance clarity and memorability.
+    InputSources -- Raw Data --> II
+    II -- Prepared Memento Narrative --> EE
+    II -- Raw/Structured Memento --> MDB
+    EE -- Embedding Vector & MementoID --> WDB
+    
+    NNNA -- Reads --> MDB
+    NNNA -- Reads/Updates --> WDB
+    NNNA -- Schema Feedback --> II
+    NNNA -- Personality Insights --> SS
+    NNNA -- Creates/Updates Mementos --> II
 
----
-#### NightProcessingService
-- Runs during off-peak hours (1 AM - 4 AM)
-- Analyzes interaction patterns
-- Optimizes model performance
-- Manages cache warming strategies
-- Predicts memory usage patterns
+    AIface -- Query Context --> CC
+    CC -- Query Narrative for Vector --> EE
+    CC -- Semantic Search Query --> WDB
+    WDB -- Memento IDs & Scores --> CC
+    CC -- Fetch Full Mementos by ID --> MDB
+    MDB -- Full Mementos --> CC
+    CC -- Relevant Memories --> AIface
 
-#### IdentityService
-- Manages passphrase-based authentication
-- Handles user preferences
-- Controls memory access permissions
-- Ensures secure identity management
+    SS -- Personality Profile --> AIface
+    SS -- Influences --> CC
 
-#### ResponseRefinementService
-- Processes real-time interactions
-- Applies user preferences to responses
-- Manages response updates/retractions
-- Integrates with confidence scoring
+    style II fill:#f9f,stroke:#333,stroke-width:2px
+    style EE fill:#ccf,stroke:#333,stroke-width:2px
+    style NNNA fill:#cfc,stroke:#333,stroke-width:2px
+    style CC fill:#ffc,stroke:#333,stroke-width:2px
+    style SS fill:#fcc,stroke:#333,stroke-width:2px
+    style AIface fill:#cff,stroke:#333,stroke-width:2px
+    style WDB fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style MDB fill:#add8e6,stroke:#333,stroke-width:2px
+```
 
-#### ConfidenceService
-- Implements quick confidence scoring
-- Tracks 21-day interaction patterns
-- Monitors mental health indicators
-- Manages attention decay system
-- Categorizes interaction patterns
+**Data Flow Summary:**
 
-#### TaskHopperService
-- Manages task and instruction queues
-- Tracks step-by-step progress
-- Handles AI task integration
-- Maintains task relationships
+1.  **Ingestion**: Input Sources send data to the `Ingestion Infinity-Loop`. It preprocesses data, creates "Memory Mementos," and sends raw/structured mementos to MongoDB.
+2.  **Embedding**: The `Ingestion Infinity-Loop` sends prepared memento narratives to `Embedding Essence` (e.g., using OpenAI `text-embedding-3-large`) which generates vectors and stores them in Weaviate, linked to the `mementoId`.
+3.  **Storage**: MongoDB stores full mementos; Weaviate stores vectors and key filterable metadata.
+4.  **Nightly Processing (NNNA)**: `Nocturnal Nurturing & Network Attunement` periodically reads from MongoDB and Weaviate to refine memories, update embeddings, generate personality insights for `Subconscious Synthesis`, and provide schema adaptation feedback to the `Ingestion Infinity-Loop`.
+5.  **Retrieval**: The `Agent Interface` provides a query context to `Conscious Current`. `Conscious Current` generates a query vector (via `Embedding Essence`), searches Weaviate, retrieves full mementos from MongoDB, and returns relevant memories.
+6.  **Personality**: `Subconscious Synthesis` uses insights from NNNA to build a personality profile, which can influence retrieval and agent responses.
 
-### 2. Infrastructure
+## 4. Service Boundaries and APIs
 
-The infrastructure is designed for robustness, scalability, and maintainability, primarily leveraging a Dockerized environment for development and offering flexibility for production deployment.
+Each service is designed as a distinct microservice, containerized via Docker, with clearly defined responsibilities and communication interfaces. REST APIs are preferred for inter-service communication, with potential for gRPC for performance-critical paths or message queues (e.g., RabbitMQ, Kafka) for asynchronous tasks like ingestion.
 
-#### Dockerized Development Environment
-- **Orchestration**: Docker Compose is used to define and manage the multi-container application services (MemoRable core, MongoDB, Weaviate, Redis, Ollama, monitoring tools).
-- **Consistency**: Ensures a consistent environment across development, testing, and CI/CD pipelines.
-- **Resource Optimization**: Container configurations are optimized for resource usage, with considerations for GPU access for AI model acceleration where applicable.
-- **Isolation & Communication**: Services are isolated within containers, communicating over defined Docker networks.
-- **Health & Scaling**: The Docker setup includes health monitoring and is designed with future scaling capabilities in mind, although production scaling might involve more advanced orchestration like Kubernetes.
+### 4.1. Input Sources / Adapters
+*   **Responsibilities**: Collect data from various origins (text, Git, audio transcripts, etc.) and forward it to the Ingestion Service.
+*   **Interface**: Specific to the source (e.g., Git hook listener, message queue consumer, API endpoint for direct submission).
+*   **Output**: Standardized raw data format for the Ingestion Service.
 
-#### Data Persistence Layer (Managed within Docker for Development)
-- **MongoDB**: Serves as the primary persistent datastore for raw, detailed memory items, including their rich contextual metadata (temporal, spatial, emotional, reasoning). Its schema flexibility is advantageous for evolving memory structures.
-- **Weaviate**: Functions as the dedicated vector database. It stores and indexes vector embeddings of memory items, enabling rapid semantic search and similarity comparisons crucial for the Subconscious Scanner model and relevant memory retrieval.
-- **Redis**: Employed as a high-speed in-memory cache (LRU policy) for frequently accessed data, such as active session information, hot memory items, and potentially pre-computed patterns to accelerate responses from the Conscious Access Model.
-- **Data Integrity**: Includes strategies for data persistence, backup, and recovery, particularly for MongoDB and Weaviate.
+### 4.2. Ingestion Infinity-Loop (Ingestion Service)
+*   **Responsibilities**:
+    *   Receive raw data from various input sources.
+    *   Preprocess data (normalization, entity extraction, emotional analysis via `HumeService` or similar).
+    *   Construct "Memory Memento" objects based on the current adaptive schema.
+    *   Coordinate with `Embedding Essence` to generate embeddings.
+    *   Store full mementos in MongoDB and ensure vector/metadata storage in Weaviate (handling transactional consistency).
+    *   Adapt to schema changes signaled by NNNA.
+*   **Primary API Endpoints**:
+    *   `POST /ingest`: Submits new data for processing. Accepts various content types.
+        *   Payload: `{ "sourceSystem": "...", "sourceIdentifier": "...", "contentType": "...", "contentRaw": "...", "eventTimestamp": "...", ... }`
+        *   Response: `202 Accepted` (acknowledges receipt for processing) or error.
+*   **Internal Communication**:
+    *   Calls `Embedding Essence` to get vectors.
+    *   Writes to MongoDB and Weaviate.
+    *   Listens for schema update notifications (e.g., via a dedicated internal API or message queue from NNNA).
 
-#### Monitoring Stack
-- Prometheus for metrics collection
-- Grafana for visualization
-- Service-level monitoring
-- Performance tracking
-- Health check dashboard
-- Automated alerts
+### 4.3. Embedding Essence (Embedding Service)
+*   **Responsibilities**:
+    *   Generate vector embeddings for "Memory Memento" narratives and query narratives using a configured model (e.g., OpenAI `text-embedding-3-large`, local Sentence Transformers via Ollama).
+    *   Manage interaction with the chosen embedding model provider (API calls, local model serving).
+    *   Provide an interface for embedding text.
+*   **Primary API Endpoints**:
+    *   `POST /embed`: Generates an embedding for a given text narrative.
+        *   Payload: `{ "narrativeText": "..." }`
+        *   Response: `{ "embeddingVector": [...] }` or error.
+*   **Dependencies**: Access to embedding models (OpenAI API key, Ollama endpoint).
 
-### 3. Testing Infrastructure
+### 4.4. Weaviate Vector Database
+*   **Responsibilities**: Store and index vector embeddings of Memory Mementos along with key filterable metadata. Enable efficient semantic search.
+*   **Interface**: Weaviate's native API (GraphQL, REST).
 
-#### CI/CD Pipeline
-- GitHub Actions workflow
-- Automated testing
-- Integration verification
-- Load testing with k6
-- Smoke testing
-- Automated rollbacks
+### 4.5. MongoDB (Document Depository & Journaling)
+*   **Responsibilities**: Store complete, structured "Memory Memento" objects. Store agent personality profiles, journaling data, and operational logs.
+*   **Interface**: MongoDB's native driver/protocol.
 
-## Data Flow & Memory Processing
+### 4.6. Nocturnal Nurturing & Network Attunement (NNNA - Nightly Processing Service)
+*   **Responsibilities**:
+    *   Perform nightly analysis of mementos in MongoDB and Weaviate.
+    *   Re-evaluate relevance, correct/enrich mementos, update causal links.
+    *   Trigger re-embedding of mementos via `Embedding Essence` if narratives or understanding changes.
+    *   Identify patterns for personality trait derivation (feeding `Subconscious Synthesis`).
+    *   Propose and manage "Schema Adaptation" for the `Ingestion Infinity-Loop`.
+    *   Manage data archival and pruning.
+*   **Triggers**: Typically time-based (e.g., cron job within its Docker container) or event-driven (e.g., after a certain volume of new data).
+*   **Data Access**: Direct read/write access to MongoDB and Weaviate.
+*   **Output**: Updates to mementos, new "insight" mementos, schema update notifications, personality data.
+*   **API (Internal/Control)**:
+    *   `POST /nnna/trigger`: Manually trigger a processing cycle.
+    *   `GET /nnna/status`: Check status of ongoing/last processing.
 
-The flow of data and the processing of memories are central to MemoRable's architecture, involving several key stages and the interplay between the dual memory models:
+### 4.7. Conscious Current (Contextual Retrieval Service)
+*   **Responsibilities**:
+    *   Receive the agent's current operational context (active task, recent interactions, emotional state).
+    *   Formulate a "Contextual Narrative for Query."
+    *   Generate a query vector via `Embedding Essence`.
+    *   Query Weaviate for semantically similar `mementoId`s.
+    *   Fetch full mementos from MongoDB using these IDs.
+    *   Re-rank and filter retrieved mementos.
+    *   Provide the "driving window of context" (top N mementos) to the `Agent Interface`.
+*   **Primary API Endpoints**:
+    *   `POST /retrieve`: Retrieves relevant memories based on current context.
+        *   Payload: `{ "agentId": "...", "currentContext": { "activeTask": "...", "recentInteractions": "...", ... }, "retrievalOptions": { "limit": 10, "minCertainty": 0.7 } }`
+        *   Response: `{ "retrievedMementos": [...] }` or error.
+*   **Internal Communication**: Calls `Embedding Essence`, queries Weaviate, queries MongoDB.
 
-1.  **Input & Contextualization**:
-    *   User input (text, voice, image, etc.) is received by the system.
-    *   The `IdentityService` authenticates the user and retrieves any relevant user-specific configurations or preferences.
-    *   Input is processed to extract explicit data and implicit contextual cues. This includes emotional tone (e.g., via `HumeService`), environmental factors, and the ongoing task context (managed by `TaskHopperService`).
-    *   A rich contextual snapshot is created for the current interaction moment.
+### 4.8. Subconscious Synthesis (Personality Service)
+*   **Responsibilities**:
+    *   Store and manage the agent's "Personality Profile" derived from NNNA insights.
+    *   Provide the personality profile to other services (e.g., `Agent Interface`, `Conscious Current`) to influence behavior, retrieval, and response generation.
+*   **Primary API Endpoints**:
+    *   `GET /personality/{agentId}`: Retrieves the personality profile for an agent.
+        *   Response: `{ "dominantTraits": [...], "cognitiveStyles": [...], ... }`
+    *   `PUT /personality/{agentId}` (Internal, used by NNNA): Updates the personality profile.
+*   **Data Access**: Reads/writes personality profiles in MongoDB.
 
-2.  **Memory Interaction & Response Generation (Conscious Access Model Focus)**:
-    *   The **Conscious Access Model** (its selection potentially guided by `ModelSelectionService` based on current context and task) determines if memory retrieval is necessary to formulate an optimal response.
-    *   If memory is required, the Conscious Access Model formulates a query. This query might be a natural language question, keywords, or more likely, a vector embedding representing the current contextual snapshot.
-    *   The query is dispatched to the memory system:
-        *   **High-Speed Cache Check (Redis)**: The system first checks Redis for highly relevant, recently accessed, or pre-computed/summarized memory items that match the query.
-        *   **Vector Search (Weaviate)**: If a suitable match isn't found in the cache, or if a broader search is indicated, the query vector is used to search Weaviate. Weaviate returns a set of semantically similar memory embeddings, ranked by relevance.
-        *   **Full Data Retrieval (MongoDB)**: The identifiers from the Weaviate search results are used to retrieve the complete, detailed memory items from MongoDB.
-    *   The retrieved memories, along with the current interaction context, are provided to the Conscious Access Model.
-    *   The model generates a candidate response.
-    *   This response may be further processed by the `ResponseRefinementService`, applying user preferences and integrating confidence scores from the `ConfidenceService`.
+### 4.9. Agent Interface
+*   **Responsibilities**:
+    *   Represents the AI agent's core logic or the application integrating MemoRable.
+    *   Constructs the `currentAgentContext` for retrieval.
+    *   Receives retrieved memories from `Conscious Current`.
+    *   Utilizes memories and personality profile (from `Subconscious Synthesis`) to inform actions, decisions, and responses.
+*   **Interface**: Consumes APIs of `Conscious Current` and `Subconscious Synthesis`.
 
-3.  **Memory Storage & Indexing (Continuous & Post-Interaction)**:
-    *   The new interaction (including the initial input, the full contextual snapshot, the agent's response, and any associated emotional or analytical metadata) is packaged as a new memory item.
-    *   This comprehensive memory item is persistently stored in **MongoDB**.
-    *   An embedding vector is generated for this new memory item (or key aspects of it).
-    *   This embedding is stored in **Weaviate**, linked to the corresponding raw data record in MongoDB, making it discoverable for future semantic searches.
-    *   Salient or frequently accessed aspects of this new memory might be proactively cached in **Redis**.
+## 5. Data Models & Schemas (High-Level)
 
-4.  **Continuous Background Memory Processing (Subconscious Scanner Model - Gemini Focus)**:
-    *   The **Subconscious Scanner Model (e.g., Gemini)** operates asynchronously and continuously in the background.
-    *   It processes the entire memory corpus stored across MongoDB (for rich details) and Weaviate (for vector relationships).
-    *   **Pattern Recognition & Abstraction**: It identifies recurring patterns, emotional trends, conceptual links, and contextual relationships across vast amounts of stored memory data.
-    *   **Memory Consolidation & Linking**: It strengthens connections between related memories, potentially creating abstracted summaries or higher-level insights. This is akin to human memory consolidation.
-    *   **Proactive Indexing & Cache Priming**: Insights generated by the Subconscious Scanner can inform updates to Weaviate's indexing strategies or proactively prime the Redis cache with memories anticipated to be relevant for future interactions.
-    *   This ongoing "subconscious" processing ensures that the memory store is not just a passive repository but an actively organized and understood knowledge base.
+Refer to [`docs/total_recall_specification.md#1-memory-item-structure-memory-memento`](./total_recall_specification.md#1-memory-item-structure-memory-memento) for the detailed `MemoryMemento` structure.
 
-5.  **Scheduled Nightly Processing (`NightProcessingService`)**:
-    *   This service complements the continuous work of the Subconscious Scanner by performing more resource-intensive tasks during off-peak hours.
-    *   This includes deep pattern analysis across the entire dataset, comprehensive model performance evaluations based on historical interactions, extensive cache warming strategies, and predictive analysis for memory usage and system optimization.
+### 5.1. Weaviate Class: `MemoryMemento` (or `MementoVector`)
+*   **Properties**:
+    *   `mementoId`: (string, keyword) - Primary link to MongoDB.
+    *   `agentId`: (string, keyword, indexFilterable: true)
+    *   `creationTimestamp`: (date, indexFilterable: true)
+    *   `eventTimestamp`: (date, indexFilterable: true)
+    *   `contentType`: (string, keyword, indexFilterable: true)
+    *   `tags`: (string[], keyword, indexFilterable: true)
+    *   `dominantEmotion`: (string, keyword, indexFilterable: true)
+    *   `sourceSystem`: (string, keyword, indexFilterable: true)
+    *   `schemaVersion`: (string, keyword, indexFilterable: true)
+*   **Vectorization**: `vectorizer: none` (externally provided embeddings). `vectorIndexType: hnsw`. `distance: cosine`.
+*   **Schema Evolution**: Managed by NNNA. Updates may require data migration or re-indexing, coordinated by NNNA. Weaviate's schema update capabilities will be used. The `schemaVersion` property on objects helps manage this.
 
-This multi-layered data flow and processing strategy aims to provide both rapid, contextually relevant memory access for immediate interactions and deep, evolving understanding of the agent's entire history of experiences.
+### 5.2. MongoDB Collections
+*   **`memory_mementos`**:
+    *   Stores the full `MemoryMemento` JSON object, as detailed in the specification.
+    *   Indexed fields: `mementoId` (unique), `agentId`, `creationTimestamp`, `temporalContext.eventTimestamp`, `tags` (multikey), `emotionalContext.dominantEmotion`, `contentType`, `sourceSystem`, `schemaVersion`.
+*   **`agent_personality_profiles`**:
+    *   Stores derived personality traits for each agent.
+    *   Schema: `{ "agentId": "<UUID>", "profileVersion": "...", "lastUpdated": ISODate("..."), "dominantTraits": [...], "cognitiveStyles": [...], "interactionPreferences": [...], ... }`
+*   **`system_journals`**:
+    *   Stores logs of NNNA activities, schema changes, significant system events.
+*   **Schema Evolution**: MongoDB's flexibility supports adaptive schemas. The `schemaVersion` field within `memory_mementos` allows different memento structures to coexist and be interpreted correctly. NNNA is responsible for managing transitions and ensuring data integrity during schema changes. For significant structural changes in Weaviate that affect filtering or indexing (beyond just vector changes), NNNA would coordinate Weaviate schema updates and potential data backfilling/re-indexing.
 
-## Security Measures
+### 5.3. Adaptive Schema Management ("Schema Synapse")
+*   The "Schema Synapse" concept is realized through the NNNA process.
+*   NNNA analyzes memory utility and patterns, identifying needs for new fields, changed granularity, or different data types within `MemoryMemento`.
+*   **Process**:
+    1.  NNNA identifies a required schema change.
+    2.  It updates a central schema definition (e.g., a versioned JSON schema stored in MongoDB or a configuration service).
+    3.  It notifies the `Ingestion Infinity-Loop` (e.g., via an internal API call or a message on a control queue).
+    4.  The `Ingestion Infinity-Loop` loads the new schema version and adapts its memento construction logic.
+    5.  NNNA may then trigger a background task to migrate or update existing mementos in MongoDB and Weaviate to conform to the new schema version if necessary (e.g., adding default values for new fields, re-processing data for Weaviate's filterable properties).
+    6.  Both MongoDB (via `schemaVersion` field in documents) and Weaviate (via its schema update API) will reflect these changes.
 
-1.  **Authentication**
-    *   Passphrase-based system
-    *   Session management
-    *   Access control
+## 6. Docker Orchestration
 
-2.  **Data Protection**
-    *   Encrypted storage
-    *   Secure communication
-    *   Memory access controls
+Services are containerized using Docker and orchestrated with [`docker-compose.yml`](../docker-compose.yml) for development, testing, and potentially simpler production deployments.
 
-3.  **Infrastructure Security**
-    *   Container isolation
-    *   Network segmentation
-    *   Resource limits
-    *   Health monitoring
+### 6.1. [`docker-compose.yml`](../docker-compose.yml) Structure (Conceptual Outline)
 
-## Scaling Considerations
+```yaml
+version: '3.8'
 
-1.  **Horizontal Scaling**
-    *   Container orchestration
-    *   Load balancing
-    *   Service replication
+services:
+  # --- Core Application Services ---
+  ingestion_service:
+    build: ./ingestion_service # Path to Dockerfile for Ingestion Infinity-Loop
+    ports:
+      - "8001:8001" # Example port
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - WEAVIATE_URL=${WEAVIATE_URL}
+      - EMBEDDING_SERVICE_URL=http://embedding_service:8002
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # If used directly by ingestion for some reason
+      # ... other env vars
+    depends_on:
+      - mongodb
+      - weaviate
+      - embedding_service
+    volumes:
+      - ./ingestion_service/src:/app/src # For development hot-reloading
+    networks:
+      - memorable_network
 
-2.  **Resource Management**
-    *   Dynamic resource allocation
-    *   Memory optimization
-    *   CPU utilization control
-    *   GPU access management
+  embedding_service:
+    build: ./embedding_service # Path to Dockerfile for Embedding Essence
+    ports:
+      - "8002:8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL} # If using local Ollama
+      # ...
+    depends_on:
+      - ollama # Optional, if using local models
+    networks:
+      - memorable_network
 
-3.  **Performance Optimization**
-    *   Response caching
-    *   Model warm-up
-    *   Pattern memoization
-    *   Load distribution
+  retrieval_service: # Conscious Current
+    build: ./retrieval_service
+    ports:
+      - "8003:8003"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - WEAVIATE_URL=${WEAVIATE_URL}
+      - EMBEDDING_SERVICE_URL=http://embedding_service:8002
+      # ...
+    depends_on:
+      - mongodb
+      - weaviate
+      - embedding_service
+    networks:
+      - memorable_network
 
-## Monitoring and Maintenance
+  nnna_service: # Nocturnal Nurturing & Network Attunement
+    build: ./nnna_service
+    # No public ports needed, runs scheduled tasks
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - WEAVIATE_URL=${WEAVIATE_URL}
+      - EMBEDDING_SERVICE_URL=http://embedding_service:8002
+      - INGESTION_SERVICE_URL=http://ingestion_service:8001 # For schema feedback
+      # ...
+    depends_on:
+      - mongodb
+      - weaviate
+      - embedding_service
+      - ingestion_service
+    networks:
+      - memorable_network
 
-1.  **Health Monitoring**
-    *   Service health checks
-    *   Performance metrics
-    *   Resource utilization
-    *   Error tracking
+  personality_service: # Subconscious Synthesis
+    build: ./personality_service
+    ports:
+      - "8004:8004"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      # ...
+    depends_on:
+      - mongodb
+    networks:
+      - memorable_network
 
-2.  **Alerting System**
-    *   Performance thresholds
-    *   Error conditions
-    *   Resource constraints
-    *   System health
+  # --- Data Stores ---
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASS}
+    networks:
+      - memorable_network
 
-3.  **Maintenance Procedures**
-    *   Automated backups
-    *   System updates
-    *   Model updates
-    *   Performance tuning
+  weaviate:
+    image: semitechnologies/weaviate:latest # Or specific version
+    ports:
+      - "8080:8080" # Weaviate REST API
+      - "50051:50051" # Weaviate gRPC API
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true' # For dev; configure auth for prod
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      DEFAULT_VECTORIZER_MODULE: 'none' # Embeddings provided externally
+      ENABLE_MODULES: 'text2vec-openai,generative-openai' # If using Weaviate's OpenAI integration for other purposes or future embedding
+      OPENAI_APIKEY: ${OPENAI_API_KEY} # If Weaviate modules need it
+      CLUSTER_HOSTNAME: 'node1'
+    networks:
+      - memorable_network
+
+  # --- Optional Local Model Serving ---
+  ollama: # For local Sentence Transformers etc.
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy: # GPU access example
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1 # or 'all'
+              capabilities: [gpu]
+    networks:
+      - memorable_network
+
+  # --- Other services like Agent Interface, Git Commit Collector would be added similarly ---
+
+volumes:
+  mongo_data:
+  weaviate_data:
+  ollama_data:
+
+networks:
+  memorable_network:
+    driver: bridge
+```
+
+### 6.2. Environment Variable Management
+*   Sensitive information (API keys, database credentials) is managed via environment variables.
+*   A [`.env.example`](../.env.example) file provides a template for required variables.
+*   In Docker Compose, these are typically sourced from a `.env` file in the project root.
+*   For production, these would be injected securely by the deployment platform (e.g., Kubernetes Secrets, platform-specific environment variable management).
+*   **No hardcoded secrets in code or Docker images.**
+
+## 7. Scalability and Performance
+
+### 7.1. Potential Bottlenecks
+*   **Ingestion Service**: High volume of incoming data can overload preprocessing, embedding calls, and database writes.
+*   **Embedding Service**: If using external APIs (like OpenAI), rate limits and network latency can be bottlenecks. If using local models, CPU/GPU resources for `Embedding Essence` or `Ollama` can be a constraint.
+*   **Weaviate/MongoDB**: High query load or large data volumes can impact performance. Write contention during high ingestion rates.
+*   **NNNA Service**: Resource-intensive during its processing window, potentially impacting other services if not managed well (though designed for off-peak).
+
+### 7.2. Scaling Strategies
+*   **Ingestion Service**:
+    *   Horizontally scale `Ingestion Infinity-Loop` instances behind a load balancer.
+    *   Use a message queue (e.g., RabbitMQ, Kafka) to decouple input reception from processing, allowing workers to consume tasks at their own pace.
+*   **Embedding Service**:
+    *   Horizontally scale `Embedding Essence` instances.
+    *   If using local models (Ollama), scale Ollama instances and distribute requests.
+    *   Implement caching for identical narrative embeddings if applicable (though narratives are often unique).
+*   **Weaviate**:
+    *   Scale Weaviate horizontally (requires a Weaviate cluster setup, more complex than single node).
+    *   Optimize schema and indexing.
+*   **MongoDB**:
+    *   Utilize replica sets for read scaling and high availability.
+    *   Sharding for write scaling and distributing large datasets (complex to implement).
+    *   Optimize queries and indexes.
+*   **NNNA Service**:
+    *   Optimize queries and processing logic.
+    *   Distribute tasks within NNNA if possible (e.g., process different agents' data in parallel).
+    *   Ensure it runs during low-traffic periods.
+*   **Stateless Services**: Most services (Ingestion, Embedding, Retrieval, Personality) can be designed to be stateless, making horizontal scaling straightforward.
+
+### 7.3. Performance Implications of "Vectorize Everything"
+*   **Initial Cost**: Embedding generation for all data incurs computational/API costs and latency during ingestion.
+*   **Storage Cost**: Vector embeddings can be large, increasing storage requirements in Weaviate.
+*   **NNNA's Role**: The "Nocturnal Nurturing & Network Attunement" process is crucial here. By comprehensively vectorizing upfront, NNNA has the full dataset to:
+    *   Identify truly valuable information.
+    *   Refine or re-generate embeddings for optimal recall.
+    *   Inform archival or pruning strategies for less critical raw data or outdated embeddings, managing long-term storage and performance.
+    *   This approach front-loads capture, allowing intelligent, offline refinement rather than premature filtering.
+
+## 8. Modularity and Extensibility
+
+*   **Microservice Architecture**: Each service has a single responsibility, allowing independent development, deployment, and scaling.
+*   **Standardized APIs**: Clear REST (or gRPC/message queue) interfaces between services allow for easier replacement or addition of components.
+*   **Adding New Context Types**:
+    1.  Update the `MemoryMemento` schema definition (managed by NNNA and versioned).
+    2.  Modify the `Ingestion Infinity-Loop` to parse and include the new context.
+    3.  Update the `NarrativeWeaver` logic within `Embedding Essence` (or called by it) to incorporate the new context into the text for embedding.
+    4.  Update `Conscious Current` to include this new context when formulating query narratives.
+*   **Adding New Embedding Models**:
+    1.  Create a new adapter/client within `Embedding Essence` for the new model.
+    2.  Update configuration to allow selection of the new model (potentially dynamically or per-agent/per-contentType).
+    3.  NNNA might trigger re-embedding of old mementos with the new model if desired.
+*   **Adding New Input Sources**:
+    1.  Develop a new adapter service or module for the specific source.
+    2.  This adapter transforms source data into the format expected by `Ingestion Infinity-Loop` and calls its `/ingest` API.
+
+## 9. "Living Git Log" Integration ("Codebase Chronicle")
+
+The "Codebase Chronicle" component integrates Git commit data into MemoRable.
+
+*   **Component**: A dedicated `CodeChangeCollector` service.
+*   **Mechanism**:
+    1.  **Git Hook Integration**: A `post-commit` hook in the monitored Git repository triggers the `CodeChangeCollector`.
+    2.  **Polling (Alternative)**: The `CodeChangeCollector` could periodically poll the Git repository for new commits if hooks are not feasible.
+*   **Data Flow**:
+    1.  `CodeChangeCollector` receives/detects a new commit.
+    2.  It parses commit data: author, message, timestamp, changed files, and the diff.
+    3.  It transforms this into a `MemoryMemento` with `contentType: "CodeChange"`.
+        *   `contentRaw`: Could be the full diff or structured data about changes.
+        *   `contentProcessed`: Could be a summary of the commit message and key changes.
+        *   `sourceSystem`: "CodebaseChronicle"
+        *   `sourceIdentifier`: Commit hash.
+        *   `temporalContext.eventTimestamp`: Commit timestamp.
+        *   `reasoningContext.inferencesMade`: Could include parsed elements from commit messages (e.g., "Fixes #123").
+    4.  This memento is sent to the `Ingestion Infinity-Loop`'s `/ingest` endpoint like any other data source.
+*   **Embedding**: The "Contextual Narrative Weaving" for code changes will emphasize commit messages, changed file paths, and summaries of diffs to enable semantic search for code history (e.g., "Show me commits related to user authentication refactoring").
+
+## 10. Security Considerations
+
+Security is paramount, especially given the potentially sensitive nature of memories.
+
+### 10.1. Data Encryption
+*   **At Rest**:
+    *   MongoDB: Enable encryption at rest features provided by MongoDB Atlas or self-hosted configurations (e.g., LUKS for disk encryption, MongoDB's native encryption).
+    *   Weaviate: Data should be stored on encrypted volumes. Weaviate itself may offer encryption features depending on version and configuration.
+    *   Backups must also be encrypted.
+*   **In Transit**:
+    *   All API communication between services and between clients/Agent Interface and the system must use TLS/HTTPS.
+    *   Internal Docker network traffic can also be secured if deemed necessary, though often relies on network isolation.
+
+### 10.2. Secure API Access
+*   **Authentication**:
+    *   External-facing APIs (e.g., for agent interaction or direct ingestion if applicable) must be protected. Options include API keys, OAuth2, or JWT-based authentication.
+    *   Internal service-to-service communication can use simpler mechanisms like mutual TLS (mTLS) or network policies if running in an orchestrated environment like Kubernetes, or shared secrets/API keys managed securely.
+*   **Authorization**:
+    *   Ensure agents can only access their own memories (`agentId` filtering is critical in all database queries).
+    *   Role-based access control (RBAC) if multiple users/admins interact with the system.
+
+### 10.3. Management of Sensitive Data
+*   **Emotional Context**: While valuable, emotional data is sensitive. Access should be strictly controlled.
+*   **PII**: If mementos contain Personally Identifiable Information, appropriate data handling, masking, or anonymization techniques should be considered, especially for analytics or if data is shared.
+*   **Principle of Least Privilege**: Each service should only have the permissions necessary to perform its functions.
+*   **Secure Configuration Management**: API keys, database credentials, and other secrets must be managed securely (e.g., using environment variables injected at runtime, HashiCorp Vault, or cloud provider secret managers) and not hardcoded or stored in version control (referencing [`.env.example`](../.env.example)).
+*   **Audit Logging**: Log significant events, especially data access, modifications, and administrative actions, for security monitoring and forensics.
+
+### 10.4. Input Sanitization
+*   The `Ingestion Infinity-Loop` must sanitize all incoming data to prevent injection attacks (e.g., NoSQL injection, XSS if content is ever rendered).
+
+## 11. Future Considerations
+*   **Advanced Graph-Based Recall**: While Weaviate handles semantic similarity, exploring dedicated graph databases for `reasoningContext.causalLinks` could enable more complex relational queries.
+*   **Multi-Modal Mementos**: Extending beyond text to natively support image, audio, and video mementos with specialized embedding and processing pipelines.
+*   **Federated Learning/Memory**: Architectures for agents to securely share or learn from generalized patterns without exposing raw memories.
+
+This architecture provides a robust and extensible foundation for MemoRable - Total Recall, enabling sophisticated memory capabilities for AI agents.

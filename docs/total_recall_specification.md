@@ -4,6 +4,8 @@
 
 This document details the specification for the "MemoRable - Total Recall" embedding and data ingestion system. It builds upon the foundational concepts outlined in the project's [`README.md`](../README.md), [`memoRable_implementation_plan.md`](../memoRable_implementation_plan.md), and [`docs/technical-architecture.md`](./technical-architecture.md). The primary goal is to define how multifaceted memory items are structured, embedded, ingested, and retrieved to provide AI agents with comprehensive and contextually rich recall capabilities.
 
+A core tenet of this system is the **Universal Vectorization Principle**: all incoming data is initially vectorized and stored comprehensively, without premature relevance filtering by the AI during initial ingestion. This ensures a complete data capture for later, more nuanced review and processing.
+
 This specification adheres to the principle of **alliterative naming** for new components and concepts and includes **TDD anchors** for key processes.
 
 ## 1. Memory Item Structure ("Memory Memento")
@@ -185,7 +187,7 @@ The process of generating an embedding for a Memory Memento involves the followi
 
 6.  **Association and Storage Preparation:**
     *   The generated `embeddingVector` is associated with the `mementoId` of the Memory Memento.
-    *   This pair (`mementoId`, `embeddingVector`) is then ready to be stored in Weaviate (see Section 3.3.4).
+    *   This pair (`mementoId`, `embeddingVector`) is then ready to be stored in Weaviate (see Section 3.4.1).
 
 **Pseudocode for Embedding Generation Service:**
 
@@ -275,11 +277,24 @@ END CLASS
 
 This strategy ensures that the rich contextual information within each Memory Memento is transformed into a format suitable for powerful semantic search and retrieval.
 
+### 2.3. Dynamic Embedding Refinement via Nocturnal Nurturing
+
+The "Nocturnal Nurturing & Network Attunement" process (detailed in Section 5) plays a crucial role in the ongoing quality and relevance of embeddings. It's not a one-time generation; embeddings can be refined.
+
+*   **Re-evaluation and Re-embedding:** Insights gained during nightly processing might reveal that certain memories or clusters of memories were initially misunderstood or that their context has shifted in importance. This can trigger a re-embedding of affected mementos.
+*   **Updated Contextual Understanding:** The narrative generated for a memento (Section 1.6) might be revised based on new connections or corrections identified overnight. The memento would then be re-embedded using this updated narrative.
+*   **Influence on Model Strategy:** Over time, patterns in re-embedding activities might inform the overall embedding strategy. For instance, if certain types of narratives consistently require refinement, it might suggest a need to adjust the "Contextual Narrative Weaving" process or even explore different/fine-tuned embedding models for those specific data types.
+*   **Process:** When a memento is flagged for re-embedding, its existing vector in Weaviate is replaced with the newly generated one. The core memento data in MongoDB is also updated if its narrative components (e.g., `contentProcessed`, `inferencesMade`) have changed.
+
+**TDD Anchors:**
+*   `// TDD: TestReEmbeddingOfMementosPostNightlyProcessing`: Verifies mementos flagged by nightly processing are correctly re-embedded.
+*   `// TDD: TestEmbeddingStrategyAdaptationBasedOnRefinementPatterns`: Ensures the system can track and potentially adapt embedding strategies based on frequent re-embeddings.
+
 ---
 
 ## 3. Data Ingestion Pipeline ("Ingestion Infinity-Loop")
-### The AUTO tuning ingestor
-The Data Ingestion Pipeline is responsible for receiving raw data from various sources, processing it into structured Memory Mementos, generating embeddings, and storing them consistently across MongoDB and Weaviate. This pipeline must be robust, scalable, and adaptable to new data types and sources.
+
+The Data Ingestion Pipeline is responsible for receiving raw data from various sources, processing it into structured Memory Mementos, generating embeddings, and storing them consistently across MongoDB and Weaviate. This pipeline must be robust, scalable, and adaptable. Crucially, in line with the **Universal Vectorization Principle**, all incoming data is comprehensively captured and vectorized first; subsequent refinement and interpretation occur during processes like "Nocturnal Nurturing & Network Attunement" (Section 5).
 
 A central component managing this flow could be named `IngestionIntegrator`.
 
@@ -287,7 +302,23 @@ A central component managing this flow could be named `IngestionIntegrator`.
 *   `// TDD: TestFullIngestionPipelineHappyPath`: Verifies a piece of data successfully flows through the entire pipeline.
 *   `// TDD: TestIngestionPipelineErrorHandlingAtEachStage`: Ensures errors at different stages (preprocessing, memento creation, storage) are handled gracefully.
 
-### 3.1. Input Sources ("Source Streams")
+### 3.1. Adaptive Ingestion Schema ("Schema Synapse")
+
+A key feature of the MemoRable system is its ability to learn and adapt. The ingestion schema, defining the structure of `MemoryMementos` and how they are stored in Weaviate and MongoDB, is not entirely static.
+
+*   **Feedback Loop:** Insights from the "Nocturnal Nurturing & Network Attunement" process (Section 5), specifically its "Schema Adaptation" function, feed back into the ingestion pipeline.
+*   **Learning What's Valuable:** The system learns over time what types of data, contextual details, or patterns are proving most valuable for recall and agent performance, or which require more nuanced capture.
+*   **Schema Adjustments:** This learning can lead to adjustments in the `MemoryMemento` structure itself (e.g., adding new optional fields, refining the granularity of existing ones) or in how data is preprocessed and mapped to these fields.
+*   **Impact on `IngestionIntegrator`:** The `IngestionIntegrator` and related components (like `MementoConstructor`) must be designed to be aware of the current schema version and potentially handle data conforming to slightly different schema versions during transition periods or adapt to schema update notifications.
+*   **Database Implications:**
+    *   MongoDB's schema-flexibility inherently supports this evolution.
+    *   Weaviate's schema can be updated. Significant changes might necessitate data migration or re-indexing of affected mementos, a process that can be managed by or triggered by the "Nocturnal Nurturing & Network Attunement" cycle.
+
+**TDD Anchors:**
+*   `// TDD: TestIngestionPipelineAdaptsToSchemaChangeNotification`: Verifies the pipeline can adjust its processing based on a schema update.
+*   `// TDD: TestSchemaEvolutionImpactOnStorage`: Ensures schema changes are correctly reflected in database interactions.
+
+### 3.2. Input Sources ("Source Streams")
 
 MemoRable is designed to ingest data from a variety of sources, initially focusing on text but with the architecture allowing for future expansion to other modalities.
 
@@ -303,11 +334,11 @@ MemoRable is designed to ingest data from a variety of sources, initially focusi
     *   Codebase changes (for "Living Git Log" use case).
     *   Data from external APIs or sensors (future expansion).
 *   **Agent's Internal "Thoughts" or Reflections:**
-    *   Outputs from the `NightProcessingService` or the `Subconscious Scanner` model that generate new insights or summaries worth remembering.
+    *   Outputs from the "Nocturnal Nurturing & Network Attunement" process or the `Subconscious Scanner` model that generate new insights or summaries worth remembering.
 
 Each input source will likely have an adapter or specific parser to transform its raw data into a common internal format before further processing.
 
-### 3.2. Preprocessing ("Preprocessing Prism")
+### 3.3. Preprocessing ("Preprocessing Prism")
 
 Before a Memory Memento can be created, raw input data undergoes several preprocessing steps to clean, normalize, structure, and enrich it.
 
@@ -383,13 +414,13 @@ CLASS PreprocessingPrism
 END CLASS
 ```
 
-### 3.3. Memory Item Creation ("Memento Morphing")
+### 3.4. Memory Item Creation ("Memento Morphing")
 
 Once the input data is preprocessed, a complete Memory Memento object is constructed.
 
 **Module: `MementoConstructor`**
 
-This module takes `ProcessedInputData` and assembles it into a valid `MemoryMemento` structure as defined in Section 1.
+This module takes `ProcessedInputData` and assembles it into a valid `MemoryMemento` structure as defined in Section 1, considering the current state of the (potentially adaptive) schema.
 
 **Pseudocode:**
 
@@ -398,15 +429,16 @@ CLASS MementoConstructor
 
   // TDD: TestConstructMementoFromProcessedData
   // TDD: TestConstructMementoHandlesOptionalFields
-  FUNCTION constructMemento(processedInput: ProcessedInputData, agentId: String) : MemoryMemento OR Error
+  // TDD: TestConstructMementoWithEvolvedSchema
+  FUNCTION constructMemento(processedInput: ProcessedInputData, agentId: String, currentSchemaVersion: String) : MemoryMemento OR Error
     mementoId = GENERATE_UUID()
     creationTimestamp = CURRENT_ISO_TIMESTAMP()
 
-    // Map preprocessed data to Memento fields
-    temporalContext = MAP_TEMPORAL_DATA(processedInput.aggregatedContext.timestamp, processedInput.duration)
-    spatialContext = MAP_SPATIAL_DATA(processedInput.aggregatedContext.location)
-    emotionalContext = MAP_EMOTIONAL_DATA(processedInput.emotionalAnalysis)
-    reasoningContext = MAP_REASONING_DATA(processedInput.aggregatedContext.activeTask, processedInput.inferences) // Inferences might come from earlier agent processing
+    // Map preprocessed data to Memento fields according to currentSchemaVersion
+    temporalContext = MAP_TEMPORAL_DATA(processedInput.aggregatedContext.timestamp, processedInput.duration, currentSchemaVersion)
+    spatialContext = MAP_SPATIAL_DATA(processedInput.aggregatedContext.location, currentSchemaVersion)
+    emotionalContext = MAP_EMOTIONAL_DATA(processedInput.emotionalAnalysis, currentSchemaVersion)
+    reasoningContext = MAP_REASONING_DATA(processedInput.aggregatedContext.activeTask, processedInput.inferences, currentSchemaVersion)
 
     memento = NEW MemoryMemento({
       mementoId: mementoId,
@@ -418,15 +450,17 @@ CLASS MementoConstructor
       contentRaw: processedInput.originalContent,
       contentProcessed: processedInput.processedContent,
       tags: processedInput.extractedEntities.map(entity => entity.name), // Example tagging
+      schemaVersion: currentSchemaVersion, // Store schema version with memento
 
       temporalContext: temporalContext,
       spatialContext: spatialContext,
       emotionalContext: emotionalContext,
       reasoningContext: reasoningContext
+      // ... other fields based on currentSchemaVersion
     })
 
     // Validate memento against schema
-    VALIDATE_SCHEMA(memento) // Throws error if invalid
+    VALIDATE_SCHEMA(memento, currentSchemaVersion) // Throws error if invalid
     // TDD Anchor: TestMementoSchemaValidationAfterConstruction
 
     RETURN memento
@@ -435,13 +469,13 @@ CLASS MementoConstructor
 END CLASS
 ```
 
-### 3.4. Storage ("Storage Sanctuaries")
+### 3.5. Storage ("Storage Sanctuaries")
 
 Memory Mementos and their embeddings are stored in a dual-database system: MongoDB for the full, structured data and Weaviate for vector embeddings to enable semantic search. This aligns with the existing architecture using [`src/config/database.js`](../src/config/database.js) (assumed for MongoDB) and [`src/config/weaviate.js`](../src/config/weaviate.js).
 
 A `MemorySteward` service will manage interactions with both databases.
 
-#### 3.4.1. Weaviate Schema ("Vector Vault")
+#### 3.5.1. Weaviate Schema ("Vector Vault")
 
 *   **Class Name:** `MemoryMemento` (or a more alliterative name like `MementoVector`)
 *   **Properties:**
@@ -453,21 +487,24 @@ A `MemorySteward` service will manage interactions with both databases.
     *   `tags`: (dataType: `string[]`, tokenization: `keyword`, `indexFilterable`: true) For faceted search.
     *   `dominantEmotion`: (dataType: `string`, tokenization: `keyword`, `indexFilterable`: true)
     *   `sourceSystem`: (dataType: `string`, tokenization: `keyword`, `indexFilterable`: true)
+    *   `schemaVersion`: (dataType: `string`, tokenization: `keyword`, `indexFilterable`: true) To track schema evolution.
     *   (Consider adding other key filterable fields from the memento structure if direct filtering in Weaviate is frequently needed alongside vector search).
 *   **Vectorization Settings:**
     *   `vectorizer`: `none`. Embeddings will be generated externally by the `EmbeddingService` (Section 2.2) and then provided to Weaviate.
     *   `vectorIndexType`: `hnsw` (Hierarchical Navigable Small World) - common default for good balance of speed and accuracy.
     *   `distance`: `cosine` (or `dot` depending on the embedding model's typical usage).
+*   **Schema Evolution Note:** The schema described here represents an initial state. It can evolve based on insights from the "Nocturnal Nurturing & Network Attunement" process (Section 5). Weaviate's schema update capabilities will be utilized. For significant changes impacting vectorization or indexing, data migration or re-indexing of existing objects might be coordinated by the nightly process.
 *   **Cross-References:**
     *   Direct cross-references within Weaviate can be complex to manage if not using its built-in vectorizers for linked objects.
-    *   Instead, relationships (like `causalLinks`) will primarily be stored in MongoDB. The `Subconscious Scanner` can later process these relationships and potentially create specialized linked data structures or secondary indices if needed for advanced graph-based queries. For now, Weaviate focuses on semantic similarity of individual mementos.
+    *   Instead, relationships (like `causalLinks`) will primarily be stored in MongoDB. The "Nocturnal Nurturing & Network Attunement" process can later analyze these relationships and potentially create specialized linked data structures or secondary indices if needed for advanced graph-based queries. For now, Weaviate focuses on semantic similarity of individual mementos.
 
 **TDD Anchors:**
 *   `// TDD: TestWeaviateSchemaCreation`: Verifies the schema can be created in Weaviate.
 *   `// TDD: TestWeaviateDataInsertion`: Checks data insertion with an externally generated vector.
 *   `// TDD: TestWeaviateVectorSearch`: Confirms vector search returns expected results.
+*   `// TDD: TestWeaviateSchemaUpdateAndDataMigration`: Verifies handling of schema evolution.
 
-#### 3.4.2. MongoDB Collection Structure ("Document Depository")
+#### 3.5.2. MongoDB Collection Structure ("Document Depository")
 
 *   **Collection Name:** `memory_mementos`
 *   **Document Structure:** The MongoDB document will store the complete `MemoryMemento` object as defined in Section 1.
@@ -483,6 +520,7 @@ A `MemorySteward` service will manage interactions with both databases.
       "contentRaw": "User said hello.",
       "contentProcessed": "User greeted.",
       "tags": ["greeting", "user"],
+      "schemaVersion": "1.0.0", // Version of the memento schema
       "temporalContext": {
         "eventTimestamp": ISODate("..."), // Indexed
         "eventDurationMs": 1200
@@ -501,6 +539,7 @@ A `MemorySteward` service will manage interactions with both databases.
       // ... other fields from MemoryMemento schema
     }
     ```
+*   **Schema Evolution Note:** MongoDB's schema-flexible nature readily supports the dynamic evolution of the `MemoryMemento` structure as driven by the "Nocturnal Nurturing & Network Attunement" process and its "Schema Adaptation" function. The `schemaVersion` field helps in managing and interpreting mementos created under different schema iterations.
 *   **Indexes:**
     *   `mementoId` (unique)
     *   `agentId`
@@ -510,6 +549,7 @@ A `MemorySteward` service will manage interactions with both databases.
     *   `emotionalContext.dominantEmotion`
     *   `contentType`
     *   `sourceSystem`
+    *   `schemaVersion`
     *   Consider compound indexes based on common query patterns (e.g., `agentId` and `temporalContext.eventTimestamp`).
 
 This structure allows for rich, flexible querying on any attribute of the memory, complementing Weaviate's vector search capabilities.
@@ -518,8 +558,9 @@ This structure allows for rich, flexible querying on any attribute of the memory
 *   `// TDD: TestMongoDBMementoInsertion`: Verifies memento insertion.
 *   `// TDD: TestMongoDBQueryByMementoId`: Checks retrieval by `mementoId`.
 *   `// TDD: TestMongoDBComplexQuery`: Tests querying by multiple indexed fields.
+*   `// TDD: TestMongoDBHandlesVariedSchemaVersions`: Ensures queries can handle mementos with different schema versions.
 
-### 3.5. Atomicity & Consistency ("Transactional Twin-Write")
+### 3.6. Atomicity & Consistency ("Transactional Twin-Write")
 
 Ensuring data consistency between Weaviate (vector + minimal metadata) and MongoDB (full memento) during ingestion is crucial. A failure to write to one after successfully writing to the other can lead to orphaned data or missing embeddings.
 
@@ -533,7 +574,7 @@ Ensuring data consistency between Weaviate (vector + minimal metadata) and Mongo
     *   The `EmbeddingService` generates the vector for the memento.
     *   The vector and key metadata (including `mementoId` from the MongoDB record) are saved to Weaviate.
     *   **If Weaviate write fails:**
-        *   **Compensating Transaction:** Attempt to mark the MongoDB record as "pending_embedding" or "embedding_failed". A background job can periodically retry embedding generation and Weaviate storage for these records.
+        *   **Compensating Transaction:** Attempt to mark the MongoDB record as "pending_embedding" or "embedding_failed". A background job (potentially part of "Nocturnal Nurturing & Network Attunement") can periodically retry embedding generation and Weaviate storage for these records.
         *   Alternatively, for critical applications, one might delete the MongoDB record, but this risks data loss if the failure was transient. A retry mechanism with a dead-letter queue for persistent failures is generally preferred.
     *   **If Weaviate write succeeds:** The ingestion is complete.
 
@@ -541,7 +582,7 @@ Ensuring data consistency between Weaviate (vector + minimal metadata) and Mongo
 
 *   Write to MongoDB.
 *   Asynchronously trigger embedding generation and Weaviate storage (e.g., via a message queue).
-*   Have a reconciliation process (e.g., part of `NightProcessingService`) that periodically scans MongoDB for mementos missing embeddings in Weaviate and attempts to create/store them. This simplifies the initial write path but accepts a window of inconsistency.
+*   Have a reconciliation process (e.g., part of "Nocturnal Nurturing & Network Attunement") that periodically scans MongoDB for mementos missing embeddings in Weaviate and attempts to create/store them. This simplifies the initial write path but accepts a window of inconsistency.
 
 Given the importance of having embeddings for recall, a **simulated two-phase commit with robust retry and error logging for the Weaviate step** is recommended for the initial implementation.
 
@@ -589,6 +630,7 @@ CLASS MemorySteward
       "agentId": memento.agentId,
       "creationTimestamp": memento.creationTimestamp,
       "eventTimestamp": memento.temporalContext.eventTimestamp,
+      "schemaVersion": memento.schemaVersion,
       // ... other filterable fields for Weaviate
       "vector": embeddingVector
     }
@@ -597,7 +639,7 @@ CLASS MemorySteward
       // Simplified Weaviate client call
       weaviateResult = this.weaviate.data.creator()
         .withClassName('MemoryMemento') // Or your chosen class name
-        .withProperties(weaviateObject)
+        .withProperties(weaviateObject) // Weaviate client handles mapping this to schema properties
         .withVector(embeddingVector) // Explicitly pass vector if 'vectorizer: none'
         .withId(memento.mementoId) // Use mementoId as Weaviate ID for easy linking
         .do()
@@ -661,6 +703,7 @@ The `ContextualRetriever` uses the query vector to search Weaviate.
         *   `contentType`: Optionally filter by relevant content types.
         *   `tags`: Optionally filter by relevant tags derived from the current context.
         *   `eventTimestamp`: Optionally apply a time window (e.g., retrieve memories from the last 24 hours, or a specific relevant period).
+        *   `schemaVersion`: Filter by compatible schema versions if necessary.
     *   **Limit:** Specify the maximum number of results to retrieve (e.g., top 10-20 mementos).
     *   **Certainty/Distance:** Weaviate returns results with a certainty score (or distance, depending on configuration). This can be used for thresholding.
 
@@ -719,16 +762,19 @@ CLASS ContextualRetriever
       .withClassName('MemoryMemento')
       .withNearVector({ vector: queryVector, certainty: options.minCertainty || 0.7 })
       .withLimit(options.limit || 10)
-      .withFields('mementoId _additional { certainty distance }') // Request mementoId and scores
+      .withFields('mementoId schemaVersion _additional { certainty distance }') // Request mementoId, schemaVersion and scores
 
     // Add filters based on options and agentId
-    filterConditions = [{ path: ["agentId"], operator: "Equal", valueString: agentId }]
+    filterOperands = [{ path: ["agentId"], operator: "Equal", valueString: agentId }]
     IF options.contentTypeFilter THEN
-      filterConditions.push({ path: ["contentType"], operator: "Equal", valueString: options.contentTypeFilter })
+      filterOperands.push({ path: ["contentType"], operator: "Equal", valueString: options.contentTypeFilter })
+    END IF
+    IF options.schemaVersionFilter THEN // Only retrieve mementos of a certain schema version
+        filterOperands.push({ path: ["schemaVersion"], operator: "Equal", valueString: options.schemaVersionFilter })
     END IF
     // ... add other filters (tags, time window)
 
-    weaviateQuery = weaviateQuery.withWhere({ operator: "And", operands: filterConditions })
+    weaviateQuery = weaviateQuery.withWhere({ operator: "And", operands: filterOperands })
 
     TRY
       weaviateResults = weaviateQuery.do()
@@ -743,12 +789,14 @@ CLASS ContextualRetriever
 
     retrievedIdsAndScores = weaviateResults.data.Get.MemoryMemento.map(item => ({
       mementoId: item.mementoId,
+      schemaVersion: item.schemaVersion,
       score: item._additional.certainty || (1 - item._additional.distance) // Normalize score
     }))
 
     // 3. Fetch Full Mementos from MongoDB
     mementoIds = retrievedIdsAndScores.map(item => item.mementoId)
-    fullMementos = this.memorySteward.getMementosByIds(mementoIds, agentId) // Method in MemorySteward
+    // Pass schemaVersions to ensure MemorySteward can handle potential variations if needed
+    fullMementos = this.memorySteward.getMementosByIds(mementoIds, agentId, retrievedIdsAndScores.map(item => item.schemaVersion))
 
     IF fullMementos IS ERROR THEN
       LOG_ERROR "Failed to retrieve full mementos from MongoDB."
@@ -777,82 +825,111 @@ This retrieval mechanism ensures that the agent's "conscious" stream is continuo
 
 ---
 
-## 5. Personality & Long-Term Behavior ("Subconscious Synthesis")
+## 5. Subconscious Synthesis & Nocturnal Nurturing & Network Attunement
 
-While the "Conscious Current" (Section 4) deals with immediate contextual recall, the "Subconscious Synthesis" focuses on how long-term patterns, aggregated experiences, and deeply processed memories shape an agent's enduring personality traits, behavioral biases, and default tendencies. This is primarily the domain of the "Subconscious Scanner" model (e.g., Gemini) and the [`src/services/nightProcessingService.js`](../src/services/nightProcessingService.js), which continuously and periodically analyze the entirety of the agent's memory stored in MongoDB.
+While the "Conscious Current" (Section 4) deals with immediate contextual recall, this section details the processes that shape an agent's enduring personality traits, behavioral biases, and default tendencies, and critically, how the memory system itself is auto-tuned. This is primarily the domain of the "Nocturnal Nurturing & Network Attunement" (NNNA) process, which leverages components like the `Subconscious Scanner` model (e.g., Gemini) and the existing [`src/services/nightProcessingService.js`](../src/services/nightProcessingService.js) (which will be expanded or refactored to embody NNNA). This process continuously and periodically analyzes the entirety of the agent's memory stored in MongoDB.
 
-A `PersonalityProcessor` or `BehavioralBiasModulator` could be conceptualized to manage these aspects.
+A `PersonalityProcessor` or `BehavioralBiasModulator` could be conceptualized to manage the personality aspects derived from NNNA.
 
 **TDD Anchors:**
 *   `// TDD: TestLongTermPatternIdentification`: Verifies that recurring patterns (e.g., emotional, behavioral, topical) are correctly identified from a large set of mementos.
 *   `// TDD: TestPersonalityTraitDerivation`: Checks if meaningful personality traits can be derived from identified patterns.
 *   `// TDD: TestSubconsciousInfluenceOnConsciousStream`: Ensures that derived personality traits or biases correctly influence conscious processing (e.g., response generation, emotional baseline).
 
-### 5.1. Identifying Long-Term Patterns & Traits ("Pattern Profiling")
+### 5.1. The "Nocturnal Nurturing & Network Attunement" (NNNA) Process
 
-The foundation of an agent's personality lies in the consistent patterns emerging from its experiences.
+This nightly process (e.g., scheduled Midnight - 3 AM local time for the agent or system) is not just for review but acts as an **auto-tuning mechanism** for the entire memory and ingestion system. It operates on the comprehensively vectorized data captured during the preceding period.
+
+**Purpose:** To intelligently refine the agent's understanding of its memories, improve the quality of stored data, adapt the ingestion mechanisms for future learning, and manage data storage efficiently.
+
+**Key Functions:**
+
+1.  **Relevance Refactoring:**
+    *   Re-evaluates the importance and interconnectedness of memories from the preceding period (e.g., last 24 hours).
+    *   Identifies mementos or clusters of mementos whose significance might have been initially underestimated or overestimated.
+    *   Updates relevance scores or internal linkage strengths.
+    *   **TDD Anchor:** `// TDD: TestNightlyRelevanceRefactoring`
+
+2.  **Correction & Enrichment:**
+    *   Identifies potential inaccuracies or incompleteness in stored mementos or their interpretations (e.g., `contentProcessed`, `inferencesMade`).
+    *   Makes corrections based on broader contextual understanding gained over time or from cross-referencing multiple mementos.
+    *   Enriches mementos by tying in new relevance, causal links (updating `reasoningContext.causalLinks`), or connections that were missed during real-time interaction.
+    *   **TDD Anchor:** `// TDD: TestNightlyMemoryCorrectionAndEnrichment`
+
+3.  **Journaling Updates:**
+    *   Updates running journals or profiles that track the agent's inferred characteristics over time.
+    *   Examples: inferred likes/dislikes, emotional trends in response to certain stimuli, goal progression patterns, emerging topics of interest.
+    *   This feeds into the "Derived Personality Profile" (Section 5.2).
+    *   **TDD Anchor:** `// TDD: TestNightlyJournalingUpdates`
+
+4.  **Data Re-indexing & Re-embedding:**
+    *   As new insights are gained or corrections are made, relevant data points or entire clusters of memories may need to be re-indexed or re-embedded.
+    *   This involves regenerating their "Contextual Narrative Weaving" (Section 1.6) and then their vector embeddings using the `EmbeddingService` (Section 2.2).
+    *   This ensures that the vector space accurately reflects the most current understanding of the memories. (Cross-references Section 2.3).
+    *   **TDD Anchor:** `// TDD: TestNightlyReIndexingAndReEmbedding` (overlaps with `// TDD: TestReEmbeddingOfMementosPostNightlyProcessing`)
+
+5.  **Schema Adaptation:**
+    *   Crucially, insights from the nightly review feedback into the **ingestion schema itself** (Section 3.1).
+    *   The system learns what types of data, contexts, or patterns are proving most valuable or require more nuanced capture.
+    *   This allows the `IngestionIntegrator` to adapt and "tune" its focus over time, improving what it pays attention to and how it structures `MemoryMementos`.
+    *   This might involve suggesting or automatically applying changes to the `MemoryMemento` schema definition (e.g., adding new fields, modifying existing ones, changing data types).
+    *   **TDD Anchor:** `// TDD: TestNightlySchemaAdaptationFeedback`
+
+6.  **Data Management & Pruning:**
+    *   After this intensive nightly processing, the raw, comprehensively vectorized data from the processed period can be intelligently managed.
+    *   Key insights, corrections, and refined structures are now integrated into the primary mementos or derived summaries.
+    *   Based on configurable policies and learned relevance, less critical raw data or older, less accessed mementos (whose essence is captured in summaries or newer structures) can be:
+        *   **Archived:** Moved to slower, cheaper storage if full fidelity might be needed later.
+        *   **Pruned:** Selectively deleted to manage storage costs and maintain performance, especially if their informational content is deemed redundant or superseded by newer, more refined memories or insights.
+    *   This step ensures the long-term sustainability of the memory system.
+    *   **TDD Anchor:** `// TDD: TestNightlyDataArchivalAndPruningPolicies`
+
+The NNNA process leverages the `Subconscious Scanner` model for deep analysis and pattern recognition, and its outputs can include new "meta-mementos" or updates to existing ones.
+
+### 5.2. Identifying Long-Term Patterns & Traits ("Pattern Profiling")
+
+The foundation of an agent's personality lies in the consistent patterns emerging from its experiences, largely identified and synthesized by the NNNA process.
 
 1.  **Data Sources for Analysis:**
-    *   **MongoDB `memory_mementos` Collection:** The full historical data of all Memory Mementos is the primary source.
-    *   Specific fields of interest include:
-        *   `emotionalContext`: To identify recurring emotional states, responses to certain stimuli, or overall emotional baseline.
-        *   `reasoningContext.inferencesMade`, `reasoningContext.associatedGoals`: To understand common thought processes, problem-solving approaches, and persistent motivations.
-        *   `contentType`, `tags`, `contentRaw/Processed`: To identify recurring topics of interaction, areas of "expertise" or frequent engagement.
-        *   `causalLinks`: To understand the agent's learned cause-and-effect relationships.
+    *   **MongoDB `memory_mementos` Collection:** The full historical data.
+    *   Specific fields of interest include: `emotionalContext`, `reasoningContext`, `contentType`, `tags`, `contentRaw/Processed`, `causalLinks`.
 
-2.  **Processing by `NightProcessingService` & `Subconscious Scanner`:**
-    *   **[`NightProcessingService`](../src/services/nightProcessingService.js):**
-        *   Performs batch analyses on the MongoDB data during off-peak hours.
-        *   Tasks include:
-            *   Aggregating emotional responses over time (e.g., "Agent tends towards 'Calmness' but shows 'Anxiety' when discussing deadlines").
-            *   Identifying frequently co-occurring tags or concepts.
-            *   Clustering mementos based on combined contextual similarity to find recurring scenarios.
-            *   Analyzing the success/failure rates of `associatedGoals` to derive learned preferences or aversions.
-        *   **TDD Anchor:** `// TDD: TestNightlyAggregationOfEmotionalPatterns`
-    *   **`Subconscious Scanner` Model (Continuous):**
-        *   Continuously (or near-continuously with large context windows) processes mementos, looking for deeper semantic relationships, emerging narratives, and abstract concepts not easily found through simple aggregation.
-        *   Example: Identifying that the agent often uses a specific type of analogy when explaining complex topics, or that it tends to avoid certain conversational paths after negative emotional feedback.
-        *   This model might generate "meta-mementos" or "insight summaries" that are themselves stored and contribute to the personality profile.
-        *   **TDD Anchor:** `// TDD: TestSubconsciousScannerInsightGeneration`
+2.  **Processing by NNNA & `Subconscious Scanner`:**
+    *   **NNNA:** Performs batch analyses, aggregations, clustering, and goal success/failure analysis as described above.
+    *   **`Subconscious Scanner` Model:** Continuously (or via NNNA batch jobs) processes mementos for deeper semantic relationships, emerging narratives, and abstract concepts. Generates "meta-mementos" or "insight summaries."
+    *   **TDD Anchor:** `// TDD: TestSubconsciousScannerInsightGeneration` (as part of NNNA)
 
 3.  **Derived Personality Profile ("Persona Prism"):**
-    *   The outputs from these processes contribute to a dynamic "Personality Profile" for the agent. This profile is not static but evolves as new memories are accumulated and processed.
+    *   The outputs from NNNA contribute to a dynamic "Personality Profile" for the agent, stored in MongoDB.
     *   It might include:
         *   **Dominant Emotional Tendencies:** e.g., Optimistic, Cautious, Empathetic.
         *   **Cognitive Styles:** e.g., Analytical, Intuitive, Reflective.
         *   **Interaction Preferences:** e.g., Prefers direct questions, uses humor, avoids confrontation.
-        *   **Learned Behavioral Biases:** e.g., Tendency to suggest solution X for problem Y, slight aversion to topic Z.
-        *   **Confidence Levels:** Overall confidence in its abilities or specific domains, potentially influenced by [`src/services/confidenceService.js`](../src/services/confidenceService.js) but aggregated long-term.
-    *   This profile could be stored as a structured object in MongoDB, associated with the `agentId`.
+        *   **Learned Behavioral Biases:** e.g., Tendency to suggest solution X for problem Y.
+        *   **Confidence Levels:** Aggregated long-term confidence.
 
-### 5.2. Influence of "Subconscious" Data on the "Conscious" Stream
+### 5.3. Influence of "Subconscious" Data on the "Conscious" Stream
 
-The derived personality profile and long-term patterns ("subconscious data") can influence the agent's real-time ("conscious") behavior in several ways:
+The derived personality profile and long-term patterns ("subconscious data") can influence the agent's real-time ("conscious") behavior:
 
 1.  **Biasing Memory Retrieval:**
-    *   The `ContextualRetriever` (Section 4) could subtly adjust its ranking or filtering based on personality traits.
-    *   Example: If an agent has a "cautious" trait, it might slightly up-rank mementos related to past risks or negative outcomes when considering a new, similar situation.
-    *   This is NOT about overriding direct contextual relevance but about adding a nuanced layer to it.
+    *   `ContextualRetriever` (Section 4) might subtly adjust ranking/filtering based on personality traits.
     *   **TDD Anchor:** `// TDD: TestPersonalityBiasInRecallRanking`
 
 2.  **Informing Default Behaviors & Responses:**
-    *   In situations with low contextual information or ambiguity, the personality profile can guide default responses or actions.
-    *   Example: An "empathetic" agent might default to a more supportive tone if the user's emotional state is unclear but negative.
-    *   The `ResponseRefinementService` ([`src/services/responseRefinementService.js`](../src/services/responseRefinementService.js)) could consult the personality profile.
+    *   Personality profile guides default responses in ambiguous situations. `ResponseRefinementService` consults this.
     *   **TDD Anchor:** `// TDD: TestDefaultResponseGenerationBasedOnPersonality`
 
 3.  **Setting Emotional Baselines & Reactivity:**
-    *   The agent's baseline emotional state could be influenced by its long-term emotional tendencies.
-    *   Its reactivity to certain emotional stimuli might also be modulated. An agent that has frequently experienced "Joy" in response to praise might react more positively to future praise.
-    *   The [`src/core/emotionProcessor.js`](../src/core/emotionProcessor.js) could factor this in.
+    *   Agent's baseline emotional state and reactivity influenced by long-term tendencies. [`src/core/emotionProcessor.js`](../src/core/emotionProcessor.js) factors this in.
     *   **TDD Anchor:** `// TDD: TestEmotionalBaselineAdjustmentByPersonality`
 
 4.  **Guiding Goal Prioritization & Generation:**
-    *   Long-term learned preferences or aversions (derived from goal success/failure patterns) can influence how the `TaskHopperService` prioritizes tasks or how the agent formulates new sub-goals.
+    *   Learned preferences influence `TaskHopperService` and sub-goal formulation.
     *   **TDD Anchor:** `// TDD: TestGoalPrioritizationInfluencedByLearnedPreferences`
 
 5.  **Modulating Confidence Levels:**
-    *   The agent's general confidence, as shaped by its long-term experiences and reflected in its personality profile, can influence the confidence scores produced by [`src/services/confidenceService.js`](../src/services/confidenceService.js) for specific interactions.
+    *   General confidence (from personality profile) influences specific confidence scores from [`src/services/confidenceService.js`](../src/services/confidenceService.js).
 
 **Pseudocode for Applying Subconscious Influence (Conceptual):**
 
@@ -903,7 +980,7 @@ FUNCTION retrieveRelevantMementos(currentAgentContext, agentId, options)
 END FUNCTION
 ```
 
-The "Subconscious Synthesis" provides a mechanism for the agent to develop a more consistent, nuanced, and believable persona over time, moving beyond purely reactive responses to exhibit learned behavioral tendencies.
+The "Subconscious Synthesis" driven by the "Nocturnal Nurturing & Network Attunement" process provides a mechanism for the agent to develop a more consistent, nuanced, and believable persona over time, moving beyond purely reactive responses to exhibit learned behavioral tendencies, while also ensuring the memory system itself remains optimized and relevant.
 
 ---
 
@@ -954,6 +1031,7 @@ A Memory Memento representing a code change would utilize the standard memento s
 *   `sourceSystem`: "GitRepositoryMonitor"
 *   `sourceIdentifier`: Commit hash (e.g., "a1b2c3d4e5f67890").
 *   `contentType`: "CodeChange"
+*   `schemaVersion`: (String) Version of the memento schema used.
 
 *   `contentRaw`: (Object) Structured representation of the commit details:
     ```json
@@ -998,130 +1076,77 @@ A Memory Memento representing a code change would utilize the standard memento s
 
 *   **Temporal Context (`Temporal Tapestry`):**
     *   `eventTimestamp`: `contentRaw.authorDate` (the time the change was authored).
-    *   `chronologicalCertainty`: "Precise".
-
-*   **Spatial Context (`Spatial Sphere`):**
-    *   Typically not directly applicable unless the commit is associated with a specific physical location of work, which is rare. Could be omitted or set to a default for the repository/project.
+    *   `chronologicalCertainty`: "Precise"
 
 *   **Emotional Context (`Emotional Echo`):**
-    *   Generally not applicable unless sentiment analysis is performed on commit messages (which can be noisy).
-    *   Could be omitted or set to "Neutral" by default.
-    *   Future: If linked to issue tracker comments, emotions from those discussions could be linked.
+    *   Typically N/A for raw commit data, unless sentiment analysis is run on commit messages (e.g., to detect frustration or excitement). Could be populated by NNNA if patterns emerge.
 
 *   **Reasoning Context (`Reasoning Rationale`):**
-    *   `inferencesMade`: Initially empty, could be populated later by the `Subconscious Scanner` (e.g., "This commit likely resolved performance degradation X").
-    *   `causalLinks`:
-        *   Links to parent commits (`relationshipType: "Precedes"`).
-        *   If the commit message references an issue (e.g., "Fixes #123"), a link to a memento representing that issue could be created (`relationshipType: "AddressesIssue"`).
-    *   `associatedGoals`: If the commit is linked to a task or feature in `TaskHopperService` or an issue tracker.
-    *   `taskContext`: If the commit can be directly mapped to a task being worked on by an agent.
+    *   `inferencesMade`: Could be populated by an LLM analyzing the commit message and diff to infer intent or impact (e.g., "This change likely improves performance by reducing loop iterations.").
+    *   `causalLinks`: Links to related issues (e.g., if "Fixes #123" is in the message), or to mementos of previous commits it builds upon or reverts.
+    *   `associatedGoals`: If the commit is tied to a known project task or goal.
 
 ### 6.3. Embedding Strategy for Code Changes
 
-The "Contextual Narrative Weaving" (Section 1.6) for code changes would focus on:
+The "Contextual Narrative Weaving" (Section 1.6) for code changes should emphasize:
 
 1.  **Commit Message:** The full commit message is highly important.
-2.  **Key Changed Files & Symbols:** Names of modified files and potentially key functions/classes involved (extracted from diff or via static analysis if feasible).
-3.  **Author and Date:** "Change by Ada Lovelace on May 6, 2025."
-4.  **Summary of Changes:** `contentProcessed` or a summary of `diffSummary` for key files.
-5.  **Tags:** Important keywords like "fix", "feature", module names.
+2.  **Key Changed Files & Modules:** Names of modified files/directories.
+3.  **Author & Date:** Who made the change and when.
+4.  **Summarized Diff:** A very concise summary of the nature of changes (e.g., "function X modified, class Y added"). Full diffs are too large for direct embedding but can be part of `contentRaw`.
+5.  **Inferred Intent/Impact:** If available from LLM analysis.
+6.  **Tags:** Keywords, file paths, programming languages.
 
-**Example Narrative for Embedding a Code Change Memento:**
-
+**Example Narrative for Code Change Embedding:**
 ```
-"Git Commit a1b2c3d4 by Ada Lovelace on May 6, 2025. Message: Fix: Correct off-by-one error in calculation module. This commit addresses issue #123 by adjusting the loop boundary. Changes affected src/modules/calculation.js (Modified) and tests/modules/calculation.test.js (Added). Keywords: fix, bug, calculationModule, issue-123."
+"Code commit a1b2c3d by Ada Lovelace on 2025-05-06. Message: 'Fix: Correct off-by-one error in calculation module. Addresses issue #123.' Changed files: src/modules/calculation.js (Modified), tests/modules/calculation.test.js (Added). Inferred impact: Corrected calculation logic. Tags: #fix #bug #calculationModule #issue-123 #javascript"
 ```
-
-This allows an agent to query for "commits related to calculation module bugs in May 2025" or "who fixed issue #123 and when."
-
-**TDD Anchors:**
-*   `// TDD: TestCodeChangeNarrativeGeneration`: Ensures the narrative for code changes is correctly formed.
-*   `// TDD: TestCodeChangeMementoIngestionAndRetrieval`: Full-cycle test for ingesting a commit and then retrieving it based on a relevant query.
-
-This "Codebase Chronicle" capability transforms the Git history from a passive log into an active, queryable memory for AI agents involved in software development.
+This allows semantic search for commits based on their purpose, affected areas, or author, beyond simple keyword search on commit messages.
 
 ---
 
 ## 7. Constraints & Non-Functional Requirements ("System Stipulations")
 
-This section outlines key constraints and non-functional requirements (NFRs) that the MemoRable embedding and data ingestion system must adhere to. These are critical for ensuring the system is robust, performant, secure, and maintainable.
-
 ### 7.1. Scalability ("Scale Spectrum")
 
-*   **Ingestion Throughput:** The system must be designed to handle a growing volume of memory mementos from multiple agents and diverse input sources without significant degradation in performance.
-    *   Target: Initially support X mementos per agent per day, scalable to 10X. (Specific X to be determined by expected load).
-    *   The data ingestion pipeline (Section 3) should allow for parallel processing of inputs where possible.
-    *   Database choices (MongoDB, Weaviate) support horizontal scaling.
-*   **Retrieval Concurrency:** The system must support multiple concurrent retrieval requests from agents.
-    *   Target: Y concurrent retrieval queries per second. (Specific Y to be determined).
-    *   Weaviate and MongoDB are capable of handling concurrent reads. Caching strategies (Redis) will further aid this.
-*   **Storage Capacity:** The system must accommodate a large and growing dataset of mementos and their embeddings.
-    *   Storage solutions should be scalable (e.g., MongoDB sharding, Weaviate clustering).
-*   **Agent Scalability:** The architecture should support an increasing number of individual AI agents, each with their own isolated memory space.
-
-**TDD Anchors (Conceptual for Load/Performance Testing):**
-*   `// TDD_PERF: TestIngestionRateUnderLoad`: Measure memento ingestion rate under simulated high load.
-*   `// TDD_PERF: TestRetrievalConcurrency`: Measure query response times with multiple concurrent users.
+*   **Ingestion Rate:** The system must handle a configurable rate of incoming mementos, from sporadic user interactions to potentially high-volume log streams or frequent code commits.
+*   **Storage Volume:** Designed to store terabytes of memento data (MongoDB) and billions of vectors (Weaviate) over time, considering the "Data Management & Pruning" functions of NNNA.
+*   **Query Load:** Support concurrent queries from multiple agents or services.
+*   **Horizontal Scaling:** Both MongoDB and Weaviate support horizontal scaling. The service architecture (e.g., `IngestionIntegrator`, `EmbeddingService`) should be designed with statelessness or distributed state management in mind to allow for multiple instances.
+*   **NNNA Scalability:** The "Nocturnal Nurturing & Network Attunement" process must be designed to process large volumes of data efficiently, potentially using distributed processing frameworks or batching strategies.
 
 ### 7.2. Latency ("Latency Limits")
 
-*   **Memory Ingestion Latency:** The time from data input to when a memento is fully stored (MongoDB and Weaviate) and available for basic retrieval.
-    *   Target: P95 latency of < Z1 seconds for typical text-based mementos. (Specific Z1 to be defined).
-*   **Memory Retrieval Latency (Conscious Current):** The time taken to generate a current context vector, query Weaviate, retrieve top N mementos from MongoDB, and rank them.
-    *   Target: P95 latency of < Z2 milliseconds for typical queries. This is critical for real-time interaction. (Specific Z2 to be defined).
-*   **Embedding Generation Latency:** The time taken by the `EmbeddingService` to generate a vector for a memento narrative.
-    *   This will depend on the chosen model and input length. If using external APIs (e.g., OpenAI), network latency is a factor.
-    *   Target: P95 latency of < Z3 milliseconds for typical narratives.
-
-**TDD Anchors (Conceptual for Performance Testing):**
-*   `// TDD_PERF: MeasureP95IngestionLatency`
-*   `// TDD_PERF: MeasureP95RetrievalLatency`
+*   **Ingestion Latency:** Time from data reception to memento storage and vector availability. Target: seconds for critical path, minutes for full enrichment if asynchronous steps are involved.
+*   **Embedding Generation Latency:** Dependent on the chosen model and input size. Target: sub-second to a few seconds.
+*   **Retrieval Latency (P95):** Time from query initiation to receiving top N mementos. Target: <500ms for typical queries.
+*   **NNNA Latency:** This is a batch process, so latency is measured in hours for a full cycle, but it must complete within its scheduled window (e.g., 3 hours).
 
 ### 7.3. Data Security and Privacy ("Data Defenses")
 
 *   **Data Encryption:**
-    *   **At Rest:** All memento data stored in MongoDB and Weaviate should be encrypted at rest.
-    *   **In Transit:** All communication between services (e.g., agent to MemoRable, MemoRable to databases, MemoRable to Hume AI) must use TLS/SSL.
+    *   At Rest: MongoDB and Weaviate should be configured for encryption at rest.
+    *   In Transit: All internal and external communication (APIs, database connections) must use TLS/SSL.
 *   **Access Control:**
-    *   Strict authentication and authorization for agents accessing their memories. `IdentityService` plays a key role.
-    *   Memories must be strictly segregated by `agentId`. An agent must not be able to access another agent's memories.
-    *   Role-based access control for administrative functions if applicable.
-*   **Emotional Data Sensitivity:**
-    *   Emotional context data (`EmotionalEcho`) is particularly sensitive. Access to this data should be tightly controlled.
-    *   Consider options for anonymization or pseudonymization if aggregated emotional data is used for broader analytics, ensuring individual privacy.
-    *   Compliance with relevant data privacy regulations (e.g., GDPR, CCPA) must be considered, especially if personal user data is part of mementos.
-*   **Input Sanitization:**
-    *   Robust input sanitization in the `PreprocessingPrism` (Section 3.2) to prevent injection attacks or storage of malicious content.
-*   **Audit Trails:**
-    *   Maintain audit logs for memory access and modifications (especially deletions or administrative changes).
-
-**TDD Anchors:**
-*   `// TDD_SEC: TestAgentMemoryIsolation`: Verify one agent cannot retrieve mementos of another.
-*   `// TDD_SEC: TestEncryptedCommunication`: Ensure internal and external communications are encrypted.
-*   `// TDD_SEC: TestInputSanitizationEffectiveness`: Test against common injection patterns.
+    *   Role-based access control (RBAC) for services interacting with databases.
+    *   Agent-specific data partitioning: Queries must be strictly scoped to the `agentId`.
+*   **PII Handling:** If mementos contain Personally Identifiable Information, mechanisms for PII detection, masking, or selective redaction might be needed, potentially as part of "Preprocessing Prism" or NNNA. This depends on specific deployment requirements.
+*   **Audit Trails:** Log significant events (memento creation, deletion, access, NNNA actions) for security auditing.
 
 ### 7.4. Modularity and Extensibility ("Modular Malleability")
 
-*   **Service-Oriented Design:** Core functionalities (ingestion, embedding, storage, retrieval, pattern analysis) should be encapsulated in distinct, loosely coupled services/modules as outlined in this specification and the technical architecture.
-*   **Pluggable Embedding Models:** The `EmbeddingService` (Section 2.2) should be designed to allow for relatively easy swapping or addition of new embedding models with minimal changes to other parts of the system (e.g., via an adapter pattern).
-*   **New Context Types:** The `MemoryMemento` structure (Section 1) should be extensible to accommodate new types of context (e.g., physiological data, more complex social context) in the future without requiring a full system rewrite.
-*   **New Input Sources:** The `IngestionIntegrator` and `PreprocessingPrism` (Section 3) should make it straightforward to add new input source adapters.
-*   **API-Driven Interactions:** Interactions between services should ideally be API-driven, promoting clear contracts and independent development.
-*   **Configuration Management:** System parameters (e.g., database connection strings, API keys, default retrieval limits) should be configurable externally (e.g., via environment variables or a configuration service), as indicated in [`README.md`](../README.md).
-
-**TDD Anchors:**
-*   `// TDD_ARCH: TestAddNewContextTypeToMemento`: (Conceptual) Test ease of extending the memento schema and processing.
-*   `// TDD_ARCH: TestSwapEmbeddingModel`: (Conceptual) Test the process of integrating a new embedding model adapter.
+*   **Service-Oriented:** Components like `EmbeddingService`, `MemorySteward`, `ContextualRetriever`, and the services involved in NNNA should be distinct modules with clear APIs.
+*   **Pluggable Components:**
+    *   Easy to swap embedding models.
+    *   Support for new input source adapters.
+    *   Allow different strategies for "Contextual Narrative Weaving" or "Recall Ranking."
+*   **Schema Evolution:** The system must gracefully handle schema changes as described in Section 3.1 and Section 5.1.
 
 ### 7.5. Reliability and Availability ("Resilient Recall")
 
-*   **Fault Tolerance:** The system should be resilient to failures in individual components. For instance, if the `EmbeddingService` temporarily fails, mementos should still be stored in MongoDB and queued for later embedding.
-*   **Data Durability:** Data stored in MongoDB and Weaviate must be durable, with appropriate backup and recovery mechanisms in place.
-*   **Uptime:** Target high availability for core memory ingestion and retrieval functions. (Specific uptime % to be defined based on SLOs).
-*   **Error Handling & Logging:** Comprehensive error handling and structured logging throughout the pipeline are essential for diagnostics and troubleshooting. [`src/utils/logger.js`](../src/utils/logger.js) should be utilized.
-
-**TDD Anchors:**
-*   `// TDD_RELIABILITY: TestIngestionWithEmbeddingServiceDown`: Verify mementos are queued if embedding fails.
-*   `// TDD_RELIABILITY: TestDatabaseConnectionFailureHandling`: Ensure graceful degradation or retry if a database is temporarily unavailable.
-
-Adherence to these constraints and NFRs will ensure that MemoRable is not only functionally rich but also a practical, dependable, and secure system for advanced AI memory management.
+*   **Fault Tolerance:**
+    *   Retry mechanisms for transient errors in API calls, database writes.
+    *   Dead-letter queues for persistent ingestion failures.
+*   **Database Redundancy:** Utilize replication and failover capabilities of MongoDB and Weaviate.
+*   **Backup and Recovery:** Regular backups of both databases with tested recovery procedures.
+*   **NNNA Robustness:** The nightly process should be idempotent and resumable in case of failures.
