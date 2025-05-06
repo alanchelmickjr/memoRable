@@ -1,9 +1,34 @@
-# MemoRable Proof of Concept
+# MemoRable - Total Recall: Implementation Plan
 
 ## Overview
 
-Simple proof of concept implementation focusing on session management, identity recognition, and basic memory storage.
+This document outlines the implementation plan for MemoRable - Total Recall, an advanced AI memory system. The goal is to provide AI agents with human-like memory capabilities, enabling "total recall" through a sophisticated, context-aware architecture.
 
+The system will function as a "context conductor," managing and interleaving temporal, spatial, emotional, and reasoning contexts. A core design principle is the understanding that personality is derived from memory.
+
+A key architectural innovation is the concept of a dual-model memory processing system:
+*   A **Subconscious Scanner Model (Gemini)**: This model will continuously scan the full context of long-term memory.
+*   A **Conscious Access Model**: This model will interact with the agent, and when memory is required, the Subconscious Scanner will provide precisely relevant information.
+This approach allows for efficient large-scale memory management, with adaptable context windows for different models, mimicking human cognitive processes where less attention is paid to routine or less critical information, allowing for autonomic processing of repeated actions.
+
+This plan initially focuses on core functionalities like session management, identity recognition, and robust memory storage (utilizing Weaviate for vector search and MongoDB for persistence, all within a Dockerized environment), and will progressively build towards the full vision. We emphasize first-principles thinking due to the novel nature of this endeavor.
+
+## 💡 Core Concepts
+
+The implementation will be guided by these foundational principles:
+
+*   **Context Conductor**: The system is envisioned as a "context conductor," adept at managing and weaving together various strands of information—temporal, spatial, emotional, and logical—to provide AI agents with a rich, actionable understanding of their environment and interactions.
+*   **Memory as Identity**: A central tenet is that an AI's "personality" and coherence emerge from its memories. The ability to recall and integrate past experiences is paramount for developing a consistent and believable agent identity.
+*   **Interwoven Contexts**: Memories will not be simple data points but complex, interconnected nodes. Each memory item will be enriched with multiple contextual layers, allowing for nuanced retrieval and reasoning.
+*   **Total Recall Aim**: The project strives to equip agents with a comprehensive and readily accessible memory, approaching a human-like "total recall" capability. This involves not just storing data, but making it meaningfully available.
+*   **Novelty and First-Principles Thinking**: Recognizing the pioneering nature of this work, development will be approached with a commitment to first-principles thinking, encouraging innovative solutions over adherence to existing paradigms.
+*   **Alliterative Naming**: To foster clarity and recall, key architectural components and conceptual constructs will, where fitting, be given alliterative names (e.g., "Memory Mesh," "Contextual Core").
+*   **Dual-Model Memory Architecture (Conscious/Subconscious)**:
+    *   **Subconscious Scanner (Gemini)**: A powerful model (initially Gemini) will be responsible for continuously scanning and indexing the vast corpus of long-term memory. It acts as a background process, identifying patterns, relationships, and potential relevancies.
+    *   **Conscious Access Model**: This model directly interfaces with the AI agent's immediate operational needs. When the agent requires information, this model queries the pre-processed insights and relevant data surfaced by the Subconscious Scanner.
+    *   **Adaptable Context Windows**: The interaction between these models will utilize adaptable context windows. For the Subconscious Scanner, a large context window is essential for comprehensive memory scanning. The Conscious Access Model might use smaller, more focused windows, dynamically adjusted based on task demands. This allows for efficient processing, where routine or less critical information might be handled with less "attentional" load, and some repeated actions could even become "autonomic," freeing the Conscious Access Model.
+
+---
 ```mermaid
 graph TD
     subgraph Session[Session Management]
@@ -12,6 +37,17 @@ graph TD
     end
 
     subgraph Memory[Basic Memory]
+## 🎯 Use Cases
+
+This implementation plan aims to support the development of AI agents capable of:
+
+*   **Empathetic Engagement**: Serving as an emotionally safe and reliable companion by remembering nuanced details of past interactions, preferences, and emotional states.
+*   **Persistent Project Partnership**: Functioning as an AI assistant that maintains and evolves a deep understanding of ongoing tasks and complex projects, offering consistently context-aware support and insights.
+*   **Living Codebase Chronicle**: Acting as an intelligent "git log," aware of all codebase modifications in real-time, capable of explaining the history, rationale, and potential impact of any change.
+*   **Rogerian Reflection & Growth**: Facilitating user self-reflection and personal development by employing Rogerian techniques of mirroring and rephrasing, thereby promoting deeper self-understanding.
+*   **Focused & Familiar Interaction**: Maintaining unwavering task focus while consistently recognizing users across multiple sessions, fostering a sense of familiarity, trust, and rapport.
+
+---
         E[Store Prosody]
         F[Update Patterns]
         G[Quick Recall]
@@ -100,52 +136,51 @@ export class MemoRable {
 }
 ```
 
-## Memory Storage
+## Memory Storage Architecture
+
+The memory storage infrastructure is a critical component, designed for scalability, efficient retrieval, and robust data integrity. It will be deployed within a **Dockerized environment** to ensure consistency across development, testing, and production.
+
+The core components include:
+
+*   **MongoDB**: This NoSQL database will serve as the primary persistent store for raw memory data. It will house detailed records of interactions, contextual snapshots (temporal, spatial, emotional), and other rich data associated with each memory item. Its flexibility is ideal for storing diverse and evolving data structures.
+*   **Weaviate**: A dedicated vector database, Weaviate will store vector embeddings of memory items. This enables powerful and efficient similarity searches, crucial for retrieving relevant memories based on semantic closeness rather than exact keyword matches. This is key for the "Subconscious Scanner" model to identify related memories.
+*   **Redis**: An in-memory data store, Redis will be used as an active memory buffer or cache. It will hold frequently accessed memory items, session data, and potentially pre-computed patterns or summaries to accelerate retrieval for the "Conscious Access Model."
+
+The `MemoryStore` class (conceptual example below) will abstract the interactions with these underlying storage technologies, providing a unified interface for the `MemoRable` core logic to save, update, and retrieve memories.
 
 ```javascript
+// Conceptual MemoryStore class
 class MemoryStore {
-  constructor() {
-    this.store = new Map();
+  constructor(mongoClient, weaviateClient, redisClient) {
+    this.mongo = mongoClient; // Instance of MongoDB client
+    this.weaviate = weaviateClient; // Instance of Weaviate client
+    this.redis = redisClient; // Instance of Redis client
   }
 
-  async updateMemory(userId, data) {
-    const memory = this.store.get(userId) || {
-      sessions: [],
-      prosody: [],
-      patterns: []
-    };
-
-    // Update session data
-    memory.sessions.push({
-      timestamp: Date.now(),
-      length: data.sessionLength,
-      patterns: data.patterns
-    });
-
-    // Keep only last 10 sessions
-    if (memory.sessions.length > 10) {
-      memory.sessions = memory.sessions.slice(-10);
-    }
-
-    // Update prosody data
-    memory.prosody.push(...data.prosodyData);
-
-    // Keep only last 100 prosody records
-    if (memory.prosody.length > 100) {
-      memory.prosody = memory.prosody.slice(-100);
-    }
-
-    this.store.set(userId, memory);
+  async storeRawMemory(userId, memoryItem) {
+    // Logic to store detailed memory item in MongoDB
+    // Example: this.mongo.collection('memories').insertOne({ userId, ...memoryItem });
   }
 
-  async getProsodyPatterns(userId) {
-    const memory = this.store.get(userId);
-    if (!memory) return [];
-
-    return this.analyzeProsodyPatterns(memory.prosody);
+  async storeMemoryEmbedding(userId, memoryId, embeddingVector) {
+    // Logic to store embedding in Weaviate
+    // Example: this.weaviate.data.creator().withClassName('Memory').withId(memoryId).withProperties({ vector: embeddingVector, userId }).do();
   }
+
+  async cacheMemoryItem(memoryId, memoryData) {
+    // Logic to cache frequently accessed item in Redis
+    // Example: this.redis.set(`memory:${memoryId}`, JSON.stringify(memoryData), 'EX', 3600); // Cache for 1 hour
+  }
+
+  async retrieveRelevantMemories(userId, queryVector, limit = 10) {
+    // Logic to search Weaviate for similar memory embeddings
+    // Then, potentially retrieve full data from MongoDB or cache
+  }
+
+  // Further methods for updating, deleting, and managing memory lifecycle
 }
 ```
+This layered approach ensures that raw data is preserved, vector searches are fast, and frequently needed information is rapidly accessible.
 
 ## Test Flow
 

@@ -1,5 +1,10 @@
-# MemoRable Deployment Guide
+# MemoRable - Total Recall: Deployment Guide
 
+This guide provides comprehensive instructions for deploying MemoRable - Total Recall, an advanced AI memory system designed to provide agents with "total recall" and human-like memory capabilities. The system functions as a "context conductor," interleaving temporal, spatial, emotional, and reasoning contexts to empower AI agents.
+
+MemoRable is architected for a **Dockerized environment**, leveraging Docker Compose to orchestrate its various services, including **MongoDB** for persistent storage and **Weaviate** for vector search. This approach ensures consistency and simplifies deployment across different environments. Adherence to first-principles thinking has been central to its design, given the novel concepts being explored.
+
+---
 ## Prerequisites
 
 - Node.js >= 18.0.0

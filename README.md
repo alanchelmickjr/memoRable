@@ -1,4 +1,4 @@
-# MemoRable 🧠
+# MemoRable 🧠 - Total Recall
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![NPM Version](https://img.shields.io/npm/v/memorable.svg)](https://www.npmjs.com/package/memorable)
@@ -12,9 +12,32 @@
 
 An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
 
+## 💡 Core Concepts
+
+MemoRable is designed around the following core principles:
+
+*   **Context Conductor**: The system serves as a "context conductor" for AI agents, meticulously managing and providing relevant information to enable focused and effective task execution.
+*   **Memory as Identity**: We believe that personality is fundamentally derived from memory. The profound impact of amnesia on identity underscores this concept, highlighting how a rich, accessible memory is crucial for a coherent sense of self, even for an AI.
+*   **Interwoven Contexts**: Memory items are not stored in isolation. Instead, they interleave temporal, spatial, emotional, and reasoning contexts, creating a rich, multi-dimensional tapestry of experience.
+*   **Total Recall Aim**: The ultimate goal is to equip AI agents with "total recall," mirroring human-like memory capabilities for comprehensive understanding and interaction.
+*   **Novelty and First Principles**: This project explores uncharted territory in AI memory. We are committed to thinking from first principles to develop a truly innovative solution.
+*   **Alliterative Naming**: To enhance clarity and memorability, we strive to use alliterative names for key components and concepts (e.g., "Context Conductor," "Memory Mesh").
+
+---
 ## 🌟 Features
 
 - **TaskHopper System**
+## 🎯 Use Cases
+
+MemoRable's advanced memory capabilities unlock a variety of powerful applications for AI agents:
+
+*   **Emotionally Safe Friend**: An agent that remembers past interactions, preferences, and emotional states, fostering a reliable and understanding companionship.
+*   **Persistent Project Partner**: An AI assistant that maintains deep, evolving knowledge of ongoing tasks and projects, providing consistent and context-aware support.
+*   **Living Git Log**: An agent with real-time awareness of codebase changes, able to explain the history, rationale, and impact of modifications.
+*   **Rogerian Reflector**: An AI that facilitates self-reflection by mirroring and rephrasing user inputs, promoting deeper understanding and personal growth, inspired by Rogerian psychotherapy.
+*   **Focused & Familiar Agent**: Agents that can maintain unwavering focus on tasks and consistently recognize users across interactions, building rapport and trust.
+
+---
   - Intelligent task management and prioritization
   - Step-by-step progress tracking
   - AI task integration and automation
@@ -86,15 +109,17 @@ graph TD
 
 ## 🛠️ Tech Stack
 
-- Node.js/NPM
-- MongoDB (time series)
-- Weaviate (vector database)
-- Redis (active memory)
-- Docker
-- Ollama (AI models)
-- TensorFlow.js
-- Hume.ai (emotion analysis)
-- Custom embedding solutions
+MemoRable leverages a modern, robust technology stack, all orchestrated within a **Dockerized environment** for consistent deployment and scalability:
+
+- **Node.js/NPM**: For the core application runtime and package management.
+- **MongoDB**: Serves as the persistent storage solution for raw memory data and time-series information.
+- **Weaviate**: Powers the advanced vector search capabilities, enabling efficient similarity searches across memory embeddings.
+- **Redis**: Utilized as an active memory buffer for frequently accessed data and caching.
+- **Docker**: Ensures a consistent development, testing, and production environment.
+- **Ollama**: Provides access to various AI models for reasoning and generation.
+- **TensorFlow.js**: Used for client-side machine learning tasks.
+- **Hume.ai**: Integrated for sophisticated emotion analysis and understanding.
+- **Custom Embedding Solutions**: Developed in-house for tailored data representation.
 
 ## 📋 Prerequisites
 
