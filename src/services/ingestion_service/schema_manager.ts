@@ -3,24 +3,15 @@
  * This class is responsible for managing MemoryMemento schema versions.
  */
 
-import { SchemaVersionDefinition, DataType, SchemaFieldDefinition } from './models'; // Added DataType and SchemaFieldDefinition
-// import { NnnaServiceClient } from './clients/nnna_service_client'; // For future NNNA interaction
+import { SchemaVersionDefinition, DataType, SchemaFieldDefinition } from './models';
+import { NNNAServiceClient } from './clients/nnna_service_client'; // Use the actual client
 // import { MongoClient, Db } from 'mongodb'; // Example for a schema store
 // import { Logger } from '../../utils/logger'; // Assuming a shared logger utility
 
-// Placeholder for NnnaServiceClient
-class NnnaServiceClient {
-  async checkForUpdates(currentVersion: string): Promise<SchemaVersionDefinition | null> {
-    this.logger.info(`NnnaServiceClient.checkForUpdates called for version ${currentVersion} (placeholder)`);
-    // Simulate checking with NNNA service for a newer schema
-    // In a real scenario, this would make an HTTP request to the NNNA service
-    return null; // No update available in this placeholder
-  }
-  private logger = console;
-}
+// Placeholder for NnnaServiceClient - REMOVED
 
 // Placeholder for a simple in-memory cache or a more robust DB client
-interface SchemaStoreClient {
+export interface SchemaStoreClient {
   findActiveSchema(): Promise<SchemaVersionDefinition | null>;
   findSchemaByVersion(version: string): Promise<SchemaVersionDefinition | null>;
   saveSchema(schema: SchemaVersionDefinition): Promise<void>;
@@ -135,7 +126,7 @@ class InMemorySchemaStore implements SchemaStoreClient {
  */
 export class SchemaManager {
   private schemaStore: SchemaStoreClient;
-  private nnnaClient: NnnaServiceClient;
+  private nnnaClient: NNNAServiceClient; // Use imported NNNAServiceClient type
   private logger: Console;
   private currentActiveSchema: SchemaVersionDefinition | null = null;
   private schemaCache: Map<string, SchemaVersionDefinition> = new Map();
@@ -148,11 +139,12 @@ export class SchemaManager {
    */
   constructor(
     schemaStore?: SchemaStoreClient,
-    nnnaClient?: NnnaServiceClient,
+    nnnaClient?: NNNAServiceClient, // Use imported NNNAServiceClient type
     logger?: Console
   ) {
     this.schemaStore = schemaStore || new InMemorySchemaStore();
-    this.nnnaClient = nnnaClient || new NnnaServiceClient();
+    // If nnnaClient is not provided, instantiate the imported NNNAServiceClient
+    this.nnnaClient = nnnaClient || new NNNAServiceClient(logger || console);
     this.logger = logger || console;
     // Call initialize() separately after creating an instance for async operations.
   }
@@ -265,11 +257,11 @@ export class SchemaManager {
       this.logger.error('SchemaManager.checkForSchemaUpdates: No current active schema to check against. Initialize first.');
       return;
     }
+try {
+  const updatedSchema = await this.nnnaClient.checkForUpdates(this.currentActiveSchema.version);
 
-    try {
-      const updatedSchema = await this.nnnaClient.checkForUpdates(this.currentActiveSchema.version);
-      if (updatedSchema && updatedSchema.version !== this.currentActiveSchema.version) {
-        this.logger.info(`SchemaManager: New schema version ${updatedSchema.version} received from NNNA.`);
+  if (updatedSchema && updatedSchema.version !== this.currentActiveSchema.version) {
+        this.logger.info(`SchemaManager: Found new schema version ${updatedSchema.version} from NNNA service.`);
         
         // Persist the new schema
         await this.schemaStore.saveSchema(updatedSchema);
@@ -286,7 +278,7 @@ export class SchemaManager {
         
         this.currentActiveSchema = updatedSchema;
         this.schemaCache.set(updatedSchema.version, updatedSchema); // Update cache
-        this.logger.info(`SchemaManager: Schema version updated to ${updatedSchema.version}.`);
+        this.logger.info(`SchemaManager: Successfully updated active schema to version ${updatedSchema.version}.`);
       } else if (updatedSchema) {
         this.logger.info('SchemaManager: Current schema is up-to-date with NNNA.');
       } else {
