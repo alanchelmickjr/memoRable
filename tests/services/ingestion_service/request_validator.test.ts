@@ -119,5 +119,53 @@ describe('RequestValidator', () => {
       const actualResult = requestValidator.validate(invalidRequest);
       expect(actualResult).toEqual(expectedResult);
     });
+
+    it('should return an error result if dataType is missing (TDD_ANCHOR:validateIngestionRequest_missingDataType_returnsError)', () => {
+      const invalidRequest: any = {
+        userId: 'user-123',
+        source: Source.MANUAL_INPUT,
+        timestamp: new Date().toISOString(),
+        // dataType missing
+        data: { content: 'Some data' },
+      };
+      const expectedResult: ValidationResult = {
+        isValid: false,
+        errors: [{ field: 'dataType', message: 'Data type is required and must be a valid DataType.' }],
+      };
+      const actualResult = requestValidator.validate(invalidRequest as ValidatorIngestionRequest);
+      expect(actualResult).toEqual(expectedResult);
+    });
+
+    it('should return an error result if dataType is invalid (TDD_ANCHOR:validateIngestionRequest_invalidDataType_returnsError)', () => {
+      const invalidRequest: any = {
+        userId: 'user-123',
+        source: Source.MANUAL_INPUT,
+        timestamp: new Date().toISOString(),
+        dataType: 'INVALID_TYPE', // Not a valid DataType enum member
+        data: { content: 'Some data' },
+      };
+      const expectedResult: ValidationResult = {
+        isValid: false,
+        errors: [{ field: 'dataType', message: 'Data type is required and must be a valid DataType.' }],
+      };
+      const actualResult = requestValidator.validate(invalidRequest as ValidatorIngestionRequest);
+      expect(actualResult).toEqual(expectedResult);
+    });
+
+    it('should return an error result if data is missing (TDD_ANCHOR:validateIngestionRequest_missingData_returnsError)', () => {
+      const invalidRequest: any = {
+        userId: 'user-123',
+        source: Source.MANUAL_INPUT,
+        timestamp: new Date().toISOString(),
+        dataType: DataType.TEXT,
+        // data missing
+      };
+      const expectedResult: ValidationResult = {
+        isValid: false,
+        errors: [{ field: 'data', message: 'Data is required.' }],
+      };
+      const actualResult = requestValidator.validate(invalidRequest as ValidatorIngestionRequest);
+      expect(actualResult).toEqual(expectedResult);
+    });
   });
 });

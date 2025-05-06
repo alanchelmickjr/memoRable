@@ -252,7 +252,7 @@ export interface ApiSuccessResponseBody<T = any> {
   message: string;
   data?: T;
   mementoId?: string; // Specifically for ingestion success
-  status?: string; // Specifically for ingestion status
+  status?: 'error' | 'stored' | 'pending_embedding_retry' | 'storage_failed' | 'stored_without_embedding';
 }
 
 /**
@@ -337,4 +337,23 @@ export interface ValidatorIngestionRequest {
   dataType: DataType;
   data: any; // Structure depends on dataType
   metadata?: Record<string, any>;
+}
+
+/**
+ * Represents data after initial validation.
+ */
+export interface ValidatedInputData extends RawInputData {
+  validationResult: ValidationResult;
+}
+
+/**
+ * Represents the outcome of the internal ingestion processing job.
+ * This is not directly returned by the API, but used internally.
+ */
+export interface IngestionResult {
+  success: boolean;
+  mementoId?: string; // Present if memento creation was attempted
+  status: 'VALIDATION_FAILED' | 'PREPROCESSING_FAILED' | 'MEMENTO_CONSTRUCTION_FAILED' | 'EMBEDDING_FAILED' | 'STORAGE_FAILED' | 'PROCESSED_AND_STORED' | 'PROCESSED_PENDING_EMBEDDING' | 'UNKNOWN_ERROR';
+  message: string;
+  errors?: Array<{ field?: string; message: string }>; // Optional detailed errors
 }

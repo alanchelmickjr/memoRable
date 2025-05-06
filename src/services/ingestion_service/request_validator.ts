@@ -1,4 +1,4 @@
-import { ValidatorIngestionRequest, ValidationResult, Source } from './models';
+import { ValidatorIngestionRequest, ValidationResult, Source, DataType } from './models';
 export { ValidationResult } from './models'; // Re-export for IngestionIntegrator
 
 /**
@@ -23,15 +23,26 @@ export class RequestValidator {
     }
 
     if (!request.timestamp || typeof request.timestamp !== 'string') {
+      // This condition implies the timestamp is missing or not a string.
+      // The regex test below would fail for non-strings anyway, but this is more direct for missing/wrong type.
       errors.push({ field: 'timestamp', message: 'Timestamp is required and must be a valid ISO8601 string.' });
     } else {
       // Basic ISO8601 check, a more robust library could be used for full validation
       const iso8601Regex = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))$/;
       if (!iso8601Regex.test(request.timestamp)) {
-        // Corrected error message to match the test's expectation for an invalid format
         errors.push({ field: 'timestamp', message: 'Timestamp must be a valid ISO8601 string.' });
       }
     }
+
+    if (!request.dataType || !Object.values(DataType).includes(request.dataType as DataType)) {
+      errors.push({ field: 'dataType', message: 'Data type is required and must be a valid DataType.' });
+    }
+
+    // Check if data field is present. Further validation of data structure based on dataType could be added.
+    if (request.data === undefined || request.data === null) { // Check for undefined or null
+      errors.push({ field: 'data', message: 'Data is required.' });
+    }
+
 
     if (errors.length > 0) {
       return {

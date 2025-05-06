@@ -11,19 +11,19 @@ import {
   // Import other necessary types from models.ts as needed
 } from './models';
 // Placeholder for actual client implementations
-// import { EntityExtractorClient } from './clients/entity_extractor_client';
-// import { EmotionAnalyzerClient } from './clients/emotion_analyzer_client';
-// import { ContextAggregatorClient } from './clients/context_aggregator_client';
-// import { ContentSummarizerClient } from './clients/content_summarizer_client'; // Optional
+import { EntityExtractorClient } from './clients/entity_extractor_client';
+import { EmotionAnalyzerClient } from './clients/emotion_analyzer_client';
+import { ContextAggregatorClient } from './clients/context_aggregator_client';
+import { ContentSummarizerClient } from './clients/content_summarizer_client'; // Optional
 // import { Logger } from '../../utils/logger'; // Assuming a shared logger utility
 
 // Placeholder for a DataNormalizer utility/class
-class DataNormalizer {
+export class DataNormalizer {
   normalize(content: any, contentType: ContentType): string | object {
     // Basic normalization: if content is string, trim it.
     // More sophisticated normalization would depend on contentType.
     if (typeof content === 'string') {
-      return content.trim();
+      return content.trim().toLowerCase();
     }
     // For non-string types, return as is or implement specific normalization
     // e.g., for CodeChange, parse and reformat, or for SystemLog, structure fields.
@@ -31,59 +31,7 @@ class DataNormalizer {
     return content;
   }
   // This would ideally be a proper logger instance
-  private logger = console; 
-}
-
-// Placeholder for EntityExtractorClient
-class EntityExtractorClient {
-  async extract(content: string | object): Promise<Array<{ name: string; type: string; originalText: string }>> {
-    this.logger.info('EntityExtractorClient.extract called (placeholder)');
-    // Simulate entity extraction
-    if (typeof content === 'string' && content.toLowerCase().includes('project alpha')) {
-      return [{ name: 'Project Alpha', type: 'Project', originalText: 'Project Alpha' }];
-    }
-    return [];
-  }
-   private logger = console; 
-}
-
-// Placeholder for EmotionAnalyzerClient
-class EmotionAnalyzerClient {
-  async analyze(content: string | object): Promise<Partial<ProcessedInputData['derivedEmotionalContext']>> {
-    this.logger.info('EmotionAnalyzerClient.analyze called (placeholder)');
-    // Simulate emotion analysis
-    if (typeof content === 'string' && content.toLowerCase().includes('frustrated')) {
-      return {
-        detectedEmotionsHume: [{ name: 'Frustration', score: 0.8, evidence: 'Keyword "frustrated" found' }],
-        dominantEmotion: 'Frustration',
-        emotionalValence: -0.7,
-        emotionalArousal: 0.6,
-      };
-    }
-    return {};
-  }
-   private logger = console; 
-}
-
-// Placeholder for ContextAggregatorClient
-class ContextAggregatorClient {
-  async aggregateContext(agentId: string, eventTimestamp?: string): Promise<{
-    temporalContext: TemporalContext;
-    spatialContext?: Partial<ProcessedInputData['aggregatedSpatialContext']>;
-    reasoningContext?: Partial<ProcessedInputData['aggregatedReasoningContext']>;
-  }> {
-    this.logger.info(`ContextAggregatorClient.aggregateContext called for agent ${agentId} (placeholder)`);
-    // Simulate context aggregation
-    return {
-      temporalContext: {
-        eventTimestamp: eventTimestamp || new Date().toISOString(), // Default to now if not provided
-        // chronologicalCertainty: 'Precise', // Example
-      },
-      // spatialContext: { locationName: 'Office' }, // Example
-      // reasoningContext: { activeTask: { taskId: 'task-123', taskName: 'Debug Issue X', taskStep: 'Investigating logs'} }, // Example
-    };
-  }
-   private logger = console; 
+  public logger = console; // Made public for easier mocking in tests if needed by DataNormalizer itself
 }
 
 // Placeholder for ContentSummarizerClient (Optional)
@@ -129,7 +77,7 @@ export class PreprocessingPrism {
   private entityExtractor: EntityExtractorClient;
   private emotionAnalyzer: EmotionAnalyzerClient;
   private contextAggregator: ContextAggregatorClient;
-  // private contentSummarizer?: ContentSummarizerClient; // Optional
+  private contentSummarizer?: ContentSummarizerClient; // Optional
   private logger: Console; // Using Console for placeholder
 
   constructor(
@@ -138,14 +86,14 @@ export class PreprocessingPrism {
     entityExtractor?: EntityExtractorClient,
     emotionAnalyzer?: EmotionAnalyzerClient,
     contextAggregator?: ContextAggregatorClient,
-    // contentSummarizer?: ContentSummarizerClient,
+    contentSummarizer?: ContentSummarizerClient, // Optional
     logger?: Console
   ) {
     this.normalizer = normalizer || new DataNormalizer();
     this.entityExtractor = entityExtractor || new EntityExtractorClient();
     this.emotionAnalyzer = emotionAnalyzer || new EmotionAnalyzerClient();
     this.contextAggregator = contextAggregator || new ContextAggregatorClient();
-    // this.contentSummarizer = contentSummarizer; // Optional
+    this.contentSummarizer = contentSummarizer; // Optional
     this.logger = logger || console;
   }
 
@@ -164,6 +112,13 @@ export class PreprocessingPrism {
         originalContentType: rawInput.contentType,
         originalContentRaw: rawInput.contentRaw,
         agentId: rawInput.agentId,
+        derivedTags: [], // Initialize derivedTags
+        // Initialize other optional fields that should always be present
+        detectedEntities: [],
+        derivedEmotionalContext: {},
+        aggregatedSpatialContext: {},
+        aggregatedReasoningContext: {},
+        processedContentSummary: undefined, // Or an appropriate default like null or empty string
       };
 
       // 1. Normalize and Clean (FR3.2.1)

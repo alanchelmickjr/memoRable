@@ -11,12 +11,13 @@ import {
   MemoryMemento,
   SchemaVersionDefinition,
   IngestionAcceptedResponseData,
+  ValidatorIngestionRequest, // Added import
   // Assuming these types are defined in models.ts or imported appropriately
   // ErrorResponse, SuccessResponse,
 } from './models';
 import { RequestValidator, ValidationResult } from './request_validator';
-import { PreprocessingPrism, PreprocessingOutcome } from './preprocessing_prism';
-import { MementoConstructor, MementoConstructionResult } from './memento_constructor';
+import { PreprocessingPrism, PreprocessingOutcome, PreprocessingFailure } from './preprocessing_prism'; // Added PreprocessingFailure
+import { MementoConstructor } from './memento_constructor'; // Removed MementoConstructionResult
 import { SchemaManager } from './schema_manager'; // Corrected import
 import { MemorySteward, StorageResult } from './memory_steward';
 // import { EmbeddingServiceClient } from './clients/embedding_service_client'; // Placeholder
@@ -106,15 +107,18 @@ export class IngestionIntegrator {
     schemaMgr?: SchemaManager,
     logger?: Console
   ) {
-    this.requestValidator = validator || new RequestValidator();
-    this.preprocessingPrism = preprocessor || new PreprocessingPrism();
-    this.mementoConstructor = constructorSvc || new MementoConstructor();
-    this.narrativeWeaver = weaver || new NarrativeWeaver();
-    this.embeddingServiceClient = embedderClient || new EmbeddingServiceClient();
-    this.memorySteward = steward || new MemorySteward();
+    this.logger = logger || console;
     // SchemaManager requires async initialization, handle it carefully.
     // It's better to pass an initialized instance or ensure it's initialized before use.
-    this.schemaManager = schemaMgr || new SchemaManager(); // Caller should ensure schemaManager.initialize() is called
+    this.schemaManager = schemaMgr || new SchemaManager(undefined, undefined, this.logger); // Pass logger
+    this.requestValidator = validator || new RequestValidator();
+    this.preprocessingPrism = preprocessor || new PreprocessingPrism(undefined, undefined, undefined, undefined, this.logger); // Pass logger
+    // MementoConstructor now requires SchemaManager
+    this.mementoConstructor = constructorSvc || new MementoConstructor(this.schemaManager, this.logger); // Pass schemaManager and logger
+    this.narrativeWeaver = weaver || new NarrativeWeaver();
+    this.embeddingServiceClient = embedderClient || new EmbeddingServiceClient();
+    // Correctly instantiate MemorySteward, passing undefined for clients and logger for the last param
+    this.memorySteward = steward || new MemorySteward(undefined, undefined, undefined, this.logger);
     this.logger = logger || console;
   }
 
@@ -144,7 +148,16 @@ export class IngestionIntegrator {
     await this.initialize(); // Ensure schema manager is ready
 
     // 1. Validate IngestionRequest
-    const validationResult: ValidationResult = this.requestValidator.validate(ingestionRequest);
+    // Map IngestionRequest to ValidatorIngestionRequest
+    const validatorRequest: ValidatorIngestionRequest = {
+      userId: ingestionRequest.agentId, // Assuming agentId maps to userId for validation purposes
+      source: ingestionRequest.sourceSystem as any, // May need a mapping if Source enum differs from sourceSystem strings
+      timestamp: ingestionRequest.eventTimestamp || new Date().toISOString(),
+      dataType: ingestionRequest.contentType as any, // May need a mapping if DataType enum differs
+      data: ingestionRequest.contentRaw,
+      metadata: ingestionRequest.metadata,
+    };
+    const validationResult: ValidationResult = this.requestValidator.validate(validatorRequest);
     if (!validationResult.isValid) {
       this.logger.error(`IngestionIntegrator: Invalid ingestion request for agent ${ingestionRequest.agentId}. Errors: ${JSON.stringify(validationResult.errors)}`);
       return {
@@ -196,7 +209,8 @@ export class IngestionIntegrator {
       const preprocessingOutcome: PreprocessingOutcome = await this.preprocessingPrism.process(rawInput);
 
       if (!preprocessingOutcome.success) { // Type guard for failure
-        this.logger.error(`IngestionIntegrator: Preprocessing failed for agent ${ingestionRequest.agentId}, source ${rawInput.sourceIdentifier}. Error: ${preprocessingOutcome.error}`);
+        const failureOutcome = preprocessingOutcome as PreprocessingFailure; // Explicit cast
+        this.logger.error(`IngestionIntegrator: Preprocessing failed for agent ${ingestionRequest.agentId}, source ${rawInput.sourceIdentifier}. Error: ${failureOutcome.error}`);
         // TODO: Handle preprocessing failure (e.g., dead-letter queue)
         return;
       }
@@ -211,20 +225,17 @@ export class IngestionIntegrator {
       this.logger.info(`IngestionIntegrator: Using schema version ${currentSchema.version} for agent ${ingestionRequest.agentId}`);
 
       // 5. Construct Memory Memento (FR3.3)
-      const mementoOutcome: MementoConstructionResult = await this.mementoConstructor.construct(
-        processedInput,
-        ingestionRequest.agentId,
-        currentSchema,
-        ingestionRequest.sourceSystem || 'unknown_source_system' // Provide a default if not present
-      );
-
-      if (!mementoOutcome.success) { // Type guard for failure
-        this.logger.error(`IngestionIntegrator: Memento construction failed for agent ${ingestionRequest.agentId}, source ${rawInput.sourceIdentifier}. Error: ${mementoOutcome.error}`);
+      // MementoConstructor.constructMemento now directly returns MemoryMemento or throws an error.
+      let memento: MemoryMemento;
+      try {
+        memento = await this.mementoConstructor.constructMemento(processedInput);
+        this.logger.info(`IngestionIntegrator: Memento ${memento.mementoId} constructed for agent ${ingestionRequest.agentId}`);
+      } catch (constructionError) {
+        const errorMessage = constructionError instanceof Error ? constructionError.message : String(constructionError);
+        this.logger.error(`IngestionIntegrator: Memento construction failed for agent ${ingestionRequest.agentId}, source ${rawInput.sourceIdentifier}. Error: ${errorMessage}`);
+        // TODO: Handle memento construction failure (e.g., dead-letter queue)
         return;
       }
-      const memento: MemoryMemento = mementoOutcome.memento;
-      this.logger.info(`IngestionIntegrator: Memento ${memento.mementoId} constructed for agent ${ingestionRequest.agentId}`);
-
 
       // 6. Generate Contextual Narrative for Embedding (FR3.4.1)
       const narrativeText: string | null = this.narrativeWeaver.weave(memento);

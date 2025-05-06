@@ -64,7 +64,7 @@ export interface StorageResult {
   success: boolean;
   mementoId: string;
   message: string;
-  status?: 'stored' | 'pending_embedding_retry' | 'storage_failed';
+  status?: 'stored' | 'pending_embedding_retry' | 'storage_failed' | 'error' | 'stored_without_embedding';
 }
 
 /**
@@ -120,7 +120,7 @@ export class MemorySteward {
         success: false,
         mementoId: memento.mementoId,
         message: `Primary storage (MongoDB) failed: ${mongoError instanceof Error ? mongoError.message : String(mongoError)}`,
-        status: 'storage_failed',
+        status: 'error',
       };
     }
 
@@ -190,6 +190,7 @@ export class MemorySteward {
     }
 
     // Phase 3: Publish event (FR3.5.2)
+    let eventPublished = false;
     try {
       await this.eventPublisher.publish('memento.created', {
         mementoId: memento.mementoId,
@@ -198,15 +199,20 @@ export class MemorySteward {
         creationTimestamp: memento.creationTimestamp,
       });
       this.logger.info(`MemorySteward: Event published for memento ${memento.mementoId} creation.`);
+      eventPublished = true;
     } catch (eventError) {
       // Non-critical failure, log and proceed. The memento is stored.
       this.logger.error(`MemorySteward: Failed to publish memento.created event for ${memento.mementoId}.`, eventError);
     }
 
+    const successMessage = eventPublished
+      ? 'Memento and embeddings stored successfully. Event published.'
+      : 'Memento and embeddings stored successfully, but event publishing failed.';
+
     return {
       success: true,
       mementoId: memento.mementoId,
-      message: 'Memento and embeddings stored successfully. Event published.',
+      message: successMessage,
       status: 'stored',
     };
   }

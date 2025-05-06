@@ -4,127 +4,62 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import {
-  ProcessedInputData,
-  MemoryMemento,
-  SchemaVersionDefinition,
-  // Import other necessary types from models.ts as needed
-} from './models';
-// import { SchemaManager } from './schema_manager'; // Actual SchemaManager would be imported
+import { ProcessedInputData, MemoryMemento, SchemaVersionDefinition } from './models';
+import { SchemaManager } from './schema_manager';
 // import { Logger } from '../../utils/logger'; // Assuming a shared logger utility
 
-// Placeholder for SchemaManager
-class SchemaManager {
-  async getCurrentSchema(): Promise<SchemaVersionDefinition> {
-    this.logger.info('SchemaManager.getCurrentSchema called (placeholder)');
-    // Simulate fetching the current active schema
-    return {
-      version: '1.0.0', // Default placeholder schema version
-      description: 'Default schema for MemoryMemento',
-      definition: { /* ... JSON schema object ... */ },
-      effectiveDate: new Date().toISOString(),
-      isActive: true,
-    };
-  }
-  // This would ideally be a proper logger instance
-  private logger = console;
-}
-
-
-/**
- * Represents a successful memento construction outcome.
- */
-export interface MementoConstructionSuccess {
-  success: true;
-  memento: MemoryMemento;
-}
-
-/**
- * Represents a failed memento construction outcome.
- */
-export interface MementoConstructionFailure {
-  success: false;
-  error: string;
-  details?: any;
-}
-
-/**
- * Union type for the result of the memento construction operation.
- */
-export type MementoConstructionResult = MementoConstructionSuccess | MementoConstructionFailure;
-
-
-/**
- * Constructs MemoryMemento objects from processed input data according to a schema.
- */
 export class MementoConstructor {
+  private schemaManager: SchemaManager;
   private logger: Console; // Using Console for placeholder
-  private schemaManager: SchemaManager; // Placeholder for actual SchemaManager
 
-  /**
-   * Initializes a new instance of the MementoConstructor class.
-   * @param {SchemaManager} schemaManager - An instance of SchemaManager to fetch schema definitions.
-   * @param {Console} [logger=console] - Optional logger instance.
-   */
-  constructor(schemaManager?: SchemaManager, logger?: Console) {
-    this.schemaManager = schemaManager || new SchemaManager(); // Use placeholder if none provided
+  constructor(schemaManager: SchemaManager, logger?: Console) {
+    this.schemaManager = schemaManager;
     this.logger = logger || console;
   }
 
   /**
-   * Constructs a MemoryMemento from processed input data.
-   * @param {ProcessedInputData} processedInput - The processed data after normalization and enrichment.
-   * @param {string} agentId - The agent ID for this memento.
-   * @param {SchemaVersionDefinition} schema - The schema version to adhere to for construction.
-   * @param {string} sourceSystem - The source system identifier.
-   * @returns {Promise<MementoConstructionResult>} - The result of the memento construction.
+   * Constructs a MemoryMemento object from processed input data.
+   * @param {ProcessedInputData} processedData - The processed data to construct the memento from.
+   * @returns {Promise<MemoryMemento>} The constructed MemoryMemento.
+   * @throws {Error} If schema information cannot be retrieved or memento construction fails.
    */
-  public async construct(
-    processedInput: ProcessedInputData,
-    agentId: string, // Added agentId as per IngestionIntegrator's call
-    schema: SchemaVersionDefinition,
-    sourceSystem: string // Added sourceSystem as per IngestionIntegrator's call
-  ): Promise<MementoConstructionResult> {
-    this.logger.info(`MementoConstructor: Constructing memento for agent ${agentId} with schema version ${schema.version}`);
-
+  public async constructMemento(processedData: ProcessedInputData): Promise<MemoryMemento> {
+    this.logger.info(`MementoConstructor: Starting memento construction for agentId: ${processedData.agentId}`);
+    
+    let currentSchema: SchemaVersionDefinition;
     try {
-      const memento: MemoryMemento = {
-        mementoId: uuidv4(), // FR3.3.3 Generate UUID
-        agentId: agentId, // Use passed agentId
-        creationTimestamp: new Date().toISOString(), // FR3.3.3 Current ISO timestamp
-        schemaVersion: schema.version, // FR3.6.3
-
-        sourceSystem: sourceSystem, // Use passed sourceSystem
-        sourceIdentifier: processedInput.sourceIdentifier,
-        contentType: processedInput.determinedContentTypeForMemento,
-        contentRaw: processedInput.originalContentRaw, // Store original raw content
-        contentProcessed: processedInput.processedContentSummary, // May be null/undefined
-
-        tags: processedInput.derivedTags || [],
-
-        // Map contexts
-        temporalContext: processedInput.aggregatedTemporalContext,
-        spatialContext: processedInput.aggregatedSpatialContext,
-        emotionalContext: processedInput.derivedEmotionalContext,
-        reasoningContext: processedInput.aggregatedReasoningContext,
-      };
-
-      // TODO: FR3.3.2 - Validate the constructed memento against the provided schema.definition
-      // This would involve a JSON schema validator. For now, we assume it's valid if constructed.
-      // Example:
-      // const validationResult = validateJsonSchema(memento, schema.definition);
-      // if (!validationResult.valid) {
-      //   this.logger.error('Memento failed schema validation:', validationResult.errors);
-      //   return { success: false, error: `Constructed memento failed schema validation: ${validationResult.errors.join(', ')}`};
-      // }
-
-      this.logger.info(`MementoConstructor: Memento ${memento.mementoId} constructed successfully for agent ${agentId}.`);
-      return { success: true, memento };
-
+      currentSchema = await this.schemaManager.getCurrentSchema();
     } catch (error) {
-      const errorMessage = `Memento construction failed: ${error instanceof Error ? error.message : String(error)}`;
-      this.logger.error('MementoConstructor: Error during memento construction.', { error: errorMessage, agentId });
-      return { success: false, error: errorMessage, details: error };
+      const errorMessage = `Failed to retrieve current schema: ${error instanceof Error ? error.message : String(error)}`;
+      this.logger.error(`MementoConstructor: ${errorMessage}`);
+      throw new Error(`Failed to construct memento: ${errorMessage}`);
     }
+
+    const mementoId = uuidv4();
+    const creationTimestamp = new Date().toISOString();
+
+    // Basic mapping, more sophisticated logic might be needed based on content types
+    const memento: MemoryMemento = {
+      mementoId,
+      agentId: processedData.agentId,
+      creationTimestamp,
+      sourceSystem: processedData.sourceSystem,
+      sourceIdentifier: processedData.sourceIdentifier,
+      contentType: processedData.determinedContentTypeForMemento,
+      contentRaw: processedData.originalContentRaw, // Storing original raw content
+      contentProcessed: processedData.processedContentSummary,
+      tags: processedData.derivedTags || [],
+      schemaVersion: currentSchema.version,
+      temporalContext: processedData.aggregatedTemporalContext,
+      spatialContext: processedData.aggregatedSpatialContext,
+      emotionalContext: processedData.derivedEmotionalContext,
+      reasoningContext: processedData.aggregatedReasoningContext,
+      // Other fields like `relatedMementos` would be populated by other services or later processes.
+    };
+
+    this.logger.info(`MementoConstructor: Memento ${mementoId} constructed successfully with schema ${currentSchema.version}.`);
+    // For TDD: Initially throw to ensure test fails correctly, then implement actual return.
+    // throw new Error('constructMemento not fully implemented yet.'); 
+    return memento;
   }
 }
