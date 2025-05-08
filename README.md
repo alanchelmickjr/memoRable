@@ -316,12 +316,13 @@ The system can be configured through environment variables:
 
 Detailed documentation is available in the [docs](./docs) directory:
 
+- [Core Concepts](./docs/3_core_concepts.md)
+- [User Guide](./docs/4_user_guide.md)
+- [API Reference](./docs/5_api_reference.md)
+- [Component Documentation](./docs/6_components_reference.md)
+- [Advanced Usage](./docs/7_advanced_usage.md)
 - [Technical Architecture](./docs/technical-architecture.md)
 - [Deployment Guide](./docs/deployment-guide.md)
-- [API Reference](./docs/api-reference.md)
-- [Development Guide](./docs/development-guide.md)
-- [Emotion Processing](./docs/emotion-processing.md)
-- [Custom Models](./docs/custom-models.md)
 
 ## Collaboration
 
