@@ -259,29 +259,29 @@ cp .env.example .env
 
 4. **Start the services**
 ```bash
-npm run docker:up
+pnpm run docker:up
 ```
 
 5. **Run the application**
 ```bash
-npm start
+pnpm start
 ```
 
 ## 💻 Development
 
 1. **Start in development mode**
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 2. **Run tests**
 ```bash
-npm test
+pnpm test
 ```
 
 3. **Lint code**
 ```bash
-npm run lint
+pnpm run lint
 ```
 
 ## 🏛️ Project Structure
