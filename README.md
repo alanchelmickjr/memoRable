@@ -248,7 +248,7 @@ cd memorable
 
 2. **Install dependencies**
 ```bash
-npm install
+pnpm install
 ```
 
 3. **Set up environment variables**
