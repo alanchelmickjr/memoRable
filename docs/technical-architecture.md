@@ -30,7 +30,7 @@ graph LR
     subgraph ProcessingCore["MemoRable Processing Core"]
         direction LR
         CAM[Conscious Access Model / Conscious Current]
-        SSM[Subconscious Scanner Model (Gemini Target) - NNNA and Subconscious Synthesis]
+        SSM["Subconscious Scanner Model (Gemini Target) NNNA and Subconscious Synthesis"]
         IP[Input Processor / Ingestion Infinity-Loop]
         CP[Contextual Processor]
         EP[Emotional Processor]
