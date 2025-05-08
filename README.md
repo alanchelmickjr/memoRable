@@ -321,6 +321,25 @@ Detailed documentation is available in the [docs](./docs) directory:
 - [Emotion Processing](./docs/emotion-processing.md)
 - [Custom Models](./docs/custom-models.md)
 
+## Collaboration
+
+We warmly welcome contributions to the memoRable project! Your insights and efforts can help us push the boundaries of AI memory and create a truly impactful system.
+
+For more detailed information on how to contribute, including our development process, coding standards, and code of conduct, please see our [Contribution Guidelines](CONTRIBUTING.md).
+There are many ways to get involved:
+*   We welcome contributions of all kinds, from documentation improvements to new feature implementations.
+*   Check out our [Issue Tracker](https://github.com/yourusername/memorable/issues) for open tasks and areas where help is needed. (Please replace `yourusername/memorable` with the actual repository path if different).
+*   Feel free to open an issue to discuss potential changes or new ideas.
+
+We are particularly interested in expertise in areas such as:
+*   Advanced transformer models and their application to memory processing.
+*   Innovative embedding strategies for rich contextual understanding.
+*   System optimization for performance and scalability.
+
+For insights into our current thinking on key components, you might find the following document useful:
+*   [Detailed Embedding Service Strategy and Model Considerations](docs/embedding_service_strategy.md)
+
+---
 ## 🤝 Contributing
 
 1. Fork the repository
