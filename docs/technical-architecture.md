@@ -11,6 +11,7 @@ The architecture adheres to the **Universal Vectorization Principle**, ensuring 
 *   **Context as a First-Class Citizen**: Rich, interwoven contexts (temporal, spatial, emotional, reasoning) are central to memory representation and retrieval.
 *   **Memory-Derived Identity & Personality**: Agent coherence and personality emerge from accumulated, processed, and synthesized memories.
 *   **Adaptive Ingestion & Schema**: The system learns and adapts its data capture and schema based on the evolving relevance and utility of information, primarily driven by the "Nocturnal Nurturing & Network Attunement" (NNNA) process.
+*   **Dual-Model Memory Architecture**: A "Subconscious Scanner" model (e.g., Gemini) continuously processes long-term memory, while a "Conscious Access Model" handles immediate retrieval needs, leveraging insights from the scanner. This mimics human cognitive depth and efficiency.
 *   **Dual Storage Strategy**:
     *   **MongoDB**: Primary store for complete, structured "Memory Mementos" and journaling.
     *   **Weaviate**: Vector database for semantic search and similarity-based retrieval of embeddings.
@@ -21,68 +22,91 @@ The architecture adheres to the **Universal Vectorization Principle**, ensuring 
 ## 3. High-Level System Diagram
 
 ```mermaid
-graph TD
-    subgraph InputSources [Input Sources]
-        IS_Text[Text Input]
-        IS_Git[Git Commits / Codebase Chronicle]
-        IS_Audio[Audio (via STT)]
-        IS_Other[Other Future Sources]
+graph LR
+    subgraph UserInteraction["User Interaction Layer"]
+        UI[User/Agent Interface]
     end
 
-    subgraph Services
-        II [Ingestion Infinity-Loop]
-        EE [Embedding Essence]
-        NNNA [Nocturnal Nurturing & Network Attunement]
-        CC [Conscious Current / Contextual Retrieval]
-        SS [Subconscious Synthesis / Personality Service]
-        AIface[Agent Interface]
+    subgraph ProcessingCore["MemoRable Processing Core"]
+        direction LR
+        CAM[Conscious Access Model / Conscious Current]
+        SSM[Subconscious Scanner Model (Gemini Target) / NNNA & Subconscious Synthesis]
+        IP[Input Processor / Ingestion Infinity-Loop]
+        CP[Contextual Processor]
+        EP[Emotional Processor]
+        AS[Attention System]
+        EmbServ[Embedding Essence]
     end
 
-    subgraph DataStores
-        WDB[(Weaviate Vector DB)]
-        MDB[(MongoDB - Mementos & Journals)]
+    subgraph MemoryStorage["Three-Tier Memory Storage"]
+        direction TB
+        Redis[Redis (Active Memory Buffer)]
+        Weaviate[Weaviate (Vector Embeddings)]
+        MongoDB[MongoDB (Raw Data & Journals)]
     end
 
-    InputSources -- Raw Data --> II
-    II -- Prepared Memento Narrative --> EE
-    II -- Raw/Structured Memento --> MDB
-    EE -- Embedding Vector & MementoID --> WDB
+    UI --> IP
+    IP --> CAM
+    IP --> CP
+    IP --> EP
+    IP -- Prepared Narrative --> EmbServ
+    EmbServ -- Embedding Vector --> Weaviate
+    IP -- Raw Memento --> MongoDB
+
+    CP --> CAM
+    EP --> CAM
     
-    NNNA -- Reads --> MDB
-    NNNA -- Reads/Updates --> WDB
-    NNNA -- Schema Feedback --> II
-    NNNA -- Personality Insights --> SS
-    NNNA -- Creates/Updates Mementos --> II
+    CAM <--> AS
+    AS <--> SSM
+    
+    CAM -- Query for Retrieval --> EmbServ
+    EmbServ -- Query Vector --> Weaviate
+    Weaviate -- Memento IDs --> CAM
+    CAM -- Fetch Full Mementos --> MongoDB
+    MongoDB -- Full Mementos --> CAM
+    CAM -- Relevant Memories --> UI
+    
+    SSM -- Reads/Updates --> Weaviate
+    SSM -- Reads/Updates --> MongoDB
+    SSM -- Schema Feedback --> IP
+    SSM -- Personality Insights & Profile --> CAM
 
-    AIface -- Query Context --> CC
-    CC -- Query Narrative for Vector --> EE
-    CC -- Semantic Search Query --> WDB
-    WDB -- Memento IDs & Scores --> CC
-    CC -- Fetch Full Mementos by ID --> MDB
-    MDB -- Full Mementos --> CC
-    CC -- Relevant Memories --> AIface
+    Redis -- Cache For --> CAM
+    CAM -- Access/Store --> Redis
 
-    SS -- Personality Profile --> AIface
-    SS -- Influences --> CC
 
-    style II fill:#f9f,stroke:#333,stroke-width:2px
-    style EE fill:#ccf,stroke:#333,stroke-width:2px
-    style NNNA fill:#cfc,stroke:#333,stroke-width:2px
-    style CC fill:#ffc,stroke:#333,stroke-width:2px
-    style SS fill:#fcc,stroke:#333,stroke-width:2px
-    style AIface fill:#cff,stroke:#333,stroke-width:2px
-    style WDB fill:#e6e6fa,stroke:#333,stroke-width:2px
-    style MDB fill:#add8e6,stroke:#333,stroke-width:2px
+    style UserInteraction fill:#D5F5E3,stroke:#2ECC71
+    style ProcessingCore fill:#EBF5FB,stroke:#3498DB
+    style MemoryStorage fill:#FDEDEC,stroke:#E74C3C
+    style IP fill:#f9f,stroke:#333,stroke-width:2px
+    style EmbServ fill:#ccf,stroke:#333,stroke-width:2px
+    style SSM fill:#cfc,stroke:#333,stroke-width:2px
+    style CAM fill:#ffc,stroke:#333,stroke-width:2px
+    style UI fill:#cff,stroke:#333,stroke-width:2px
+    style Weaviate fill:#e6e6fa,stroke:#333,stroke-width:2px
+    style MongoDB fill:#add8e6,stroke:#333,stroke-width:2px
+    style Redis fill:#f5b7b1,stroke:#333,stroke-width:2px
 ```
 
 **Data Flow Summary:**
 
-1.  **Ingestion**: Input Sources send data to the `Ingestion Infinity-Loop`. It preprocesses data, creates "Memory Mementos," and sends raw/structured mementos to MongoDB.
-2.  **Embedding**: The `Ingestion Infinity-Loop` sends prepared memento narratives to `Embedding Essence` (e.g., using OpenAI `text-embedding-3-large`) which generates vectors and stores them in Weaviate, linked to the `mementoId`.
-3.  **Storage**: MongoDB stores full mementos; Weaviate stores vectors and key filterable metadata.
-4.  **Nightly Processing (NNNA)**: `Nocturnal Nurturing & Network Attunement` periodically reads from MongoDB and Weaviate to refine memories, update embeddings, generate personality insights for `Subconscious Synthesis`, and provide schema adaptation feedback to the `Ingestion Infinity-Loop`.
-5.  **Retrieval**: The `Agent Interface` provides a query context to `Conscious Current`. `Conscious Current` generates a query vector (via `Embedding Essence`), searches Weaviate, retrieves full mementos from MongoDB, and returns relevant memories.
-6.  **Personality**: `Subconscious Synthesis` uses insights from NNNA to build a personality profile, which can influence retrieval and agent responses.
+1.  **Input & Initial Processing**: The `User/Agent Interface` sends data to the `Input Processor` (`Ingestion Infinity-Loop`). The `Input Processor` handles initial data preparation, including calls to `Contextual Processor` and `Emotional Processor`.
+2.  **Memento Creation & Storage**:
+    *   The `Input Processor` sends the raw/structured "Memory Memento" to `MongoDB` for persistent storage.
+    *   A prepared narrative from the `Input Processor` is sent to `Embedding Essence` to generate a vector embedding.
+    *   The `Embedding Essence` service returns the vector, which is then stored in `Weaviate` along with the `mementoId` linking it to the full memento in `MongoDB`.
+3.  **Conscious Retrieval**:
+    *   The `User/Agent Interface` sends a query context to the `Conscious Access Model` (`Conscious Current`).
+    *   The `Conscious Access Model` formulates a query narrative and sends it to `Embedding Essence` to get a query vector.
+    *   This vector is used to search `Weaviate` for relevant `mementoId`s.
+    *   The `Conscious Access Model` retrieves the full mementos from `MongoDB` using these IDs.
+    *   Relevant memories are returned to the `User/Agent Interface`.
+    *   `Redis` is used by the `Conscious Access Model` as an active memory buffer/cache for frequently accessed data.
+4.  **Subconscious Processing & Synthesis**:
+    *   The `Subconscious Scanner Model` (`NNNA` & `Subconscious Synthesis` components) continuously reads from and updates `MongoDB` and `Weaviate`.
+    *   It refines memories, updates embeddings (potentially via `Embedding Essence`), generates personality insights, and provides schema adaptation feedback to the `Input Processor`.
+    *   Personality insights and profiles derived by the `Subconscious Scanner Model` are made available to the `Conscious Access Model` to influence retrieval and agent behavior.
+5.  **Attention & Model Interaction**: The `Attention System` facilitates the interaction and information flow between the `Conscious Access Model` and the `Subconscious Scanner Model`, ensuring relevant information is prioritized and surfaced efficiently.
 
 ## 4. Service Boundaries and APIs
 

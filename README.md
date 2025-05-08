@@ -27,43 +27,28 @@ MemoRable is designed around the following core principles:
 ## 🌟 Features
 
 - **TaskHopper System**
-## 🎯 Use Cases
-
-MemoRable's advanced memory capabilities unlock a variety of powerful applications for AI agents:
-
-*   **Emotionally Safe Friend**: An agent that remembers past interactions, preferences, and emotional states, fostering a reliable and understanding companionship.
-*   **Persistent Project Partner**: An AI assistant that maintains deep, evolving knowledge of ongoing tasks and projects, providing consistent and context-aware support.
-*   **Living Git Log**: An agent with real-time awareness of codebase changes, able to explain the history, rationale, and impact of modifications.
-*   **Rogerian Reflector**: An AI that facilitates self-reflection by mirroring and rephrasing user inputs, promoting deeper understanding and personal growth, inspired by Rogerian psychotherapy.
-*   **Focused & Familiar Agent**: Agents that can maintain unwavering focus on tasks and consistently recognize users across interactions, building rapport and trust.
-
----
   - Intelligent task management and prioritization
   - Step-by-step progress tracking
   - AI task integration and automation
   - Task relationship mapping
   - Automated task archival
-
 - **Multi-modal Input Processing**
   - Text, vision, audio, and video processing
   - AI response handling
   - File management
   - Extensible sensor framework
-
 - **Night Processing Intelligence**
   - Automated pattern analysis (1 AM - 4 AM)
   - Model performance optimization
   - Cache warming strategies
   - Memory usage predictions
   - Task pattern analysis
-
 - **Contextual Indexing**
   - Environmental data tracking
   - Temporal awareness
   - Task context management
   - Conversation history
   - Geospatial integration
-
 - **Advanced Emotional Intelligence**
   - 83 distinct emotional vectors including:
     - Core emotions (joy, sadness, anger, etc.)
@@ -74,12 +59,10 @@ MemoRable's advanced memory capabilities unlock a variety of powerful applicatio
   - Cross-referenced emotional context
   - Real-time emotional state analysis
   - Color-coded emotional visualization
-
 - **Three-tier Memory Architecture**
   - Raw data storage (MongoDB)
   - Vector embeddings (Weaviate)
   - Active memory buffer (Redis)
-
 - **Custom Model Training**
   - Personalized emotional pattern recognition
   - User-specific interaction learning
@@ -91,22 +74,119 @@ MemoRable's advanced memory capabilities unlock a variety of powerful applicatio
     - Context sensitivity
     - Response generation
 
-## 🏗️ Architecture
+---
+## 🎯 Use Cases
+
+MemoRable's advanced memory capabilities unlock a variety of powerful applications for AI agents:
+
+*   **Emotionally Safe Friend**: An agent that remembers past interactions, preferences, and emotional states, fostering a reliable and understanding companionship.
+*   **Persistent Project Partner**: An AI assistant that maintains deep, evolving knowledge of ongoing tasks and projects, providing consistent and context-aware support.
+*   **Living Git Log**: An agent with real-time awareness of codebase changes, able to explain the history, rationale, and impact of modifications.
+*   **Rogerian Reflector**: An AI that facilitates self-reflection by mirroring and rephrasing user inputs, promoting deeper understanding and personal growth, inspired by Rogerian psychotherapy.
+*   **Focused & Familiar Agent**: Agents that can maintain unwavering focus on tasks and consistently recognize users across interactions, building rapport and trust.
+
+---
+
+## 🏗️ System Architecture
+
+MemoRable employs a sophisticated architecture designed for "total recall," featuring a dual-model processing system and a three-tier memory storage solution.
+
+### Dual-Model Memory Processing
+
+The core of MemoRable's intelligence lies in its innovative dual-model approach to memory management, inspired by human cognitive processes:
+
+*   **Subconscious Scanner (Gemini Target)**: A powerful Large Language Model (initially targeting Gemini) continuously scans, processes, and indexes the vast corpus of long-term memory. It identifies patterns, relationships, and potential relevancies, acting as a background process that enriches and organizes memory.
+*   **Conscious Access Model**: This model directly interfaces with the AI agent's operational needs. When the agent requires information or context, this model queries the insights and pre-processed data surfaced by the Subconscious Scanner, enabling fast and relevant memory retrieval.
+*   **Adaptive Context Windows**: The interaction between these models utilizes adaptable context windows, allowing for efficient processing by focusing attention and resources dynamically based on task demands.
+
+```mermaid
+graph LR
+    subgraph UserInteraction["User Interaction Layer"]
+        UI[User/Agent Interface]
+    end
+
+    subgraph ProcessingCore["MemoRable Processing Core"]
+        direction LR
+        CAM[Conscious Access Model]
+        SSM[Subconscious Scanner Model (Gemini Target)]
+        IP[Input Processor]
+        CP[Contextual Processor]
+        EP[Emotional Processor]
+        AS[Attention System]
+    end
+
+    subgraph MemoryStorage["Three-Tier Memory Storage"]
+        direction TB
+        Redis[Redis (Active Memory Buffer)]
+        Weaviate[Weaviate (Vector Embeddings)]
+        MongoDB[MongoDB (Raw Data & Time-Series)]
+    end
+
+    UI --> IP
+    IP --> CAM
+    IP --> CP
+    IP --> EP
+    CP --> CAM
+    EP --> CAM
+    CAM <--> AS
+    AS <--> SSM
+    CAM --> MemoryStorage
+    SSM --> Weaviate
+    SSM --> MongoDB
+
+    MemoryStorage --> CAM
+    MemoryStorage --> SSM
+
+    style UserInteraction fill:#D5F5E3,stroke:#2ECC71
+    style ProcessingCore fill:#EBF5FB,stroke:#3498DB
+    style MemoryStorage fill:#FDEDEC,stroke:#E74C3C
+```
+
+This architecture allows for efficient large-scale memory management, mimicking how humans might pay less conscious attention to routine information while being able to quickly access relevant details when needed.
+
+### Memory Weaving: The Fabric of Understanding
+
+A key concept in MemoRable is "Memory Weaving," where individual memory items are not stored in isolation but are intricately linked through multiple contextual threads.
 
 ```mermaid
 graph TD
-    A[Multi-modal Input] --> B[Input Processor]
-    B --> C[Contextual Indexer]
-    B --> D[Emotional Processor]
-    C --> E[Memory Manager]
-    D --> E
-    E --> F[MongoDB]
-    E --> G[Weaviate]
-    E --> H[Redis]
-    E --> I[Attention System]
-    I --> J[Predictive Behavior]
-```
+    M1[Memory Item 1 (Event)]
+    M2[Memory Item 2 (Conversation)]
+    M3[Memory Item 3 (Observation)]
 
+    subgraph Contexts["Interwoven Contexts"]
+        TC[Temporal Context (Timestamp, Duration)]
+        SC[Spatial Context (Location, Environment)]
+        EC[Emotional Context (User Emotion, Agent Emotion)]
+        LC[Logical Context (Inferred Relationships, Causality)]
+        KC[Keyword/Entity Context]
+    end
+
+    M1 --- TC
+    M1 --- SC
+    M1 --- EC
+    M1 --- LC
+    M1 --- KC
+
+    M2 --- TC
+    M2 --- EC
+    M2 --- LC
+    M2 --- KC
+
+    M3 --- TC
+    M3 --- SC
+    M3 --- EC
+    M3 --- KC
+
+    M1 -- "Related via User X" --> M2
+    M2 -- "Preceded" --> M3
+    M1 -- "Occurred at Location Y" --> M3
+
+    style Contexts fill:#FFF9C4,stroke:#FBC02D
+```
+This rich tapestry of interwoven temporal, spatial, emotional, logical, and keyword/entity contexts allows the AI to form a deeper, more nuanced understanding of past experiences and retrieve information in a highly flexible and human-like manner.
+
+---
 ## 🛠️ Tech Stack
 
 MemoRable leverages a modern, robust technology stack, all orchestrated within a **Dockerized environment** for consistent deployment and scalability:
@@ -125,6 +205,31 @@ MemoRable leverages a modern, robust technology stack, all orchestrated within a
 
 - Node.js >= 18.0.0
 - Docker and Docker Compose
+---
+## 📈 Current Status
+
+MemoRable is currently in the initial development phase, focusing on establishing core functionalities. Key areas of active development include:
+
+*   Robust session management.
+*   Accurate identity recognition across interactions.
+*   Foundational memory storage architecture, integrating MongoDB for persistence, Weaviate for vector search, and Redis for active memory buffering.
+
+The immediate goal is to complete a proof-of-concept demonstrating these core capabilities, paving the way for the integration of advanced transformer models for memory processing.
+
+---
+## 🗺️ Roadmap
+
+Our development roadmap is focused on iteratively building towards the full vision of "total recall":
+
+1.  **Finalize Core Infrastructure**: Complete the setup of the npm package, implement core classes for session and memory management, and establish a comprehensive test framework.
+2.  **Proof of Concept (PoC) Validation**: Execute and thoroughly validate the PoC, ensuring reliable identity tracking, session handling, and basic memory operations.
+3.  **Subconscious Scanner Integration (Gemini)**: Begin the integration of a powerful Large Language Model (initially targeting Gemini) to act as the "Subconscious Scanner," responsible for continuously processing and indexing the entirety of long-term memory.
+4.  **Conscious Access Model Development**: Design and implement the "Conscious Access Model," which will interface with the AI agent and leverage the insights provided by the Subconscious Scanner for contextually relevant memory retrieval.
+5.  **Memory Weaving & Contextualization**: Refine and implement the mechanisms for "memory weaving," enabling the system to create and utilize rich, interwoven contexts (temporal, spatial, emotional, logical) for more nuanced understanding and recall.
+6.  **Advanced Feature Implementation**: Incrementally build out support for the advanced features and use cases outlined, including multi-modal input processing, night processing intelligence, and sophisticated emotional analysis.
+7.  **Community Collaboration**: Foster an open environment for contributions, feedback, and collaborative development to accelerate progress and broaden the project's impact.
+
+We are excited about the journey ahead and welcome developers to join us in building the future of AI memory.
 - MongoDB
 - Redis
 - Weaviate
