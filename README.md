@@ -117,9 +117,9 @@ graph LR
 
     subgraph MemoryStorage["Three-Tier Memory Storage"]
         direction TB
-        Redis[Redis (Active Memory Buffer)]
-        Weaviate[Weaviate (Vector Embeddings)]
-        MongoDB[MongoDB (Raw Data & Time-Series)]
+        Redis["Redis (Active Memory Buffer)"]
+        Weaviate["Weaviate (Vector Embeddings)"]
+        MongoDB["MongoDB (Raw Data & Time-Series)"]
     end
 
     UI --> IP
@@ -150,16 +150,16 @@ A key concept in MemoRable is "Memory Weaving," where individual memory items ar
 
 ```mermaid
 graph TD
-    M1[Memory Item 1 (Event)]
-    M2[Memory Item 2 (Conversation)]
-    M3[Memory Item 3 (Observation)]
+    M1["Memory Item 1 (Event)"]
+    M2["Memory Item 2 (Conversation)"]
+    M3["Memory Item 3 (Observation)"]
 
     subgraph Contexts["Interwoven Contexts"]
-        TC[Temporal Context (Timestamp, Duration)]
-        SC[Spatial Context (Location, Environment)]
-        EC[Emotional Context (User Emotion, Agent Emotion)]
-        LC[Logical Context (Inferred Relationships, Causality)]
-        KC[Keyword/Entity Context]
+        TC["Temporal Context (Timestamp, Duration)"]
+        SC["Spatial Context (Location, Environment)"]
+        EC["Emotional Context (User Emotion, Agent Emotion)"]
+        LC["Logical Context (Inferred Relationships, Causality)"]
+        KC["Keyword/Entity Context"]
     end
 
     M1 --- TC
