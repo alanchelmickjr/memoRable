@@ -24,7 +24,7 @@ The architecture adheres to the **Universal Vectorization Principle**, ensuring 
 ```mermaid
 graph LR
     subgraph UserInteraction["User Interaction Layer"]
-        UI[User/Agent Interface]
+        UI["User/Agent Interface"]
     end
 
     subgraph ProcessingCore["MemoRable Processing Core"]
@@ -40,9 +40,9 @@ graph LR
 
     subgraph MemoryStorage["Three-Tier Memory Storage"]
         direction TB
-        Redis[Redis (Active Memory Buffer)]
-        Weaviate[Weaviate (Vector Embeddings)]
-        MongoDB[MongoDB (Raw Data & Journals)]
+        Redis["Redis (Active Memory Buffer)"]
+        Weaviate["Weaviate (Vector Embeddings)"]
+        MongoDB["MongoDB (Raw Data & Journals)"]
     end
 
     UI --> IP
