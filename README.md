@@ -108,7 +108,7 @@ graph LR
     subgraph ProcessingCore["MemoRable Processing Core"]
         direction LR
         CAM[Conscious Access Model]
-        SSM[Subconscious Scanner Model (Gemini Target)]
+        SSM["Subconscious Scanner Model (Gemini Target)"]
         IP[Input Processor]
         CP[Contextual Processor]
         EP[Emotional Processor]
