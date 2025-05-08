@@ -12,6 +12,8 @@
 
 An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
 
+## UNDER DEVELOPMENT ETA MAY 19TH (collab rules below)
+
 ## 💡 Core Concepts
 
 MemoRable is designed around the following core principles:
