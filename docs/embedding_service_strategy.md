@@ -92,13 +92,13 @@ This diagram illustrates the typical stages within a transformer model when gene
 ```mermaid
 graph TD
     subgraph "Input Stage"
-        RawData[Source Data \n (e.g., Text Document)] --> TextProc(Text Preprocessing \n e.g., Cleaning, Normalization);
+        RawData["Source Data \n (e.g., Text Document)"] --> TextProc("Text Preprocessing \n e.g., Cleaning, Normalization");
         TextProc --> Chunking(Strategic Chunking);
-        Chunking --> Tokenization(Tokenization \n e.g., WordPiece, BPE);
+        Chunking --> Tokenization("Tokenization \n e.g., WordPiece, BPE");
     end
 
     subgraph "Transformer Encoder Model"
-        Tokenization --> InputEmbed(Input Embeddings \n Token + Positional + Segment);
+        Tokenization --> InputEmbed("Input Embeddings \n Token + Positional + Segment");
         InputEmbed --> TE1[Transformer Encoder Layer 1];
         TE1 --> TE2[...];
         TE2 --> TEn[Transformer Encoder Layer N];
@@ -106,7 +106,7 @@ graph TD
     end
 
     subgraph "Output Stage"
-        ContextualizedOutputs --> Pooling(Pooling Strategy \n e.g., Mean/Max Pooling, CLS Token);
+        ContextualizedOutputs --> Pooling("Pooling Strategy \n e.g., Mean/Max Pooling, CLS Token");
         Pooling --> FinalVec[Final Embedding Vector];
         FinalVec --> Storage((Vector Database));
     end
