@@ -12,7 +12,7 @@
 
 An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
 
-## UNDER DEVELOPMENT ETA June 29TH (collab rules below, we lost credits from Google so delayed)
+## UNDER DEVELOPMENT ETA June 29TH (collab rules below)
 
 ## 💡 Core Concepts
 
