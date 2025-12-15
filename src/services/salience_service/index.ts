@@ -49,6 +49,39 @@ export {
   type HealthStatus,
 } from './startup';
 
+// Re-export metrics utilities
+export {
+  metrics,
+  metricsEndpoint,
+  getMetricsSummary,
+  exportPrometheus,
+  exportJSON,
+  resetMetrics,
+  startTimer,
+  withTiming,
+  // Convenience metric functions
+  incMemoriesProcessed,
+  incOpenLoopsCreated,
+  incOpenLoopsClosed,
+  incTimelineEvents,
+  incRetrievals,
+  incBriefings,
+  incFeatureExtractions,
+  incRelationshipUpdates,
+  incErrors,
+  setActiveLoops,
+  setOverdueLoops,
+  setActiveRelationships,
+  setColdRelationships,
+  setWeightsConfidence,
+  observeProcessingTime,
+  observeFeatureExtractionTime,
+  observeRetrievalTime,
+  observeBriefingTime,
+  observeSalienceScore,
+  observeLLMCallTime,
+} from './metrics';
+
 // Re-export individual services
 export { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
 export {
@@ -128,6 +161,16 @@ import { computeSalienceForUser, buildCaptureContext } from './salience_calculat
 import { createOpenLoopsFromFeatures, checkLoopClosures } from './open_loop_tracker';
 import { createTimelineEventsFromFeatures } from './timeline_tracker';
 import { updateRelationshipFromFeatures } from './relationship_tracker';
+import {
+  startTimer,
+  incMemoriesProcessed,
+  incOpenLoopsCreated,
+  incOpenLoopsClosed,
+  incTimelineEvents,
+  incErrors,
+  observeProcessingTime,
+  observeSalienceScore,
+} from './metrics';
 
 // Note: initializeSalienceService is exported from './startup' with enhanced
 // retry logic, health checks, and zero-data handling. Use that version for production.
@@ -144,6 +187,8 @@ export async function enrichMemoryWithSalience(
   llmClient: LLMClient,
   userProfile?: UserProfile
 ): Promise<SalienceCalculationResult> {
+  const endTimer = startTimer();
+
   try {
     const memoryCreatedAt = new Date();
 
@@ -193,8 +238,23 @@ export async function enrichMemoryWithSalience(
       llmClient
     );
 
-    // Log if loops were closed
+    // Record metrics
+    const durationMs = endTimer();
+    observeProcessingTime('llm', durationMs);
+    observeSalienceScore(salience.score);
+    incMemoriesProcessed('llm', 'success');
+
+    // Track created artifacts
+    for (const loop of openLoops) {
+      incOpenLoopsCreated(loop.owner);
+    }
+    for (const event of timelineEvents) {
+      incTimelineEvents(event.type || 'unknown');
+    }
     if (closedLoopIds.length > 0) {
+      for (let i = 0; i < closedLoopIds.length; i++) {
+        incOpenLoopsClosed('auto');
+      }
       console.log(`[SalienceService] Closed ${closedLoopIds.length} open loops`);
     }
 
@@ -206,6 +266,11 @@ export async function enrichMemoryWithSalience(
       timelineEventsCreated: timelineEvents,
     };
   } catch (error) {
+    // Record error metrics
+    observeProcessingTime('llm', endTimer());
+    incMemoriesProcessed('llm', 'error');
+    incErrors('enrichMemoryWithSalience');
+
     console.error('[SalienceService] Error enriching memory:', error);
     return {
       success: false,
@@ -225,6 +290,8 @@ export async function enrichMemoryWithSalienceHeuristic(
   input: SalienceCalculationInput,
   userProfile?: UserProfile
 ): Promise<SalienceCalculationResult> {
+  const endTimer = startTimer();
+
   try {
     const memoryCreatedAt = new Date();
 
@@ -244,6 +311,12 @@ export async function enrichMemoryWithSalienceHeuristic(
       userProfile
     );
 
+    // Record metrics
+    const durationMs = endTimer();
+    observeProcessingTime('heuristic', durationMs);
+    observeSalienceScore(salience.score);
+    incMemoriesProcessed('heuristic', 'success');
+
     // Note: Skip loop/timeline creation with heuristics (less reliable)
 
     return {
@@ -254,6 +327,11 @@ export async function enrichMemoryWithSalienceHeuristic(
       timelineEventsCreated: [],
     };
   } catch (error) {
+    // Record error metrics
+    observeProcessingTime('heuristic', endTimer());
+    incMemoriesProcessed('heuristic', 'error');
+    incErrors('enrichMemoryWithSalienceHeuristic');
+
     console.error('[SalienceService] Error in heuristic enrichment:', error);
     return {
       success: false,

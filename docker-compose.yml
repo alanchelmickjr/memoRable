@@ -10,7 +10,7 @@ services:
       - "${PORT:-3000}:3000"
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
       - REDIS_URL=redis://memorable_redis:6379
       - WEAVIATE_URL=http://memorable_weaviate:8080
       - OLLAMA_API_KEY=${OLLAMA_API_KEY}
@@ -54,7 +54,7 @@ services:
     command: node src/services/nightProcessingService.js
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
     deploy:
       resources:
         limits:
@@ -76,8 +76,9 @@ services:
     ports:
       - "27017:27017"
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+      # Auto-defaults for development; production should use .env with secure values
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER:-memorable_dev}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-memorable_dev_pass}
     volumes:
       - memorable_mongo_data:/data/db
       - memorable_mongo_config:/data/configdb
@@ -100,11 +101,12 @@ services:
   memorable_redis: # Renamed from 'redis'
     image: redis:alpine
     container_name: memorable_redis_cache # Explicit container name
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-memorable_redis_dev} --maxmemory 2gb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # Auto-defaults for development; production should use .env with secure values
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-memorable_redis_dev}
     volumes:
       - memorable_redis_data:/data
     networks:
@@ -206,7 +208,7 @@ services:
       - "8001:8001" # Default port for Ingestion Service
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin
+      - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
       - WEAVIATE_URL=http://memorable_weaviate:8080
       - EMBEDDING_SERVICE_URL=http://memorable_embedding_service:3003 # Consistent with embedding_service definition
       - NNNA_SERVICE_URL=http://memorable_nnna_service:3005 # Assuming NNNA service internal port
@@ -331,7 +333,7 @@ services:
     image: percona/mongodb_exporter:latest
     container_name: memorable_mongo_exporter
     command:
-      - '--mongodb.uri=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@memorable_mongo:27017/memorable?authSource=admin'
+      - '--mongodb.uri=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin'
     networks:
       - memorable_net
     depends_on:
@@ -348,7 +350,7 @@ services:
     container_name: memorable_redis_exporter
     environment:
       - REDIS_ADDR=redis://memorable_redis:6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-memorable_redis_dev}
     networks:
       - memorable_net
     depends_on:
