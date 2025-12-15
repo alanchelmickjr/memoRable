@@ -597,7 +597,17 @@ function categorizeCommitment(description: string): LoopCategory {
 }
 
 /**
+ * Extended OpenLoop with computed overdue flag.
+ * Preserves original status while indicating actual overdue state.
+ */
+export interface OpenLoopWithOverdue extends OpenLoop {
+  /** Computed: true if loop is past due date (original status preserved) */
+  isOverdue: boolean;
+}
+
+/**
  * Get open loops for a user.
+ * Returns loops with computed `isOverdue` flag (original status preserved).
  */
 export async function getOpenLoops(
   userId: string,
@@ -609,7 +619,7 @@ export async function getOpenLoops(
     loopType?: OpenLoopType;
     includeOverdue?: boolean;
   } = {}
-): Promise<OpenLoop[]> {
+): Promise<OpenLoopWithOverdue[]> {
   const query: any = { userId };
 
   if (options.contactId) query.contactId = options.contactId;
@@ -624,18 +634,14 @@ export async function getOpenLoops(
   }
 
   const loops = await collections.openLoops().find(query).sort({ dueDate: 1 }).toArray();
-
-  // Mark overdue loops
   const now = new Date();
-  for (const loop of loops) {
-    if (loop.dueDate && new Date(loop.dueDate) < now && loop.status === 'open') {
-      if (options.includeOverdue !== false) {
-        loop.status = 'overdue';
-      }
-    }
-  }
 
-  return loops;
+  // Add computed isOverdue flag without mutating original status
+  // This preserves DB consistency while giving callers the info they need
+  return loops.map((loop) => ({
+    ...loop,
+    isOverdue: !!(loop.dueDate && new Date(loop.dueDate) < now && loop.status === 'open'),
+  }));
 }
 
 /**
@@ -659,6 +665,7 @@ export async function closeLoop(
 
 /**
  * Check if a new memory closes any existing open loops.
+ * IMPORTANT: Excludes loops created from the same memory to prevent self-closing race condition.
  */
 export async function checkLoopClosures(
   newMemoryText: string,
@@ -677,6 +684,12 @@ export async function checkLoopClosures(
     });
 
     for (const loop of openLoops) {
+      // CRITICAL: Skip loops created from this same memory to prevent self-closing
+      // This fixes a race condition where a loop could be closed by the very memory that created it
+      if (loop.memoryId === memoryId) {
+        continue;
+      }
+
       // Quick heuristic check first
       if (!quickClosureCheck(newMemoryText, loop.description)) {
         continue;
@@ -764,8 +777,28 @@ function heuristicClosureConfidence(memoryText: string, loopDescription: string)
   return Math.min(1, confidence);
 }
 
+/** Timeout for LLM calls in milliseconds (prevents indefinite stalls) */
+const LLM_TIMEOUT_MS = 10000; // 10 seconds
+
+/**
+ * Wrap a promise with a timeout.
+ * Prevents indefinite stalls from slow/stuck LLM calls.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => {
+      setTimeout(() => {
+        console.warn(`[OpenLoopTracker] LLM call timed out after ${timeoutMs}ms`);
+        resolve(fallback);
+      }, timeoutMs);
+    }),
+  ]);
+}
+
 /**
  * Check loop closure with LLM.
+ * Includes timeout protection to prevent pipeline stalls.
  */
 async function checkClosureWithLLM(
   memoryText: string,
@@ -778,11 +811,23 @@ New memory: ${memoryText}
 Does this memory indicate the open loop is closed/completed?
 Return JSON only: {"closed": true/false, "confidence": 0-1, "reasoning": "brief explanation"}`;
 
+  const fallbackResponse: LoopClosureCheckResponse = { closed: false, confidence: 0 };
+
   try {
-    const response = await llmClient.complete(prompt, {
-      temperature: 0.1,
-      maxTokens: 200,
-    });
+    // Wrap LLM call with timeout to prevent indefinite stalls
+    const response = await withTimeout(
+      llmClient.complete(prompt, {
+        temperature: 0.1,
+        maxTokens: 200,
+      }),
+      LLM_TIMEOUT_MS,
+      '' // Empty string triggers fallback in parsing
+    );
+
+    // Handle timeout (empty response)
+    if (!response) {
+      return fallbackResponse;
+    }
 
     // Clean and parse response
     let cleaned = response.trim();
@@ -793,7 +838,7 @@ Return JSON only: {"closed": true/false, "confidence": 0-1, "reasoning": "brief 
     return JSON.parse(cleaned.trim());
   } catch (error) {
     console.error('[OpenLoopTracker] Error checking closure with LLM:', error);
-    return { closed: false, confidence: 0 };
+    return fallbackResponse;
   }
 }
 

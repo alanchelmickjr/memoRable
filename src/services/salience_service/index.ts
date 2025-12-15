@@ -53,6 +53,7 @@ export {
   getUpcomingDueLoops,
   markReminderSent,
   abandonLoop,
+  type OpenLoopWithOverdue,
 } from './open_loop_tracker';
 export {
   createTimelineEventsFromFeatures,
@@ -152,26 +153,28 @@ export async function enrichMemoryWithSalience(
       userProfile
     );
 
-    // Step 4: Create open loops from commitments
-    const openLoops = await createOpenLoopsFromFeatures(
-      features,
-      input.userId,
-      input.memoryId,
-      memoryCreatedAt
-    );
-
-    // Step 5: Create timeline events for other people
-    const timelineEvents = await createTimelineEventsFromFeatures(
-      features,
-      input.userId,
-      input.memoryId,
-      memoryCreatedAt
-    );
-
-    // Step 6: Update relationship patterns
-    await updateRelationshipFromFeatures(input.userId, features, memoryCreatedAt);
+    // Steps 4, 5, 6: Run in parallel (all independent - depend only on features)
+    const [openLoops, timelineEvents] = await Promise.all([
+      // Step 4: Create open loops from commitments
+      createOpenLoopsFromFeatures(
+        features,
+        input.userId,
+        input.memoryId,
+        memoryCreatedAt
+      ),
+      // Step 5: Create timeline events for other people
+      createTimelineEventsFromFeatures(
+        features,
+        input.userId,
+        input.memoryId,
+        memoryCreatedAt
+      ),
+      // Step 6: Update relationship patterns (no return value needed)
+      updateRelationshipFromFeatures(input.userId, features, memoryCreatedAt),
+    ]);
 
     // Step 7: Check if this memory closes any existing loops
+    // Runs AFTER loop creation to ensure consistent state (excludes same-memory loops)
     const closedLoopIds = await checkLoopClosures(
       input.text,
       features,
