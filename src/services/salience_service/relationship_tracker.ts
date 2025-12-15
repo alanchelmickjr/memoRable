@@ -17,7 +17,7 @@ import type {
   ExtractedFeatures,
   OpenLoop,
 } from './models';
-import { collections, getOrCreateContact, type ContactDocument } from './database';
+import { collections, getOrCreateContact, batchGetOrCreateContacts, type ContactDocument } from './database';
 
 /**
  * Update relationship pattern when an interaction occurs.
@@ -435,6 +435,7 @@ export async function getActiveRelationships(
 
 /**
  * Update relationship from memory/interaction features.
+ * Uses batch contact lookup for efficiency (1 DB call instead of N).
  * Gracefully handles errors - continues processing remaining people on failure.
  */
 export async function updateRelationshipFromFeatures(
@@ -442,12 +443,18 @@ export async function updateRelationshipFromFeatures(
   features: ExtractedFeatures,
   memoryCreatedAt: Date = new Date()
 ): Promise<void> {
-  // Update patterns for all mentioned people
-  for (const personName of features.peopleMentioned) {
-    try {
-      const contact = await getOrCreateContact(userId, personName);
+  const personNames = features.peopleMentioned;
+  if (personNames.length === 0) return;
 
-      if (contact._id) {
+  // Batch lookup all contacts in one DB call
+  const contactsMap = await batchGetOrCreateContacts(userId, personNames);
+
+  // Update patterns for all mentioned people
+  for (const personName of personNames) {
+    try {
+      const contact = contactsMap.get(personName.toLowerCase());
+
+      if (contact?._id) {
         await recordInteraction(
           userId,
           contact._id,
