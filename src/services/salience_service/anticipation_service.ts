@@ -317,9 +317,9 @@ export async function observeContext(
 }
 
 /**
- * Record feedback on surfaced predictions
+ * Record feedback on surfaced predictions (RL signal for pattern learning)
  */
-export async function recordFeedback(
+export async function recordPatternFeedback(
   userId: string,
   feedback: FeedbackSignal
 ): Promise<void> {
