@@ -5,14 +5,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Hume.ai](https://img.shields.io/badge/Powered%20by-Hume.ai-FF69B4)](https://hume.ai)
-[![Demo](https://img.shields.io/badge/Live%20Demo-mindfulmoments.io-blue)](https://mindfulmoments.io)
+[![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Redis](https://img.shields.io/badge/Redis-%23DC382D.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
 [![Weaviate](https://img.shields.io/badge/Weaviate-%23FF5F1F.svg?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/)
 
-An advanced AI memory system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Experience it live at [mindfulmoments.io](https://mindfulmoments.io) - your companion for mindfulness and personal growth through AI-powered emotional mirroring.
-
-## UNDER DEVELOPMENT ETA June 29TH (collab rules below)
+A modular AI memory overlay system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Deploy as a standalone service or integrate as a memory layer for your AI applications.
 
 ## 💡 Core Concepts
 
@@ -418,10 +416,6 @@ For insights into our current thinking on key components, you might find the fol
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 Try it Live
-
-Experience MemoRable in action at [mindfulmoments.io](https://mindfulmoments.io) - a mindfulness and mirroring application that helps you understand how AI and the world perceive you, supporting your personal development and success journey.
 
 ## 🙏 Acknowledgments
 
