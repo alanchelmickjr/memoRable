@@ -67,7 +67,7 @@ import {
   // Anticipation service (predictive memory)
   initAnticipationService,
   observeContext,
-  recordFeedback,
+  recordPatternFeedback,
   getAnticipatedContext,
   getPatternStats,
   generateDayAnticipation,
@@ -1147,7 +1147,7 @@ function createServer(): Server {
             timestamp: now.toISOString(),
           };
 
-          await recordFeedback(CONFIG.defaultUserId, feedback);
+          await recordPatternFeedback(CONFIG.defaultUserId, feedback);
 
           return {
             content: [

@@ -192,7 +192,7 @@ export {
 export {
   initAnticipationService,
   observeContext,
-  recordFeedback,
+  recordPatternFeedback,
   getAnticipatedContext,
   getPatternStats,
   generateDayAnticipation,
