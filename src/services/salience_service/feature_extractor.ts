@@ -270,13 +270,29 @@ function getEmptyFeatures(): ExtractedFeatures {
 }
 
 /**
- * Escape text for safe insertion into prompt.
+ * Maximum text length to send to LLM (characters).
+ * Prevents cost overruns and potential DoS via huge inputs.
+ */
+const MAX_PROMPT_TEXT_LENGTH = 10000;
+
+/**
+ * Escape and sanitize text for safe insertion into LLM prompt.
+ * Prevents prompt injection and limits resource usage.
  */
 function escapeForPrompt(text: string): string {
-  return text
+  // Truncate to prevent cost overruns
+  let sanitized = text.slice(0, MAX_PROMPT_TEXT_LENGTH);
+
+  // Remove null bytes and other control characters (except \n, \t, \r)
+  sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+  // Escape special characters for JSON string
+  return sanitized
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n');
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
 }
 
 /**

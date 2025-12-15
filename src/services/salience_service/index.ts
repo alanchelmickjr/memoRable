@@ -41,6 +41,8 @@ export {
   buildCaptureContext,
   calculateDecayModifier,
   calculateRetrievalBoost,
+  invalidateWeightsCache,
+  clearWeightsCache,
 } from './salience_calculator';
 export {
   createOpenLoopsFromFeatures,

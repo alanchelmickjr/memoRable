@@ -25,11 +25,12 @@ import type {
   ExtractedMutualAgreement,
   LoopClosureCheckResponse,
 } from './models';
-import { collections, getOrCreateContact } from './database';
+import { collections, getOrCreateContact, batchGetOrCreateContacts, type ContactDocument } from './database';
 import type { LLMClient } from './feature_extractor';
 
 /**
  * Create open loops from extracted features.
+ * Uses batch contact lookup for efficiency (1 DB call instead of N).
  */
 export async function createOpenLoopsFromFeatures(
   features: ExtractedFeatures,
@@ -39,31 +40,55 @@ export async function createOpenLoopsFromFeatures(
 ): Promise<OpenLoop[]> {
   const loops: OpenLoop[] = [];
 
-  // Process commitments (both made and received)
+  // Step 1: Collect all person names that need contact lookup
+  const personNames: string[] = [];
+
   for (const commitment of features.commitments) {
-    const loop = await createLoopFromCommitment(commitment, userId, memoryId, memoryCreatedAt);
-    if (loop) loops.push(loop);
+    const party = commitment.type === 'made' ? commitment.to : commitment.from;
+    if (party && party !== 'unknown') personNames.push(party);
   }
 
-  // Process requests made
   for (const request of features.requestsMade) {
-    const loop = await createLoopFromRequest(request, userId, memoryId, memoryCreatedAt);
-    if (loop) loops.push(loop);
+    const isUserRequest = request.whoRequested === 'self';
+    const party = isUserRequest ? request.fromWhom : request.whoRequested;
+    if (party && party !== 'unknown') personNames.push(party);
   }
 
-  // Process mutual agreements
   for (const agreement of features.mutualAgreements) {
-    const loop = await createLoopFromAgreement(agreement, userId, memoryId, memoryCreatedAt);
+    const otherParties = agreement.parties.filter(
+      (p) => p.toLowerCase() !== 'self' && p.toLowerCase() !== 'me'
+    );
+    personNames.push(...otherParties);
+  }
+
+  // Step 2: Batch lookup/create all contacts in one DB call
+  const contactsMap = await batchGetOrCreateContacts(userId, personNames);
+
+  // Step 3: Process commitments with cached contacts
+  for (const commitment of features.commitments) {
+    const loop = createLoopFromCommitmentSync(commitment, userId, memoryId, memoryCreatedAt, contactsMap);
     if (loop) loops.push(loop);
   }
 
-  // Process questions asked (waiting for answers)
+  // Step 4: Process requests with cached contacts
+  for (const request of features.requestsMade) {
+    const loop = createLoopFromRequestSync(request, userId, memoryId, memoryCreatedAt, contactsMap);
+    if (loop) loops.push(loop);
+  }
+
+  // Step 5: Process mutual agreements with cached contacts
+  for (const agreement of features.mutualAgreements) {
+    const loop = createLoopFromAgreementSync(agreement, userId, memoryId, memoryCreatedAt, contactsMap);
+    if (loop) loops.push(loop);
+  }
+
+  // Step 6: Process questions asked (no contact lookup needed)
   for (const question of features.questionsAsked) {
     const loop = createLoopFromQuestion(question, userId, memoryId, memoryCreatedAt);
     loops.push(loop);
   }
 
-  // Store all loops
+  // Step 7: Batch insert all loops
   if (loops.length > 0) {
     await collections.openLoops().insertMany(loops);
   }
@@ -72,7 +97,68 @@ export async function createOpenLoopsFromFeatures(
 }
 
 /**
- * Create an open loop from a commitment.
+ * Create an open loop from a commitment (sync version with cached contacts).
+ */
+function createLoopFromCommitmentSync(
+  commitment: ExtractedCommitment,
+  userId: string,
+  memoryId: string,
+  createdAt: Date,
+  contactsMap: Map<string, ContactDocument>
+): OpenLoop | null {
+  // Determine owner: who has to do something?
+  let owner: LoopOwner;
+  let otherParty: string;
+
+  if (commitment.type === 'made') {
+    owner = 'self';
+    otherParty = commitment.to;
+  } else {
+    owner = 'them';
+    otherParty = commitment.from;
+  }
+
+  // Skip if no clear other party
+  if (!otherParty || otherParty === 'unknown') {
+    return null;
+  }
+
+  // Get contact from cache
+  const contact = contactsMap.get(otherParty.toLowerCase());
+  if (!contact) return null;
+
+  // Parse due date
+  const { dueDate, softDeadline } = parseDueDate(commitment.byWhen, commitment.dueType, createdAt);
+
+  // Determine urgency
+  const urgency = determineUrgency(dueDate, commitment.dueType);
+
+  // Categorize the commitment
+  const category = categorizeCommitment(commitment.what);
+
+  return {
+    id: uuidv4(),
+    userId,
+    memoryId,
+    loopType: commitment.type === 'made' ? 'commitment_made' : 'commitment_received',
+    description: commitment.what,
+    category,
+    owner,
+    otherParty,
+    contactId: contact._id,
+    createdAt: createdAt.toISOString(),
+    dueDate: dueDate?.toISOString(),
+    softDeadline: softDeadline?.toISOString(),
+    urgency,
+    status: 'open',
+    remindedCount: 0,
+    escalateAfterDays: getEscalationDays(urgency),
+    nextReminder: calculateNextReminder(dueDate, softDeadline, createdAt)?.toISOString(),
+  };
+}
+
+/**
+ * Create an open loop from a commitment (async version for standalone use).
  */
 async function createLoopFromCommitment(
   commitment: ExtractedCommitment,
@@ -131,7 +217,51 @@ async function createLoopFromCommitment(
 }
 
 /**
- * Create an open loop from a request.
+ * Create an open loop from a request (sync version with cached contacts).
+ */
+function createLoopFromRequestSync(
+  request: ExtractedRequest,
+  userId: string,
+  memoryId: string,
+  createdAt: Date,
+  contactsMap: Map<string, ContactDocument>
+): OpenLoop | null {
+  const isUserRequest = request.whoRequested === 'self';
+  const otherParty = isUserRequest ? request.fromWhom : request.whoRequested;
+
+  if (!otherParty || otherParty === 'unknown') {
+    return null;
+  }
+
+  const contact = contactsMap.get(otherParty.toLowerCase());
+  if (!contact) return null;
+
+  const { dueDate, softDeadline } = parseDueDate(request.byWhen, 'implicit', createdAt);
+  const urgency = determineUrgency(dueDate, 'implicit');
+
+  return {
+    id: uuidv4(),
+    userId,
+    memoryId,
+    loopType: 'information_waiting',
+    description: request.what,
+    category: 'information',
+    owner: isUserRequest ? 'them' : 'self',
+    otherParty,
+    contactId: contact._id,
+    createdAt: createdAt.toISOString(),
+    dueDate: dueDate?.toISOString(),
+    softDeadline: softDeadline?.toISOString(),
+    urgency,
+    status: 'open',
+    remindedCount: 0,
+    escalateAfterDays: 7,
+    nextReminder: calculateNextReminder(dueDate, softDeadline, createdAt)?.toISOString(),
+  };
+}
+
+/**
+ * Create an open loop from a request (async version for standalone use).
  */
 async function createLoopFromRequest(
   request: ExtractedRequest,
@@ -173,7 +303,55 @@ async function createLoopFromRequest(
 }
 
 /**
- * Create an open loop from a mutual agreement.
+ * Create an open loop from a mutual agreement (sync version with cached contacts).
+ */
+function createLoopFromAgreementSync(
+  agreement: ExtractedMutualAgreement,
+  userId: string,
+  memoryId: string,
+  createdAt: Date,
+  contactsMap: Map<string, ContactDocument>
+): OpenLoop | null {
+  // Get the other party (not self)
+  const otherParties = agreement.parties.filter(
+    (p) => p.toLowerCase() !== 'self' && p.toLowerCase() !== 'me'
+  );
+
+  if (otherParties.length === 0) {
+    return null;
+  }
+
+  const otherParty = otherParties[0];
+  const contact = contactsMap.get(otherParty.toLowerCase());
+  if (!contact) return null;
+
+  // Parse timeframe
+  const { dueDate, softDeadline } = parseTimeframe(agreement.timeframe, createdAt);
+  const urgency = determineUrgency(dueDate, agreement.specificity === 'specific' ? 'explicit' : 'implicit');
+
+  return {
+    id: uuidv4(),
+    userId,
+    memoryId,
+    loopType: 'mutual_agreement',
+    description: agreement.what,
+    category: categorizeCommitment(agreement.what),
+    owner: 'mutual',
+    otherParty,
+    contactId: contact._id,
+    createdAt: createdAt.toISOString(),
+    dueDate: dueDate?.toISOString(),
+    softDeadline: softDeadline?.toISOString(),
+    urgency,
+    status: 'open',
+    remindedCount: 0,
+    escalateAfterDays: 14, // More lenient for mutual agreements
+    nextReminder: calculateNextReminder(dueDate, softDeadline, createdAt)?.toISOString(),
+  };
+}
+
+/**
+ * Create an open loop from a mutual agreement (async version for standalone use).
  */
 async function createLoopFromAgreement(
   agreement: ExtractedMutualAgreement,

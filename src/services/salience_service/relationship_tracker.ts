@@ -21,6 +21,7 @@ import { collections, getOrCreateContact, type ContactDocument } from './databas
 
 /**
  * Update relationship pattern when an interaction occurs.
+ * Gracefully handles errors - returns minimal pattern on failure.
  */
 export async function recordInteraction(
   userId: string,
@@ -29,14 +30,102 @@ export async function recordInteraction(
   interactionDate: Date = new Date(),
   features?: ExtractedFeatures
 ): Promise<RelationshipPattern> {
-  const patternsCollection = collections.relationshipPatterns();
+  try {
+    const patternsCollection = collections.relationshipPatterns();
 
-  // Get or create pattern
-  let pattern = await patternsCollection.findOne({ userId, contactId });
+    // Get or create pattern
+    let pattern = await patternsCollection.findOne({ userId, contactId });
 
-  if (!pattern) {
-    // Create new pattern
-    pattern = {
+    if (!pattern) {
+      // Create new pattern
+      pattern = {
+        id: uuidv4(),
+        userId,
+        contactId,
+        contactName,
+        firstInteraction: interactionDate.toISOString(),
+        lastInteraction: interactionDate.toISOString(),
+        totalInteractions: 1,
+        interactionTrend: 'stable' as EngagementTrend,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await patternsCollection.insertOne(pattern);
+      return pattern;
+    }
+
+    // Calculate gap since last interaction
+    const lastInteraction = pattern.lastInteraction ? new Date(pattern.lastInteraction) : null;
+    let gap: number | null = null;
+
+    if (lastInteraction) {
+      gap = Math.ceil(
+        (interactionDate.getTime() - lastInteraction.getTime()) / (1000 * 60 * 60 * 24)
+      );
+    }
+
+    // Update rolling average of days between interactions
+    let newAvg = pattern.avgDaysBetweenInteractions;
+    if (gap !== null && gap > 0) {
+      if (newAvg) {
+        // Exponential moving average with alpha=0.3
+        newAvg = newAvg * 0.7 + gap * 0.3;
+      } else {
+        newAvg = gap;
+      }
+    }
+
+    // Update typical interaction days
+    const dayOfWeek = interactionDate.toLocaleDateString('en-US', { weekday: 'long' });
+    const typicalDays = updateTypicalDays(pattern.typicalInteractionDays || [], dayOfWeek);
+
+    // Update typical time of day
+    const hour = interactionDate.getHours();
+    const timeOfDay = getTimeOfDayLabel(hour);
+    const typicalTimes = updateTypicalTimes(pattern.typicalTimeOfDay || [], timeOfDay);
+
+    // Calculate trend
+    const trend = calculateTrend(pattern, gap);
+
+    // Calculate suggested next interaction
+    const suggestedNext = newAvg
+      ? new Date(interactionDate.getTime() + newAvg * 24 * 60 * 60 * 1000)
+      : undefined;
+
+    // Update pattern
+    await patternsCollection.updateOne(
+      { userId, contactId },
+      {
+        $set: {
+          lastInteraction: interactionDate.toISOString(),
+          avgDaysBetweenInteractions: newAvg,
+          typicalInteractionDays: typicalDays,
+          typicalTimeOfDay: typicalTimes,
+          interactionTrend: trend,
+          suggestedNextInteraction: suggestedNext?.toISOString(),
+          daysSinceLastInteraction: 0,
+          updatedAt: new Date().toISOString(),
+        },
+        $inc: { totalInteractions: 1 },
+      }
+    );
+
+    return {
+      ...pattern,
+      lastInteraction: interactionDate.toISOString(),
+      totalInteractions: pattern.totalInteractions + 1,
+      avgDaysBetweenInteractions: newAvg,
+      typicalInteractionDays: typicalDays,
+      typicalTimeOfDay: typicalTimes,
+      interactionTrend: trend,
+      suggestedNextInteraction: suggestedNext?.toISOString(),
+      daysSinceLastInteraction: 0,
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('[RelationshipTracker] Error recording interaction:', error);
+    // Return minimal pattern on error
+    return {
       id: uuidv4(),
       userId,
       contactId,
@@ -47,79 +136,7 @@ export async function recordInteraction(
       interactionTrend: 'stable' as EngagementTrend,
       updatedAt: new Date().toISOString(),
     };
-
-    await patternsCollection.insertOne(pattern);
-    return pattern;
   }
-
-  // Calculate gap since last interaction
-  const lastInteraction = pattern.lastInteraction ? new Date(pattern.lastInteraction) : null;
-  let gap: number | null = null;
-
-  if (lastInteraction) {
-    gap = Math.ceil(
-      (interactionDate.getTime() - lastInteraction.getTime()) / (1000 * 60 * 60 * 24)
-    );
-  }
-
-  // Update rolling average of days between interactions
-  let newAvg = pattern.avgDaysBetweenInteractions;
-  if (gap !== null && gap > 0) {
-    if (newAvg) {
-      // Exponential moving average with alpha=0.3
-      newAvg = newAvg * 0.7 + gap * 0.3;
-    } else {
-      newAvg = gap;
-    }
-  }
-
-  // Update typical interaction days
-  const dayOfWeek = interactionDate.toLocaleDateString('en-US', { weekday: 'long' });
-  const typicalDays = updateTypicalDays(pattern.typicalInteractionDays || [], dayOfWeek);
-
-  // Update typical time of day
-  const hour = interactionDate.getHours();
-  const timeOfDay = getTimeOfDayLabel(hour);
-  const typicalTimes = updateTypicalTimes(pattern.typicalTimeOfDay || [], timeOfDay);
-
-  // Calculate trend
-  const trend = calculateTrend(pattern, gap);
-
-  // Calculate suggested next interaction
-  const suggestedNext = newAvg
-    ? new Date(interactionDate.getTime() + newAvg * 24 * 60 * 60 * 1000)
-    : undefined;
-
-  // Update pattern
-  await patternsCollection.updateOne(
-    { userId, contactId },
-    {
-      $set: {
-        lastInteraction: interactionDate.toISOString(),
-        avgDaysBetweenInteractions: newAvg,
-        typicalInteractionDays: typicalDays,
-        typicalTimeOfDay: typicalTimes,
-        interactionTrend: trend,
-        suggestedNextInteraction: suggestedNext?.toISOString(),
-        daysSinceLastInteraction: 0,
-        updatedAt: new Date().toISOString(),
-      },
-      $inc: { totalInteractions: 1 },
-    }
-  );
-
-  return {
-    ...pattern,
-    lastInteraction: interactionDate.toISOString(),
-    totalInteractions: pattern.totalInteractions + 1,
-    avgDaysBetweenInteractions: newAvg,
-    typicalInteractionDays: typicalDays,
-    typicalTimeOfDay: typicalTimes,
-    interactionTrend: trend,
-    suggestedNextInteraction: suggestedNext?.toISOString(),
-    daysSinceLastInteraction: 0,
-    updatedAt: new Date().toISOString(),
-  };
 }
 
 /**
@@ -418,6 +435,7 @@ export async function getActiveRelationships(
 
 /**
  * Update relationship from memory/interaction features.
+ * Gracefully handles errors - continues processing remaining people on failure.
  */
 export async function updateRelationshipFromFeatures(
   userId: string,
@@ -426,16 +444,21 @@ export async function updateRelationshipFromFeatures(
 ): Promise<void> {
   // Update patterns for all mentioned people
   for (const personName of features.peopleMentioned) {
-    const contact = await getOrCreateContact(userId, personName);
+    try {
+      const contact = await getOrCreateContact(userId, personName);
 
-    if (contact._id) {
-      await recordInteraction(
-        userId,
-        contact._id,
-        personName,
-        memoryCreatedAt,
-        features
-      );
+      if (contact._id) {
+        await recordInteraction(
+          userId,
+          contact._id,
+          personName,
+          memoryCreatedAt,
+          features
+        );
+      }
+    } catch (error) {
+      console.error(`[RelationshipTracker] Error updating relationship for ${personName}:`, error);
+      // Continue with other people
     }
   }
 }
