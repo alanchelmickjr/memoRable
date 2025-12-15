@@ -1,52 +1,414 @@
-# MemoRable 🧠 - Total Recall
+# MemoRable - Context-Aware Memory for AI Agents
 
-[![AWS Marketplace](https://img.shields.io/badge/AWS%20Marketplace-Available-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/marketplace)
-[![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=for-the-badge)](https://github.com/alanchelmickjr/memoRable)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue?style=for-the-badge)](https://modelcontextprotocol.io)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Ready-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
+[![Mem0 Compatible](https://img.shields.io/badge/Mem0-Compatible-purple?style=for-the-badge)](https://mem0.ai)
 
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?logo=python)](https://python.org)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker)](https://www.docker.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
-
-**Infrastructure:**
-[![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Weaviate](https://img.shields.io/badge/Weaviate-%23FF5F1F.svg?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/)
-[![Redis](https://img.shields.io/badge/Redis-%23DC382D.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
-[![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
-
-**Integrations:**
-[![Hume.ai](https://img.shields.io/badge/Hume.ai-Emotion%20AI-FF69B4)](https://hume.ai)
-[![Anthropic](https://img.shields.io/badge/Anthropic-Claude-191919?logo=anthropic)](https://anthropic.com)
-[![OpenAI](https://img.shields.io/badge/OpenAI-Compatible-412991?logo=openai)](https://openai.com)
 
 ---
 
-> **Open Source Memory Preprocessor** - This is the open source foundation for the MemoRable memory overlay system. Deploy it today to start building intelligent memory for your AI applications, with a clear upgrade path to our managed commercial offering.
+**Memory that understands context.** MemoRable is a memory layer for AI agents that knows what matters based on where you are, who you're with, and what you're doing.
 
-A modular AI memory overlay system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Deploy as a standalone service or integrate as a memory layer for your AI applications.
+```
+You: "I'm at the park meeting Judy"
+MemoRable: Here's what you need to know:
+  - You owe her feedback on the proposal (3 days overdue)
+  - Her daughter's recital is Thursday
+  - Last time you discussed: Series B funding concerns
+  - Sensitivity: Don't bring up the merger
+```
 
 ---
 
-## 🚀 AWS Deployment (Recommended)
+## Quick Start: Claude Code / VS Code
 
-Deploy MemoRable to AWS in minutes using our production-ready configuration.
+Add MemoRable to your Claude Code MCP settings:
 
-### One-Click AWS Deployment
+```json
+{
+  "mcpServers": {
+    "memorable": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/memoRable/src/services/mcp_server/index.ts"],
+      "env": {
+        "MONGODB_URI": "mongodb://localhost:27017/memorable",
+        "ANTHROPIC_API_KEY": "sk-ant-xxx"
+      }
+    }
+  }
+}
+```
+
+Or with Docker:
+
+```json
+{
+  "mcpServers": {
+    "memorable": {
+      "command": "docker",
+      "args": ["exec", "-i", "memorable_mcp_server", "node", "dist/index.js"]
+    }
+  }
+}
+```
+
+Now in Claude Code you can say:
+- *"Remember that Sarah mentioned her startup is closing Series B next month"*
+- *"What do I owe Mike?"*
+- *"I'm meeting with the engineering team - what's relevant?"*
+- *"Forget everything about Project X"*
+
+---
+
+## MCP Tools Reference
+
+### Context Management
+| Tool | Description |
+|------|-------------|
+| `set_context` | Set where you are, who you're with. Auto-surfaces relevant memories. |
+| `whats_relevant` | Get what matters NOW based on current context |
+| `clear_context` | Clear context when leaving/ending |
+
+### Memory Operations
+| Tool | Description |
+|------|-------------|
+| `store_memory` | Store with automatic salience scoring |
+| `recall` | Search memories by query, person, or topic |
+| `get_briefing` | Pre-conversation briefing about a person |
+| `forget` | Suppress, archive, or delete a memory |
+| `forget_person` | Forget all memories about someone |
+| `restore` | Bring back a forgotten memory |
+| `reassociate` | Re-link memory to different people/topics/projects |
+| `export_memories` | Export for backup or portability |
+
+### Commitment Tracking
+| Tool | Description |
+|------|-------------|
+| `list_loops` | Open commitments (you owe / they owe) |
+| `close_loop` | Mark a commitment as done |
+| `get_status` | System status and metrics |
+
+---
+
+## Framework Examples
+
+### Python: AI Agent with Memory
+
+```python
+# pip install memorable-sdk anthropic
+
+from memorable import MemorableClient, ContextFrame
+from anthropic import Anthropic
+
+# Initialize
+memory = MemorableClient(
+    mongo_uri="mongodb://localhost:27017/memorable",
+    user_id="agent-001"
+)
+claude = Anthropic()
+
+# Set context when starting a task
+memory.set_context(
+    location="vscode",
+    activity="coding",
+    project="payment-service"
+)
+
+# Store memories during conversation
+memory.store(
+    "User wants to refactor the PaymentProcessor class to use async/await",
+    context={"file": "src/payments/processor.py", "priority": "high"}
+)
+
+# Get relevant context for the current task
+relevant = memory.whats_relevant()
+print(f"Related memories: {len(relevant.memories)}")
+print(f"Open tasks: {len(relevant.open_loops)}")
+
+# Build context-aware prompt
+system_prompt = f"""You are a coding assistant with memory.
+
+Current context:
+- Project: {relevant.context.project}
+- Recent decisions: {relevant.recent_decisions}
+- Open tasks: {[l.description for l in relevant.open_loops]}
+
+Previous relevant work:
+{chr(10).join([m.text for m in relevant.memories[:5]])}
+"""
+
+# Query with context
+response = claude.messages.create(
+    model="claude-sonnet-4-20250514",
+    system=system_prompt,
+    messages=[{"role": "user", "content": "Continue the refactoring"}]
+)
+
+# Track commitments automatically
+memory.store(response.content[0].text)  # Extracts action items automatically
+```
+
+### Python: Meeting Assistant
+
+```python
+from memorable import MemorableClient
+
+memory = MemorableClient(user_id="user-123")
+
+# Before meeting with Sarah
+briefing = memory.get_briefing("Sarah Chen")
+
+print(f"""
+MEETING BRIEFING: Sarah Chen
+============================
+Last interaction: {briefing.last_interaction}
+Relationship trend: {briefing.engagement_trend}
+
+YOU OWE HER:
+{chr(10).join([f"  - {l.description}" for l in briefing.you_owe_them])}
+
+SHE OWES YOU:
+{chr(10).join([f"  - {l.description}" for l in briefing.they_owe_you])}
+
+HER UPCOMING EVENTS:
+{chr(10).join([f"  - {e.description} ({e.event_date})" for e in briefing.upcoming_events])}
+
+SENSITIVITIES:
+{chr(10).join([f"  - {s}" for s in briefing.sensitivities])}
+""")
+
+# During meeting - set context
+memory.set_context(people=["Sarah Chen"], activity="meeting")
+
+# After meeting - store notes (auto-extracts commitments)
+memory.store("""
+Met with Sarah about Q4 planning.
+- She'll send the budget spreadsheet by Friday
+- I need to review the API proposal by next Tuesday
+- Her team is stressed about the reorg, be supportive
+- Daughter Emma starts kindergarten next week
+""")
+
+# Check what got extracted
+status = memory.get_status()
+print(f"Open loops created: {status.open_loops_count}")
+```
+
+### TypeScript: Express Middleware
+
+```typescript
+// npm install @memorable/sdk express
+
+import { MemorableClient, contextMiddleware } from '@memorable/sdk';
+import express from 'express';
+
+const app = express();
+const memory = new MemorableClient({
+  mongoUri: process.env.MONGODB_URI,
+});
+
+// Add memory context to all requests
+app.use(contextMiddleware(memory));
+
+// API endpoint with memory
+app.post('/api/chat', async (req, res) => {
+  const { message, userId, conversationId } = req.body;
+
+  // Get relevant context
+  const context = await memory.setContext(userId, {
+    activity: 'chat',
+    metadata: { conversationId }
+  });
+
+  // Store the user message
+  await memory.store(userId, message, {
+    source: 'user',
+    conversationId
+  });
+
+  // Build context-aware response
+  const relevant = await memory.recall(userId, message, { limit: 5 });
+
+  // ... generate response with context ...
+
+  // Store assistant response (extracts commitments)
+  await memory.store(userId, response, {
+    source: 'assistant',
+    conversationId
+  });
+
+  res.json({ response, context: context.suggestedTopics });
+});
+
+// Health endpoint
+app.get('/health', memory.healthMiddleware());
+
+// Metrics endpoint (Prometheus compatible)
+app.get('/metrics', memory.metricsMiddleware());
+
+app.listen(3000);
+```
+
+### TypeScript: Project-Aware Coding Assistant
+
+```typescript
+import { MemorableClient } from '@memorable/sdk';
+import * as vscode from 'vscode';
+
+const memory = new MemorableClient({
+  mongoUri: process.env.MONGODB_URI,
+  userId: 'developer-1'
+});
+
+// When switching files
+vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+  if (!editor) return;
+
+  const filePath = editor.document.fileName;
+  const project = vscode.workspace.name;
+
+  // Update context
+  const context = await memory.setContext({
+    location: 'vscode',
+    activity: 'coding',
+    metadata: {
+      file: filePath,
+      project,
+      language: editor.document.languageId
+    }
+  });
+
+  // Show relevant memories in sidebar
+  if (context.relevantMemories.length > 0) {
+    showMemorySidebar(context.relevantMemories);
+  }
+});
+
+// Store decisions and learnings
+async function rememberDecision(decision: string, rationale: string) {
+  await memory.store(
+    `DECISION: ${decision}\nRATIONALE: ${rationale}`,
+    {
+      tags: ['decision', 'architecture'],
+      project: vscode.workspace.name
+    }
+  );
+}
+
+// Query past decisions
+async function getRelatedDecisions(topic: string) {
+  return memory.recall(topic, {
+    tags: ['decision'],
+    project: vscode.workspace.name,
+    limit: 10
+  });
+}
+```
+
+---
+
+## Mem0 Integration
+
+MemoRable can work alongside or replace Mem0 for enhanced memory capabilities:
+
+```python
+from memorable import MemorableClient
+from mem0 import Memory as Mem0Memory
+
+# Use MemoRable for salience + Mem0 for vectors
+class HybridMemory:
+    def __init__(self):
+        self.memorable = MemorableClient()
+        self.mem0 = Mem0Memory()
+
+    def add(self, text: str, user_id: str, metadata: dict = None):
+        # MemoRable handles: salience, commitments, relationships
+        result = self.memorable.store(user_id, text, metadata)
+
+        # Mem0 handles: vector embeddings, semantic search
+        self.mem0.add(text, user_id=user_id, metadata={
+            **metadata,
+            'salience_score': result.salience.score,
+            'memory_id': result.memory_id
+        })
+
+        return result
+
+    def search(self, query: str, user_id: str, **kwargs):
+        # Semantic search via Mem0
+        mem0_results = self.mem0.search(query, user_id=user_id, **kwargs)
+
+        # Boost by MemoRable salience scores
+        for result in mem0_results:
+            memorable_data = self.memorable.get(result['metadata']['memory_id'])
+            result['boosted_score'] = (
+                result['score'] * 0.6 +
+                (memorable_data.salience_score / 100) * 0.4
+            )
+
+        return sorted(mem0_results, key=lambda x: x['boosted_score'], reverse=True)
+
+    def get_briefing(self, user_id: str, person: str):
+        # MemoRable-specific: pre-conversation intelligence
+        return self.memorable.get_briefing(user_id, person)
+```
+
+### Migration from Mem0
+
+```python
+from memorable import MemorableClient
+from mem0 import Memory
+
+# Export from Mem0
+mem0 = Memory()
+all_memories = mem0.get_all(user_id="user-123")
+
+# Import to MemoRable with salience enrichment
+memorable = MemorableClient()
+
+for mem in all_memories:
+    memorable.store(
+        user_id="user-123",
+        text=mem['memory'],
+        context={
+            'imported_from': 'mem0',
+            'original_id': mem['id'],
+            'created_at': mem['created_at']
+        }
+    )
+
+print(f"Migrated {len(all_memories)} memories with salience enrichment")
+```
+
+---
+
+## AWS Deployment
+
+### Quick Deploy
 
 ```bash
-# Clone and deploy
 git clone https://github.com/alanchelmickjr/memoRable.git
 cd memorable
 
-# Configure AWS credentials
-aws configure
+# Auto-generates secure credentials
+npm run setup
 
-# Deploy infrastructure (DocumentDB, ElastiCache, ECS)
+# Start all services
+docker-compose up -d
+```
+
+### Production (AWS)
+
+```bash
+# Deploy to AWS (ECS + DocumentDB + ElastiCache)
 ./scripts/aws-deploy.sh --region us-east-1 --environment production
 ```
 
-### AWS Architecture
-
+**Architecture:**
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AWS Cloud                                 │
@@ -55,480 +417,171 @@ aws configure
 │  │   (DNS)     │  │ (Load Bal.) │  │  ┌─────────────────┐    │  │
 │  └─────────────┘  └─────────────┘  │  │ MemoRable App   │    │  │
 │                                     │  │ Salience Service│    │  │
-│  ┌─────────────┐  ┌─────────────┐  │  │ Ingestion Svc   │    │  │
+│  ┌─────────────┐  ┌─────────────┐  │  │ MCP Server      │    │  │
 │  │  Secrets    │  │ CloudWatch  │  │  └─────────────────┘    │  │
-│  │  Manager    │  │  (Logging)  │  └─────────────────────────┘  │
+│  │  Manager    │  │  (Metrics)  │  └─────────────────────────┘  │
 │  └─────────────┘  └─────────────┘                               │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │                    Data Layer                            │    │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │    │
-│  │  │ DocumentDB  │  │ ElastiCache │  │  Weaviate on    │  │    │
-│  │  │ (MongoDB)   │  │   (Redis)   │  │  EC2/EKS        │  │    │
+│  │  │ DocumentDB  │  │ ElastiCache │  │    Weaviate     │  │    │
+│  │  │ (MongoDB)   │  │   (Redis)   │  │   (Vectors)     │  │    │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### AWS Services Used
+### Services
 
-| Service | Purpose |
-|---------|---------|
-| **ECS Fargate** | Container orchestration |
-| **DocumentDB** | MongoDB-compatible database |
-| **ElastiCache** | Redis caching layer |
-| **ALB** | Load balancing & SSL |
-| **Secrets Manager** | API key management |
-| **CloudWatch** | Logging & monitoring |
+| Service | Port | Purpose |
+|---------|------|---------|
+| `memorable_app` | 3000 | Main application |
+| `memorable_mcp_server` | stdio | MCP server for Claude Code |
+| `memorable_ingestion_service` | 8001 | Memory ingestion API |
+| `memorable_mongo` | 27017 | Document storage |
+| `memorable_redis` | 6379 | Context frames, caching |
+| `memorable_weaviate` | 8080 | Vector search |
 
-### Environment Variables (AWS)
+---
 
-```bash
-# Required
-MONGODB_URI=mongodb://user:pass@docdb-cluster.cluster-xxx.us-east-1.docdb.amazonaws.com:27017
-REDIS_URL=redis://memorable-cache.xxx.cache.amazonaws.com:6379
-WEAVIATE_URL=http://weaviate.internal:8080
+## Core Concepts
 
-# LLM Provider (choose one)
-ANTHROPIC_API_KEY=sk-ant-xxx      # For Claude (recommended)
-OPENAI_API_KEY=sk-xxx              # For GPT models
+### Salience Scoring
 
-# Optional
-HUME_API_KEY=xxx                   # Emotion AI integration
-LOG_LEVEL=INFO
-NODE_ENV=production
+Every memory gets a 0-100 salience score calculated at capture time:
+
+| Factor | Weight | Signals |
+|--------|--------|---------|
+| **Emotional** | 30% | Keywords (died, love, fired), sentiment intensity |
+| **Novelty** | 20% | New people, locations, topics |
+| **Relevance** | 20% | Your name, interests, goals, close contacts |
+| **Social** | 15% | Relationship events, conflicts, vulnerability |
+| **Consequential** | 15% | Action items, decisions, deadlines, money |
+
+### Context Frames
+
+Rolling window of what's happening NOW:
+- **Location**: Where you are (park, office, VS Code)
+- **People**: Who you're with or working with
+- **Activity**: What you're doing (meeting, coding, relaxing)
+- **Project**: What codebase/task you're in
+
+When context changes, relevant memories automatically surface.
+
+### Open Loops
+
+Automatic tracking of commitments:
+- **You owe them**: Things you promised to do
+- **They owe you**: Things promised to you
+- **Mutual**: Shared commitments
+
+### Memory Lifecycle
+
 ```
-
-### Health Checks
-
-The salience service exposes Kubernetes-compatible health endpoints:
-
-```bash
-# Liveness probe (is the process alive?)
-GET /health/live
-
-# Readiness probe (ready to accept traffic?)
-GET /health/ready
-
-# Startup probe (has initialization completed?)
-GET /health/startup
-
-# Full health status (detailed metrics)
-GET /health
+active → archived → suppressed → deleted (30-day retention)
+       ↑
+    restore
 ```
 
 ---
 
-## 💡 Core Concepts
-
-MemoRable is designed around the following core principles:
-
-*   **Context Conductor**: The system serves as a "context conductor" for AI agents, meticulously managing and providing relevant information to enable focused and effective task execution.
-*   **Memory as Identity**: We believe that personality is fundamentally derived from memory. The profound impact of amnesia on identity underscores this concept, highlighting how a rich, accessible memory is crucial for a coherent sense of self, even for an AI.
-*   **Interwoven Contexts**: Memory items are not stored in isolation. Instead, they interleave temporal, spatial, emotional, and reasoning contexts, creating a rich, multi-dimensional tapestry of experience.
-*   **Total Recall Aim**: The ultimate goal is to equip AI agents with "total recall," mirroring human-like memory capabilities for comprehensive understanding and interaction.
-*   **Novelty and First Principles**: This project explores uncharted territory in AI memory. We are committed to thinking from first principles to develop a truly innovative solution.
-*   **Alliterative Naming**: To enhance clarity and memorability, we strive to use alliterative names for key components and concepts (e.g., "Context Conductor," "Memory Mesh").
-
----
-## 🌟 Features
-
-- **TaskHopper System**
-  - Intelligent task management and prioritization
-  - Step-by-step progress tracking
-  - AI task integration and automation
-  - Task relationship mapping
-  - Automated task archival
-- **Multi-modal Input Processing**
-  - Text, vision, audio, and video processing
-  - AI response handling
-  - File management
-  - Extensible sensor framework
-- **Memory Salience System v2.0** ⚡ NEW
-  - Calculate importance at capture time, not overnight
-  - 5-factor salience scoring (emotional, novelty, relevance, social, consequential)
-  - Adaptive weights that learn what matters to you
-  - Open loop tracking (commitments, promises, follow-ups)
-  - Other people's timeline tracking ("Sarah's daughter's recital is Thursday")
-  - Relationship rhythm detection (cold relationships, engagement trends)
-  - Pre-conversation briefings ("the dance")
-  - Cost: ~$0.003/memory vs $120/day for batch processing (99.8% cheaper)
-- **Contextual Indexing**
-  - Environmental data tracking
-  - Temporal awareness
-  - Task context management
-  - Conversation history
-  - Geospatial integration
-- **Advanced Emotional Intelligence**
-  - 83 distinct emotional vectors including:
-    - Core emotions (joy, sadness, anger, etc.)
-    - Complex emotions (nostalgia, contemplation, aesthetic appreciation)
-    - Social emotions (empathic pain, adoration, triumph)
-    - Cognitive states (concentration, confusion, realization)
-  - Multi-modal emotion detection
-  - Cross-referenced emotional context
-  - Real-time emotional state analysis
-  - Color-coded emotional visualization
-- **Three-tier Memory Architecture**
-  - Raw data storage (MongoDB)
-  - Vector embeddings (Weaviate)
-  - Active memory buffer (Redis)
-- **Custom Model Training**
-  - Personalized emotional pattern recognition
-  - User-specific interaction learning
-  - Adaptive response calibration
-  - Continuous model improvement
-  - Fine-tuning capabilities for:
-    - Emotional recognition accuracy
-    - Personal interaction style
-    - Context sensitivity
-    - Response generation
-
----
-## 🎯 Use Cases
-
-MemoRable's advanced memory capabilities unlock a variety of powerful applications for AI agents:
-
-*   **Emotionally Safe Friend**: An agent that remembers past interactions, preferences, and emotional states, fostering a reliable and understanding companionship.
-*   **Persistent Project Partner**: An AI assistant that maintains deep, evolving knowledge of ongoing tasks and projects, providing consistent and context-aware support.
-*   **Living Git Log**: An agent with real-time awareness of codebase changes, able to explain the history, rationale, and impact of modifications.
-*   **Rogerian Reflector**: An AI that facilitates self-reflection by mirroring and rephrasing user inputs, promoting deeper understanding and personal growth, inspired by Rogerian psychotherapy.
-*   **Focused & Familiar Agent**: Agents that can maintain unwavering focus on tasks and consistently recognize users across interactions, building rapport and trust.
-
----
-
-## 🏗️ System Architecture
-
-MemoRable employs a sophisticated architecture designed for "total recall," featuring a dual-model processing system and a three-tier memory storage solution.
-
-### Dual-Model Memory Processing
-
-The core of MemoRable's intelligence lies in its innovative dual-model approach to memory management, inspired by human cognitive processes:
-
-*   **Subconscious Scanner (Gemini Target)**: A powerful Large Language Model (initially targeting Gemini) continuously scans, processes, and indexes the vast corpus of long-term memory. It identifies patterns, relationships, and potential relevancies, acting as a background process that enriches and organizes memory.
-*   **Conscious Access Model**: This model directly interfaces with the AI agent's operational needs. When the agent requires information or context, this model queries the insights and pre-processed data surfaced by the Subconscious Scanner, enabling fast and relevant memory retrieval.
-*   **Adaptive Context Windows**: The interaction between these models utilizes adaptable context windows, allowing for efficient processing by focusing attention and resources dynamically based on task demands.
-
-```mermaid
-graph LR
-    subgraph UserInteraction["User Interaction Layer"]
-        UI[User/Agent Interface]
-    end
-
-    subgraph ProcessingCore["MemoRable Processing Core"]
-        direction LR
-        CAM[Conscious Access Model]
-        SSM["Subconscious Scanner Model (Gemini Target)"]
-        IP[Input Processor]
-        CP[Contextual Processor]
-        EP[Emotional Processor]
-        AS[Attention System]
-    end
-
-    subgraph MemoryStorage["Three-Tier Memory Storage"]
-        direction TB
-        Redis["Redis (Active Memory Buffer)"]
-        Weaviate["Weaviate (Vector Embeddings)"]
-        MongoDB["MongoDB (Raw Data & Time-Series)"]
-    end
-
-    UI --> IP
-    IP --> CAM
-    IP --> CP
-    IP --> EP
-    CP --> CAM
-    EP --> CAM
-    CAM <--> AS
-    AS <--> SSM
-    CAM --> MemoryStorage
-    SSM --> Weaviate
-    SSM --> MongoDB
-
-    MemoryStorage --> CAM
-    MemoryStorage --> SSM
-
-    style UserInteraction fill:#D5F5E3,stroke:#2ECC71
-    style ProcessingCore fill:#EBF5FB,stroke:#3498DB
-    style MemoryStorage fill:#FDEDEC,stroke:#E74C3C
-```
-
-This architecture allows for efficient large-scale memory management, mimicking how humans might pay less conscious attention to routine information while being able to quickly access relevant details when needed.
-
-### Memory Salience System: Human-Like Importance Scoring
-
-The key insight we discovered: **humans calculate salience at encoding time, not during sleep**. The emotional spike happens when the thing happens, not eight hours later. Sleep just moves things around—it doesn't decide what matters.
-
-```mermaid
-graph LR
-    subgraph CaptureTime["At Capture Time (~$0.003)"]
-        M[Memory Input] --> FE[Feature Extraction]
-        FE --> SC[Salience Calculator]
-        SC --> |Score 0-100| Store[(Storage)]
-    end
-
-    subgraph Components["5 Salience Factors"]
-        E[Emotional 30%]
-        N[Novelty 20%]
-        R[Relevance 20%]
-        S[Social 15%]
-        C[Consequential 15%]
-    end
-
-    subgraph SideEffects["Automatic Tracking"]
-        OL[Open Loops]
-        TL[Timeline Events]
-        RL[Relationship Patterns]
-    end
-
-    FE --> Components
-    FE --> SideEffects
-
-    style CaptureTime fill:#E8F5E9,stroke:#4CAF50
-    style Components fill:#E3F2FD,stroke:#2196F3
-    style SideEffects fill:#FFF3E0,stroke:#FF9800
-```
-
-**What makes memories "loom":**
-
-| Factor | Weight | Observable Signals |
-|--------|--------|-------------------|
-| **Emotional** | 30% | Keywords (died, love, fired), sentiment intensity, intimacy signals |
-| **Novelty** | 20% | New people, new locations, unusual times, novel topics |
-| **Relevance** | 20% | Mentions your name, your interests, your goals, close contacts |
-| **Social** | 15% | Relationship events (death, marriage, promotion), conflict, vulnerability |
-| **Consequential** | 15% | Action items, decisions, money mentioned, deadlines |
-
-**"The Dance" - Pre-Conversation Briefings:**
-
-Before you talk to someone, the system assembles what you need to know:
-- What you owe them (open commitments)
-- What they owe you
-- Their upcoming events (daughter's recital, Series B closing)
-- Recent emotional context
-- Sensitivities to avoid ("don't ask about mom")
-
-This transforms memory from a passive archive into an active social intelligence layer.
-
-### Memory Weaving: The Fabric of Understanding
-
-A key concept in MemoRable is "Memory Weaving," where individual memory items are not stored in isolation but are intricately linked through multiple contextual threads.
-
-```mermaid
-graph TD
-    M1["Memory Item 1 (Event)"]
-    M2["Memory Item 2 (Conversation)"]
-    M3["Memory Item 3 (Observation)"]
-
-    subgraph Contexts["Interwoven Contexts"]
-        TC["Temporal Context (Timestamp, Duration)"]
-        SC["Spatial Context (Location, Environment)"]
-        EC["Emotional Context (User Emotion, Agent Emotion)"]
-        LC["Logical Context (Inferred Relationships, Causality)"]
-        KC["Keyword/Entity Context"]
-    end
-
-    M1 --- TC
-    M1 --- SC
-    M1 --- EC
-    M1 --- LC
-    M1 --- KC
-
-    M2 --- TC
-    M2 --- EC
-    M2 --- LC
-    M2 --- KC
-
-    M3 --- TC
-    M3 --- SC
-    M3 --- EC
-    M3 --- KC
-
-    M1 -- "Related via User X" --> M2
-    M2 -- "Preceded" --> M3
-    M1 -- "Occurred at Location Y" --> M3
-
-    style Contexts fill:#FFF9C4,stroke:#FBC02D
-```
-This rich tapestry of interwoven temporal, spatial, emotional, logical, and keyword/entity contexts allows the AI to form a deeper, more nuanced understanding of past experiences and retrieve information in a highly flexible and human-like manner.
-
----
-## 🛠️ Tech Stack
-
-MemoRable leverages a modern, robust technology stack, all orchestrated within a **Dockerized environment** for consistent deployment and scalability:
-
-- **Node.js/NPM**: For the core application runtime and package management.
-- **MongoDB**: Serves as the persistent storage solution for raw memory data and time-series information.
-- **Weaviate**: Powers the advanced vector search capabilities, enabling efficient similarity searches across memory embeddings.
-- **Redis**: Utilized as an active memory buffer for frequently accessed data and caching.
-- **Docker**: Ensures a consistent development, testing, and production environment.
-- **Ollama**: Provides access to various AI models for reasoning and generation.
-- **TensorFlow.js**: Used for client-side machine learning tasks.
-- **Hume.ai**: Integrated for sophisticated emotion analysis and understanding.
-- **Custom Embedding Solutions**: Developed in-house for tailored data representation.
-
-## 📋 Prerequisites
-
-- Node.js >= 18.0.0
-- Docker and Docker Compose
----
-## 📈 Current Status
-
-MemoRable is currently in the initial development phase, focusing on establishing core functionalities. Key areas of active development include:
-
-*   Robust session management.
-*   Accurate identity recognition across interactions.
-*   Foundational memory storage architecture, integrating MongoDB for persistence, Weaviate for vector search, and Redis for active memory buffering.
-
-The immediate goal is to complete a proof-of-concept demonstrating these core capabilities, paving the way for the integration of advanced transformer models for memory processing.
-
----
-## 🗺️ Roadmap
-
-Our development roadmap is focused on iteratively building towards the full vision of "total recall":
-
-1.  **Finalize Core Infrastructure**: Complete the setup of the npm package, implement core classes for session and memory management, and establish a comprehensive test framework.
-2.  **Proof of Concept (PoC) Validation**: Execute and thoroughly validate the PoC, ensuring reliable identity tracking, session handling, and basic memory operations.
-3.  **Subconscious Scanner Integration (Gemini)**: Begin the integration of a powerful Large Language Model (initially targeting Gemini) to act as the "Subconscious Scanner," responsible for continuously processing and indexing the entirety of long-term memory.
-4.  **Conscious Access Model Development**: Design and implement the "Conscious Access Model," which will interface with the AI agent and leverage the insights provided by the Subconscious Scanner for contextually relevant memory retrieval.
-5.  **Memory Weaving & Contextualization**: Refine and implement the mechanisms for "memory weaving," enabling the system to create and utilize rich, interwoven contexts (temporal, spatial, emotional, logical) for more nuanced understanding and recall.
-6.  **Advanced Feature Implementation**: Incrementally build out support for the advanced features and use cases outlined, including multi-modal input processing, night processing intelligence, and sophisticated emotional analysis.
-7.  **Community Collaboration**: Foster an open environment for contributions, feedback, and collaborative development to accelerate progress and broaden the project's impact.
-
-We are excited about the journey ahead and welcome developers to join us in building the future of AI memory.
-- MongoDB
-- Redis
-- Weaviate
-- Ollama
-- Hume.ai API key
-
-## 🚀 Quick Start
-
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/memorable.git
-cd memorable
-```
-
-2. **Install dependencies**
-```bash
-pnpm install
-```
-
-3. **Set up environment variables**
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-4. **Start the services**
-```bash
-pnpm run docker:up
-```
-
-5. **Run the application**
-```bash
-pnpm start
-```
-
-## 💻 Development
-
-1. **Start in development mode**
-```bash
-pnpm run dev
-```
-
-2. **Run tests**
-```bash
-pnpm test
-```
-
-3. **Lint code**
-```bash
-pnpm run lint
-```
-
-## 🏛️ Project Structure
+## Project Structure
 
 ```
 memorable/
-├── src/
-│   ├── config/           # Configuration files
-│   ├── core/             # Core system components
-│   ├── models/           # Data models
-│   ├── services/         # Business logic
-│   │   ├── ingestion_service/   # Memory ingestion pipeline
-│   │   ├── salience_service/    # Memory salience system v2.0
-│   │   ├── embedding_service/   # Vector embeddings
-│   │   ├── retrieval_service/   # Memory retrieval
-│   │   └── nnna_service/        # Analysis service
-│   ├── utils/            # Utility functions
-│   └── index.js          # Application entry point
-├── tests/                # Test files
-├── docker/               # Docker configuration
-├── docs/                 # Documentation
-└── scripts/             # Utility scripts
+├── src/services/
+│   ├── mcp_server/           # MCP server for Claude Code
+│   │   └── index.ts          # 14 MCP tools
+│   ├── salience_service/     # Core memory intelligence
+│   │   ├── index.ts          # Main exports
+│   │   ├── context_frame.ts  # Rolling context windows
+│   │   ├── memory_operations.ts  # Forget/reassociate/export
+│   │   ├── feature_extractor.ts  # LLM feature extraction
+│   │   ├── salience_calculator.ts
+│   │   ├── open_loop_tracker.ts
+│   │   ├── relationship_tracker.ts
+│   │   ├── briefing_generator.ts
+│   │   ├── retrieval.ts
+│   │   ├── adaptive_learning.ts
+│   │   ├── metrics.ts        # Prometheus metrics
+│   │   └── startup.ts        # Health checks
+│   ├── ingestion_service/    # Memory ingestion API
+│   └── embedding_service/    # Vector embeddings
+├── docker-compose.yml        # Full stack
+├── scripts/
+│   └── setup.js              # Auto-credential generation
+└── docs/
 ```
 
-## 🔧 Configuration
+---
 
-The system can be configured through environment variables:
+## API Endpoints
 
-- `MONGODB_URI`: MongoDB connection string
-- `REDIS_URL`: Redis connection URL
-- `WEAVIATE_URL`: Weaviate instance URL
-- `OLLAMA_API_KEY`: Ollama API key
-- `HUME_API_KEY`: Hume.ai API key
-- `PORT`: Application port (default: 3000)
+### Health & Metrics
 
-## 📖 Documentation
+```bash
+GET /health/live      # Liveness probe
+GET /health/ready     # Readiness probe
+GET /health/startup   # Startup probe
+GET /health           # Full status
+GET /metrics          # Prometheus metrics
+```
 
-Detailed documentation is available in the [docs](./docs) directory:
+### Ingestion
 
-- [Core Concepts](./docs/3_core_concepts.md)
-- [User Guide](./docs/4_user_guide.md)
-- [API Reference](./docs/5_api_reference.md)
-- [Component Documentation](./docs/6_components_reference.md)
-- [Advanced Usage](./docs/7_advanced_usage.md)
-- [Technical Architecture](./docs/technical-architecture.md)
-- [Deployment Guide](./docs/deployment-guide.md)
-- [**Memory Salience Service**](./src/services/salience_service/README.md) ⚡ NEW
-
-## Collaboration
-
-We warmly welcome contributions to the memoRable project! Your insights and efforts can help us push the boundaries of AI memory and create a truly impactful system.
-
-For more detailed information on how to contribute, including our development process, coding standards, and code of conduct, please see our [Contribution Guidelines](CONTRIBUTING.md).
-There are many ways to get involved:
-*   We welcome contributions of all kinds, from documentation improvements to new feature implementations.
-*   Check out our [Issue Tracker](https://github.com/yourusername/memorable/issues) for open tasks and areas where help is needed. (Please replace `yourusername/memorable` with the actual repository path if different).
-*   Feel free to open an issue to discuss potential changes or new ideas.
-
-We are particularly interested in expertise in areas such as:
-*   Advanced transformer models and their application to memory processing.
-*   Innovative embedding strategies for rich contextual understanding.
-*   System optimization for performance and scalability.
-
-For insights into our current thinking on key components, you might find the following document useful:
-*   [Detailed Embedding Service Strategy and Model Considerations](docs/embedding_service_strategy.md)
+```bash
+POST /api/ingest/memory
+{
+  "text": "Meeting notes...",
+  "userId": "user-123",
+  "context": {
+    "location": "office",
+    "people": ["Sarah", "Mike"]
+  }
+}
+```
 
 ---
-## 🤝 Contributing
+
+## Environment Variables
+
+```bash
+# Required
+MONGODB_URI=mongodb://localhost:27017/memorable
+
+# LLM (for salience extraction)
+ANTHROPIC_API_KEY=sk-ant-xxx   # Recommended
+OPENAI_API_KEY=sk-xxx          # Alternative
+
+# Optional
+REDIS_URL=redis://localhost:6379
+WEAVIATE_URL=http://localhost:8080
+MCP_USER_ID=default
+LOG_LEVEL=INFO
+```
+
+---
+
+## Contributing
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push (`git push origin feature/amazing`)
+5. Open Pull Request
 
-## 📄 License
+---
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## License
 
-## 🙏 Acknowledgments
+MIT License - see [LICENSE](LICENSE)
 
-- [Hume.ai](https://hume.ai) team for their incredible emotion AI technology
-- TensorFlow.js team for machine learning capabilities
-- Weaviate team for vector database functionality
-- MongoDB team for time series database support
-- Redis team for in-memory data store
-- Ollama team for AI model support
+---
+
+## Links
+
+- [MCP Server Documentation](./src/services/mcp_server/README.md)
+- [Salience Service Documentation](./src/services/salience_service/README.md)
+- [API Reference](./docs/api-reference.md)
+- [Deployment Guide](./docs/deployment-guide.md)
