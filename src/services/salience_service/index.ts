@@ -33,6 +33,22 @@ export * from './models';
 // Re-export database utilities
 export { setupSalienceDatabase, collections } from './database';
 
+// Re-export startup/health utilities
+export {
+  initializeSalienceService,
+  initializeWithRetry,
+  getHealthStatus,
+  isHealthy,
+  isReady,
+  isAlive,
+  shutdown,
+  healthEndpoint,
+  probes,
+  getState,
+  type StartupConfig,
+  type HealthStatus,
+} from './startup';
+
 // Re-export individual services
 export { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
 export {
@@ -113,14 +129,8 @@ import { createOpenLoopsFromFeatures, checkLoopClosures } from './open_loop_trac
 import { createTimelineEventsFromFeatures } from './timeline_tracker';
 import { updateRelationshipFromFeatures } from './relationship_tracker';
 
-/**
- * Initialize the salience service.
- * Call this during application startup.
- */
-export async function initializeSalienceService(db: Db): Promise<void> {
-  await setupSalienceDatabase(db);
-  console.log('[SalienceService] Initialized successfully');
-}
+// Note: initializeSalienceService is exported from './startup' with enhanced
+// retry logic, health checks, and zero-data handling. Use that version for production.
 
 /**
  * Main salience enrichment pipeline.

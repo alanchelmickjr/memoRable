@@ -1,16 +1,125 @@
 # MemoRable 🧠 - Total Recall
 
+[![AWS Marketplace](https://img.shields.io/badge/AWS%20Marketplace-Available-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/marketplace)
+[![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen?style=for-the-badge)](https://github.com/alanchelmickjr/memoRable)
+
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
-[![NPM Version](https://img.shields.io/npm/v/memorable.svg)](https://www.npmjs.com/package/memorable)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Hume.ai](https://img.shields.io/badge/Powered%20by-Hume.ai-FF69B4)](https://hume.ai)
-[![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+
+**Infrastructure:**
 [![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Redis](https://img.shields.io/badge/Redis-%23DC382D.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
 [![Weaviate](https://img.shields.io/badge/Weaviate-%23FF5F1F.svg?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/)
+[![Redis](https://img.shields.io/badge/Redis-%23DC382D.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
+[![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+
+**Integrations:**
+[![Hume.ai](https://img.shields.io/badge/Hume.ai-Emotion%20AI-FF69B4)](https://hume.ai)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude-191919?logo=anthropic)](https://anthropic.com)
+[![OpenAI](https://img.shields.io/badge/OpenAI-Compatible-412991?logo=openai)](https://openai.com)
+
+---
+
+> **Open Source Memory Preprocessor** - This is the open source foundation for the MemoRable memory overlay system. Deploy it today to start building intelligent memory for your AI applications, with a clear upgrade path to our managed commercial offering.
 
 A modular AI memory overlay system enabling personalized, context-aware interactions through sophisticated memory management and emotional intelligence. Deploy as a standalone service or integrate as a memory layer for your AI applications.
+
+---
+
+## 🚀 AWS Deployment (Recommended)
+
+Deploy MemoRable to AWS in minutes using our production-ready configuration.
+
+### One-Click AWS Deployment
+
+```bash
+# Clone and deploy
+git clone https://github.com/alanchelmickjr/memoRable.git
+cd memorable
+
+# Configure AWS credentials
+aws configure
+
+# Deploy infrastructure (DocumentDB, ElastiCache, ECS)
+./scripts/aws-deploy.sh --region us-east-1 --environment production
+```
+
+### AWS Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        AWS Cloud                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │   Route 53  │──│     ALB     │──│      ECS Fargate        │  │
+│  │   (DNS)     │  │ (Load Bal.) │  │  ┌─────────────────┐    │  │
+│  └─────────────┘  └─────────────┘  │  │ MemoRable App   │    │  │
+│                                     │  │ Salience Service│    │  │
+│  ┌─────────────┐  ┌─────────────┐  │  │ Ingestion Svc   │    │  │
+│  │  Secrets    │  │ CloudWatch  │  │  └─────────────────┘    │  │
+│  │  Manager    │  │  (Logging)  │  └─────────────────────────┘  │
+│  └─────────────┘  └─────────────┘                               │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                    Data Layer                            │    │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │    │
+│  │  │ DocumentDB  │  │ ElastiCache │  │  Weaviate on    │  │    │
+│  │  │ (MongoDB)   │  │   (Redis)   │  │  EC2/EKS        │  │    │
+│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### AWS Services Used
+
+| Service | Purpose | Estimated Cost |
+|---------|---------|----------------|
+| **ECS Fargate** | Container orchestration | ~$30-50/mo |
+| **DocumentDB** | MongoDB-compatible database | ~$200/mo (db.t3.medium) |
+| **ElastiCache** | Redis caching layer | ~$25/mo (cache.t3.micro) |
+| **ALB** | Load balancing & SSL | ~$20/mo |
+| **Secrets Manager** | API key management | ~$1/mo |
+| **CloudWatch** | Logging & monitoring | ~$5/mo |
+
+**Total estimated cost: ~$280-300/month** for a production-ready deployment.
+
+### Environment Variables (AWS)
+
+```bash
+# Required
+MONGODB_URI=mongodb://user:pass@docdb-cluster.cluster-xxx.us-east-1.docdb.amazonaws.com:27017
+REDIS_URL=redis://memorable-cache.xxx.cache.amazonaws.com:6379
+WEAVIATE_URL=http://weaviate.internal:8080
+
+# LLM Provider (choose one)
+ANTHROPIC_API_KEY=sk-ant-xxx      # For Claude (recommended)
+OPENAI_API_KEY=sk-xxx              # For GPT models
+
+# Optional
+HUME_API_KEY=xxx                   # Emotion AI integration
+LOG_LEVEL=INFO
+NODE_ENV=production
+```
+
+### Health Checks
+
+The salience service exposes Kubernetes-compatible health endpoints:
+
+```bash
+# Liveness probe (is the process alive?)
+GET /health/live
+
+# Readiness probe (ready to accept traffic?)
+GET /health/ready
+
+# Startup probe (has initialization completed?)
+GET /health/startup
+
+# Full health status (detailed metrics)
+GET /health
+```
+
+---
 
 ## 💡 Core Concepts
 
