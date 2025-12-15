@@ -53,6 +53,17 @@ import {
   getColdRelationships,
   initializeSalienceService,
   getMetricsSummary,
+  // Context frame
+  setContext,
+  whatMattersNow,
+  clearContextFrame,
+  // Memory operations
+  forgetMemory,
+  forgetPerson,
+  restoreMemory,
+  reassociateMemory,
+  exportMemories,
+  importMemories,
   type LLMClient,
 } from '../salience_service/index.js';
 
@@ -282,6 +293,204 @@ function createServer(): Server {
           properties: {},
         },
       },
+      // Context Frame Tools
+      {
+        name: 'set_context',
+        description:
+          'Set your current context (where you are, who you\'re with). Automatically surfaces relevant memories. Example: "I\'m at the park meeting Judy"',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            location: {
+              type: 'string',
+              description: 'Where you are (park, office, coffee shop)',
+            },
+            people: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Who you\'re with or about to meet',
+            },
+            activity: {
+              type: 'string',
+              description: 'What you\'re doing (meeting, working, relaxing)',
+            },
+          },
+        },
+      },
+      {
+        name: 'whats_relevant',
+        description: 'Get what\'s relevant right now based on your current context.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'clear_context',
+        description: 'Clear your current context (e.g., when leaving a location or ending a meeting).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            dimensions: {
+              type: 'array',
+              items: { type: 'string', enum: ['location', 'people', 'activity', 'calendar', 'mood'] },
+              description: 'Which dimensions to clear (default: all)',
+            },
+          },
+        },
+      },
+      // Memory Management Tools
+      {
+        name: 'forget',
+        description: 'Forget a memory. Modes: suppress (hide but keep), archive (hide from default), delete (remove after 30 days).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'ID of memory to forget',
+            },
+            mode: {
+              type: 'string',
+              enum: ['suppress', 'archive', 'delete'],
+              description: 'How to forget (default: suppress)',
+            },
+            reason: {
+              type: 'string',
+              description: 'Why you want to forget this',
+            },
+          },
+          required: ['memoryId'],
+        },
+      },
+      {
+        name: 'forget_person',
+        description: 'Forget all memories involving a specific person.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            person: {
+              type: 'string',
+              description: 'Name of person to forget',
+            },
+            mode: {
+              type: 'string',
+              enum: ['suppress', 'archive', 'delete'],
+              description: 'How to forget (default: suppress)',
+            },
+            alsoForgetLoops: {
+              type: 'boolean',
+              description: 'Also forget open commitments with this person',
+            },
+            alsoForgetEvents: {
+              type: 'boolean',
+              description: 'Also forget timeline events for this person',
+            },
+          },
+          required: ['person'],
+        },
+      },
+      {
+        name: 'restore',
+        description: 'Restore a forgotten memory.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'ID of memory to restore',
+            },
+          },
+          required: ['memoryId'],
+        },
+      },
+      {
+        name: 'reassociate',
+        description: 'Change how a memory is linked - add/remove people, topics, or tags.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'ID of memory to reassociate',
+            },
+            addPeople: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'People to add to this memory',
+            },
+            removePeople: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'People to remove from this memory',
+            },
+            addTopics: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Topics to add',
+            },
+            removeTopics: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Topics to remove',
+            },
+            addTags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tags to add',
+            },
+            removeTags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tags to remove',
+            },
+            setProject: {
+              type: 'string',
+              description: 'Project to assign this memory to',
+            },
+          },
+          required: ['memoryId'],
+        },
+      },
+      {
+        name: 'export_memories',
+        description: 'Export memories for backup or portability.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            people: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter to memories involving these people',
+            },
+            topics: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Filter to memories about these topics',
+            },
+            project: {
+              type: 'string',
+              description: 'Filter to memories in this project',
+            },
+            fromDate: {
+              type: 'string',
+              description: 'Start date (ISO8601)',
+            },
+            toDate: {
+              type: 'string',
+              description: 'End date (ISO8601)',
+            },
+            includeLoops: {
+              type: 'boolean',
+              description: 'Include related open loops',
+            },
+            includeTimeline: {
+              type: 'boolean',
+              description: 'Include related timeline events',
+            },
+          },
+        },
+      },
     ],
   }));
 
@@ -460,6 +669,269 @@ function createServer(): Server {
               {
                 type: 'text',
                 text: JSON.stringify({ ...status, metrics }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Context Frame Tools
+        case 'set_context': {
+          const { location, people, activity } = args as {
+            location?: string;
+            people?: string[];
+            activity?: string;
+          };
+
+          const memories = await setContext(CONFIG.defaultUserId, {
+            location,
+            people,
+            activity,
+          });
+
+          // Format the response nicely
+          const response: any = {
+            contextSet: true,
+            location,
+            people,
+            activity,
+          };
+
+          if (memories.aboutPeople.length > 0) {
+            response.peopleContext = memories.aboutPeople.map(p => ({
+              person: p.person,
+              memoriesFound: p.memories.length,
+              openLoops: p.openLoops.length,
+              upcomingEvents: p.upcomingEvents.length,
+            }));
+          }
+
+          if (memories.suggestedTopics.length > 0) {
+            response.suggestedTopics = memories.suggestedTopics;
+          }
+
+          if (memories.sensitivities.length > 0) {
+            response.sensitivities = memories.sensitivities;
+          }
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(response, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'whats_relevant': {
+          const { frame, memories } = await whatMattersNow(CONFIG.defaultUserId);
+
+          if (!frame || !memories) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    message: 'No context set. Use set_context first.',
+                  }),
+                },
+              ],
+            };
+          }
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  currentContext: {
+                    location: frame.location?.value,
+                    people: frame.people.map(p => p.value),
+                    activity: frame.activity?.value,
+                    timeOfDay: frame.timeOfDay,
+                  },
+                  relevantMemories: memories.recentRelevant.slice(0, 5).map(m => ({
+                    text: m.text,
+                    matchedOn: m.matchedOn,
+                    salience: m.salienceScore,
+                  })),
+                  suggestedTopics: memories.suggestedTopics,
+                  sensitivities: memories.sensitivities,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'clear_context': {
+          const { dimensions } = args as {
+            dimensions?: ('location' | 'people' | 'activity' | 'calendar' | 'mood')[];
+          };
+
+          const frame = await clearContextFrame(CONFIG.defaultUserId, dimensions);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  cleared: dimensions || 'all',
+                  remainingContext: {
+                    location: frame.location?.value,
+                    people: frame.people.map(p => p.value),
+                    activity: frame.activity?.value,
+                  },
+                }),
+              },
+            ],
+          };
+        }
+
+        // Memory Management Tools
+        case 'forget': {
+          const { memoryId, mode = 'suppress', reason } = args as {
+            memoryId: string;
+            mode?: 'suppress' | 'archive' | 'delete';
+            reason?: string;
+          };
+
+          const result = await forgetMemory(CONFIG.defaultUserId, memoryId, {
+            mode,
+            reason,
+            cascadeLoops: true,
+            cascadeTimeline: true,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'forget_person': {
+          const { person, mode = 'suppress', alsoForgetLoops, alsoForgetEvents } = args as {
+            person: string;
+            mode?: 'suppress' | 'archive' | 'delete';
+            alsoForgetLoops?: boolean;
+            alsoForgetEvents?: boolean;
+          };
+
+          const result = await forgetPerson(CONFIG.defaultUserId, person, {
+            mode,
+            alsoForgetLoops,
+            alsoForgetEvents,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  person,
+                  ...result,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'restore': {
+          const { memoryId } = args as { memoryId: string };
+
+          const result = await restoreMemory(CONFIG.defaultUserId, memoryId);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'reassociate': {
+          const {
+            memoryId,
+            addPeople,
+            removePeople,
+            addTopics,
+            removeTopics,
+            addTags,
+            removeTags,
+            setProject,
+          } = args as {
+            memoryId: string;
+            addPeople?: string[];
+            removePeople?: string[];
+            addTopics?: string[];
+            removeTopics?: string[];
+            addTags?: string[];
+            removeTags?: string[];
+            setProject?: string;
+          };
+
+          const result = await reassociateMemory(CONFIG.defaultUserId, memoryId, {
+            addPeople,
+            removePeople,
+            addTopics,
+            removeTopics,
+            addTags,
+            removeTags,
+            setProject,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'export_memories': {
+          const {
+            people,
+            topics,
+            project,
+            fromDate,
+            toDate,
+            includeLoops,
+            includeTimeline,
+          } = args as {
+            people?: string[];
+            topics?: string[];
+            project?: string;
+            fromDate?: string;
+            toDate?: string;
+            includeLoops?: boolean;
+            includeTimeline?: boolean;
+          };
+
+          const memories = await exportMemories(CONFIG.defaultUserId, {
+            people,
+            topics,
+            project,
+            fromDate,
+            toDate,
+            includeLoops,
+            includeTimeline,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  count: memories.length,
+                  memories,
+                }, null, 2),
               },
             ],
           };

@@ -154,6 +154,40 @@ export {
   batchRecalibrateWeights,
 } from './adaptive_learning';
 
+// Re-export context frame system
+export {
+  initContextFrame,
+  getContextFrame,
+  updateContextFrame,
+  clearContextFrame,
+  addPersonToFrame,
+  removePersonFromFrame,
+  surfaceMemoriesForFrame,
+  setContext,
+  whatMattersNow,
+  type ContextFrame,
+  type ContextualMemories,
+  type SurfacedMemory,
+  type QuickBriefing,
+} from './context_frame';
+
+// Re-export memory operations (forget, reassociate, export)
+export {
+  forgetMemory,
+  forgetPerson,
+  restoreMemory,
+  reassociateMemory,
+  mergeMemories,
+  exportMemories,
+  importMemories,
+  type MemoryState,
+  type ForgetOptions,
+  type ForgetResult,
+  type ReassociateOptions,
+  type ExportedMemory,
+  type ExportOptions,
+} from './memory_operations';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';

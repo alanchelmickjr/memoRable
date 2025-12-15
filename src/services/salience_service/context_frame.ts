@@ -1,0 +1,780 @@
+/**
+ * @file Context Frame System
+ *
+ * Manages the "rolling window" of what matters RIGHT NOW.
+ * Think of it as your brain automatically surfacing relevant memories
+ * when you walk into a room or start talking to someone.
+ *
+ * Frame components:
+ * - Location: Where you are (park, office, home, coffee shop)
+ * - People: Who's present or who you're about to meet
+ * - Activity: What you're doing (meeting, working, relaxing)
+ * - Time: Calendar events, time of day, day patterns
+ * - Emotion: Current emotional state (optional)
+ *
+ * The frame is stored in Redis for fast access and automatically
+ * queries relevant memories when components change.
+ */
+
+import type { RedisClientType } from 'redis';
+import { collections } from './database';
+import { retrieveWithSalience, getMemoriesForPerson } from './retrieval';
+import { generateQuickBriefing } from './briefing_generator';
+import { getOpenLoops } from './open_loop_tracker';
+import { getUpcomingEventsForContact } from './timeline_tracker';
+
+// ============================================================================
+// CONTEXT FRAME TYPES
+// ============================================================================
+
+/**
+ * A single dimension of the context frame.
+ */
+export interface FrameDimension {
+  value: string;
+  confidence: number;  // 0-1, how sure we are
+  source: 'explicit' | 'inferred' | 'calendar' | 'location_service' | 'default';
+  since: string;       // ISO8601 - when this dimension was set
+}
+
+/**
+ * The complete context frame - what's happening right now.
+ */
+export interface ContextFrame {
+  userId: string;
+
+  // Core dimensions
+  location?: FrameDimension;
+  people: FrameDimension[];      // Can be multiple people
+  activity?: FrameDimension;
+  calendarEvent?: {
+    title: string;
+    with?: string[];
+    location?: string;
+    startTime: string;
+    endTime: string;
+  };
+
+  // Time context
+  timeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+  dayType: 'weekday' | 'weekend';
+
+  // Emotional context (optional)
+  mood?: FrameDimension;
+
+  // Frame metadata
+  frameId: string;
+  createdAt: string;
+  expiresAt: string;            // Frames auto-expire
+  lastUpdated: string;
+}
+
+/**
+ * Memories surfaced for the current context.
+ */
+export interface ContextualMemories {
+  // Organized by relevance source
+  aboutPeople: Array<{
+    person: string;
+    memories: SurfacedMemory[];
+    openLoops: LoopSummary[];
+    upcomingEvents: EventSummary[];
+  }>;
+
+  aboutLocation: SurfacedMemory[];
+  aboutActivity: SurfacedMemory[];
+  recentRelevant: SurfacedMemory[];
+
+  // Quick briefings for people in frame
+  briefings: Map<string, QuickBriefing>;
+
+  // What you might want to bring up
+  suggestedTopics: string[];
+
+  // Things to be careful about
+  sensitivities: string[];
+
+  // Frame this was generated for
+  forFrame: string;  // frameId
+  generatedAt: string;
+}
+
+export interface SurfacedMemory {
+  memoryId: string;
+  text: string;
+  relevanceScore: number;  // Why this memory matters now
+  salienceScore: number;
+  matchedOn: ('person' | 'location' | 'activity' | 'topic' | 'time')[];
+  createdAt: string;
+}
+
+export interface LoopSummary {
+  id: string;
+  description: string;
+  owner: 'self' | 'them' | 'mutual';
+  isOverdue: boolean;
+  dueDate?: string;
+}
+
+export interface EventSummary {
+  description: string;
+  eventDate?: string;
+  daysUntil?: number;
+  goodToMention: boolean;
+}
+
+export interface QuickBriefing {
+  person: string;
+  lastInteraction?: string;
+  youOweThem: number;
+  theyOweYou: number;
+  upcomingEvents: number;
+  topMemory?: string;
+}
+
+// ============================================================================
+// REDIS KEYS
+// ============================================================================
+
+const FRAME_KEY = (userId: string) => `memorable:frame:${userId}`;
+const FRAME_TTL = 3600; // 1 hour default
+
+// ============================================================================
+// CONTEXT FRAME OPERATIONS
+// ============================================================================
+
+let redisClient: RedisClientType | null = null;
+
+/**
+ * Initialize with Redis client.
+ */
+export function initContextFrame(redis: RedisClientType): void {
+  redisClient = redis;
+}
+
+/**
+ * Get or create the current context frame for a user.
+ */
+export async function getContextFrame(userId: string): Promise<ContextFrame | null> {
+  if (!redisClient) {
+    console.warn('[ContextFrame] Redis not initialized, using in-memory fallback');
+    return inMemoryFrames.get(userId) || null;
+  }
+
+  try {
+    const data = await redisClient.get(FRAME_KEY(userId));
+    if (!data) return null;
+    return JSON.parse(data) as ContextFrame;
+  } catch (error) {
+    console.error('[ContextFrame] Error getting frame:', error);
+    return null;
+  }
+}
+
+// In-memory fallback when Redis unavailable
+const inMemoryFrames = new Map<string, ContextFrame>();
+
+/**
+ * Update the context frame with new information.
+ * Triggers memory surfacing when significant changes occur.
+ */
+export async function updateContextFrame(
+  userId: string,
+  updates: {
+    location?: string;
+    people?: string[];
+    activity?: string;
+    calendarEvent?: ContextFrame['calendarEvent'];
+    mood?: string;
+  },
+  options: {
+    source?: FrameDimension['source'];
+    confidence?: number;
+    surfaceMemories?: boolean;
+  } = {}
+): Promise<{
+  frame: ContextFrame;
+  memoriesSurfaced?: ContextualMemories;
+  significantChange: boolean;
+}> {
+  const now = new Date().toISOString();
+  const source = options.source || 'explicit';
+  const confidence = options.confidence || 1.0;
+
+  // Get existing frame or create new
+  let frame = await getContextFrame(userId);
+  const isNewFrame = !frame;
+
+  if (!frame) {
+    frame = createEmptyFrame(userId, now);
+  }
+
+  // Track what changed
+  const changes: string[] = [];
+
+  // Update location
+  if (updates.location !== undefined) {
+    const oldLocation = frame.location?.value;
+    if (oldLocation !== updates.location) {
+      changes.push('location');
+      frame.location = {
+        value: updates.location,
+        confidence,
+        source,
+        since: now,
+      };
+    }
+  }
+
+  // Update people
+  if (updates.people !== undefined) {
+    const oldPeople = new Set(frame.people.map(p => p.value.toLowerCase()));
+    const newPeople = new Set(updates.people.map(p => p.toLowerCase()));
+
+    // Check for changes
+    const added = updates.people.filter(p => !oldPeople.has(p.toLowerCase()));
+    const removed = frame.people.filter(p => !newPeople.has(p.value.toLowerCase()));
+
+    if (added.length > 0 || removed.length > 0) {
+      changes.push('people');
+      frame.people = updates.people.map(person => ({
+        value: person,
+        confidence,
+        source,
+        since: now,
+      }));
+    }
+  }
+
+  // Update activity
+  if (updates.activity !== undefined) {
+    const oldActivity = frame.activity?.value;
+    if (oldActivity !== updates.activity) {
+      changes.push('activity');
+      frame.activity = {
+        value: updates.activity,
+        confidence,
+        source,
+        since: now,
+      };
+    }
+  }
+
+  // Update calendar event
+  if (updates.calendarEvent !== undefined) {
+    changes.push('calendar');
+    frame.calendarEvent = updates.calendarEvent;
+
+    // Auto-populate people from calendar if not set
+    if (updates.calendarEvent.with && frame.people.length === 0) {
+      frame.people = updates.calendarEvent.with.map(person => ({
+        value: person,
+        confidence: 0.9,
+        source: 'calendar',
+        since: now,
+      }));
+      changes.push('people');
+    }
+
+    // Auto-populate location from calendar if not set
+    if (updates.calendarEvent.location && !frame.location) {
+      frame.location = {
+        value: updates.calendarEvent.location,
+        confidence: 0.8,
+        source: 'calendar',
+        since: now,
+      };
+      changes.push('location');
+    }
+  }
+
+  // Update mood
+  if (updates.mood !== undefined) {
+    frame.mood = {
+      value: updates.mood,
+      confidence,
+      source,
+      since: now,
+    };
+  }
+
+  // Update time context
+  const hour = new Date().getHours();
+  frame.timeOfDay =
+    hour < 12 ? 'morning' :
+    hour < 17 ? 'afternoon' :
+    hour < 21 ? 'evening' : 'night';
+  frame.dayType = [0, 6].includes(new Date().getDay()) ? 'weekend' : 'weekday';
+
+  // Update metadata
+  frame.lastUpdated = now;
+  frame.expiresAt = new Date(Date.now() + FRAME_TTL * 1000).toISOString();
+
+  // Save frame
+  await saveFrame(frame);
+
+  // Determine if this is a significant change worth surfacing memories for
+  const significantChange = isNewFrame ||
+    changes.includes('people') ||
+    changes.includes('location') ||
+    changes.includes('calendar');
+
+  // Surface memories if requested and significant change
+  let memoriesSurfaced: ContextualMemories | undefined;
+  if (options.surfaceMemories !== false && significantChange) {
+    memoriesSurfaced = await surfaceMemoriesForFrame(frame);
+  }
+
+  return { frame, memoriesSurfaced, significantChange };
+}
+
+/**
+ * Clear the context frame (e.g., when leaving a location or ending a meeting).
+ */
+export async function clearContextFrame(
+  userId: string,
+  dimensions?: ('location' | 'people' | 'activity' | 'calendar' | 'mood')[]
+): Promise<ContextFrame> {
+  let frame = await getContextFrame(userId);
+
+  if (!frame) {
+    return createEmptyFrame(userId, new Date().toISOString());
+  }
+
+  if (!dimensions) {
+    // Clear everything
+    frame = createEmptyFrame(userId, new Date().toISOString());
+  } else {
+    // Clear specific dimensions
+    if (dimensions.includes('location')) frame.location = undefined;
+    if (dimensions.includes('people')) frame.people = [];
+    if (dimensions.includes('activity')) frame.activity = undefined;
+    if (dimensions.includes('calendar')) frame.calendarEvent = undefined;
+    if (dimensions.includes('mood')) frame.mood = undefined;
+
+    frame.lastUpdated = new Date().toISOString();
+  }
+
+  await saveFrame(frame);
+  return frame;
+}
+
+/**
+ * Add a person to the current frame (e.g., someone joined the conversation).
+ */
+export async function addPersonToFrame(
+  userId: string,
+  person: string,
+  options: { source?: FrameDimension['source']; surfaceMemories?: boolean } = {}
+): Promise<{
+  frame: ContextFrame;
+  briefing?: QuickBriefing;
+  memories?: SurfacedMemory[];
+}> {
+  const frame = await getContextFrame(userId) || createEmptyFrame(userId, new Date().toISOString());
+
+  // Check if person already in frame
+  if (frame.people.some(p => p.value.toLowerCase() === person.toLowerCase())) {
+    return { frame };
+  }
+
+  // Add person
+  frame.people.push({
+    value: person,
+    confidence: 1.0,
+    source: options.source || 'explicit',
+    since: new Date().toISOString(),
+  });
+
+  frame.lastUpdated = new Date().toISOString();
+  await saveFrame(frame);
+
+  // Get briefing and memories for this person
+  let briefing: QuickBriefing | undefined;
+  let memories: SurfacedMemory[] | undefined;
+
+  if (options.surfaceMemories !== false) {
+    const personData = await getPersonContext(userId, person);
+    briefing = personData.briefing;
+    memories = personData.memories;
+  }
+
+  return { frame, briefing, memories };
+}
+
+/**
+ * Remove a person from the current frame.
+ */
+export async function removePersonFromFrame(
+  userId: string,
+  person: string
+): Promise<ContextFrame> {
+  const frame = await getContextFrame(userId);
+  if (!frame) return createEmptyFrame(userId, new Date().toISOString());
+
+  frame.people = frame.people.filter(
+    p => p.value.toLowerCase() !== person.toLowerCase()
+  );
+  frame.lastUpdated = new Date().toISOString();
+
+  await saveFrame(frame);
+  return frame;
+}
+
+// ============================================================================
+// MEMORY SURFACING
+// ============================================================================
+
+/**
+ * Surface relevant memories for the current context frame.
+ * This is the "magic" - automatically bringing up what matters.
+ */
+export async function surfaceMemoriesForFrame(
+  frame: ContextFrame
+): Promise<ContextualMemories> {
+  const result: ContextualMemories = {
+    aboutPeople: [],
+    aboutLocation: [],
+    aboutActivity: [],
+    recentRelevant: [],
+    briefings: new Map(),
+    suggestedTopics: [],
+    sensitivities: [],
+    forFrame: frame.frameId,
+    generatedAt: new Date().toISOString(),
+  };
+
+  // Process each person in the frame
+  for (const personDim of frame.people) {
+    const person = personDim.value;
+    const personData = await getPersonContext(frame.userId, person);
+
+    result.aboutPeople.push({
+      person,
+      memories: personData.memories,
+      openLoops: personData.loops,
+      upcomingEvents: personData.events,
+    });
+
+    result.briefings.set(person, personData.briefing);
+
+    // Collect sensitivities
+    if (personData.sensitivities) {
+      result.sensitivities.push(...personData.sensitivities);
+    }
+  }
+
+  // Location-based memories
+  if (frame.location) {
+    result.aboutLocation = await getLocationMemories(frame.userId, frame.location.value);
+  }
+
+  // Activity-based memories
+  if (frame.activity) {
+    result.aboutActivity = await getActivityMemories(frame.userId, frame.activity.value);
+  }
+
+  // Recent relevant (combines all factors)
+  result.recentRelevant = await getRecentRelevant(frame);
+
+  // Generate suggested topics from all the data
+  result.suggestedTopics = generateSuggestedTopics(result);
+
+  return result;
+}
+
+/**
+ * Get context about a specific person.
+ */
+async function getPersonContext(
+  userId: string,
+  person: string
+): Promise<{
+  memories: SurfacedMemory[];
+  loops: LoopSummary[];
+  events: EventSummary[];
+  briefing: QuickBriefing;
+  sensitivities: string[];
+}> {
+  // Get memories involving this person
+  const memoriesRaw = await getMemoriesForPerson(userId, person, { limit: 10 });
+  const memories: SurfacedMemory[] = memoriesRaw.map(m => ({
+    memoryId: m.memory.memoryId,
+    text: m.memory.text?.slice(0, 200) || '',
+    relevanceScore: m.retrievalScore,
+    salienceScore: m.memory.salienceScore || 0,
+    matchedOn: ['person'],
+    createdAt: m.memory.createdAt || '',
+  }));
+
+  // Get open loops with this person
+  const loopsRaw = await getOpenLoops(userId, { contactName: person });
+  const loops: LoopSummary[] = loopsRaw.map(l => ({
+    id: l._id?.toString() || l.id,
+    description: l.description,
+    owner: l.owner,
+    isOverdue: l.isOverdue,
+    dueDate: l.dueDate,
+  }));
+
+  // Get upcoming events for this person
+  const eventsRaw = await getUpcomingEventsForContact(userId, person, 30);
+  const events: EventSummary[] = eventsRaw.map(e => {
+    const eventDate = e.eventDate ? new Date(e.eventDate) : null;
+    const daysUntil = eventDate
+      ? Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      : undefined;
+
+    return {
+      description: e.description,
+      eventDate: e.eventDate,
+      daysUntil,
+      goodToMention: e.goodToMention,
+    };
+  });
+
+  // Quick briefing
+  const briefing: QuickBriefing = {
+    person,
+    youOweThem: loops.filter(l => l.owner === 'self').length,
+    theyOweYou: loops.filter(l => l.owner === 'them').length,
+    upcomingEvents: events.length,
+    topMemory: memories[0]?.text,
+  };
+
+  // Sensitivities (from events marked as sensitive)
+  const sensitivities = eventsRaw
+    .filter(e => e.sensitivity === 'sensitive')
+    .map(e => `${person}: ${e.description}`);
+
+  return { memories, loops, events, briefing, sensitivities };
+}
+
+/**
+ * Get memories related to a location.
+ */
+async function getLocationMemories(
+  userId: string,
+  location: string
+): Promise<SurfacedMemory[]> {
+  // Search for memories mentioning this location
+  const memories = await retrieveWithSalience(userId, location, { limit: 5 });
+
+  return memories.map(m => ({
+    memoryId: m.memory.memoryId,
+    text: m.memory.text?.slice(0, 200) || '',
+    relevanceScore: m.retrievalScore,
+    salienceScore: m.memory.salienceScore || 0,
+    matchedOn: ['location'] as const,
+    createdAt: m.memory.createdAt || '',
+  }));
+}
+
+/**
+ * Get memories related to an activity.
+ */
+async function getActivityMemories(
+  userId: string,
+  activity: string
+): Promise<SurfacedMemory[]> {
+  const memories = await retrieveWithSalience(userId, activity, { limit: 5 });
+
+  return memories.map(m => ({
+    memoryId: m.memory.memoryId,
+    text: m.memory.text?.slice(0, 200) || '',
+    relevanceScore: m.retrievalScore,
+    salienceScore: m.memory.salienceScore || 0,
+    matchedOn: ['activity'] as const,
+    createdAt: m.memory.createdAt || '',
+  }));
+}
+
+/**
+ * Get recent relevant memories based on all frame dimensions.
+ */
+async function getRecentRelevant(frame: ContextFrame): Promise<SurfacedMemory[]> {
+  // Build a combined query from frame dimensions
+  const queryParts: string[] = [];
+
+  if (frame.location) queryParts.push(frame.location.value);
+  if (frame.activity) queryParts.push(frame.activity.value);
+  frame.people.forEach(p => queryParts.push(p.value));
+
+  if (queryParts.length === 0) {
+    // No specific context, just get recent high-salience
+    const memories = await retrieveWithSalience(frame.userId, '', {
+      limit: 10,
+      minSalience: 50,
+    });
+
+    return memories.map(m => ({
+      memoryId: m.memory.memoryId,
+      text: m.memory.text?.slice(0, 200) || '',
+      relevanceScore: m.retrievalScore,
+      salienceScore: m.memory.salienceScore || 0,
+      matchedOn: ['time'] as const,
+      createdAt: m.memory.createdAt || '',
+    }));
+  }
+
+  const query = queryParts.join(' ');
+  const memories = await retrieveWithSalience(frame.userId, query, { limit: 10 });
+
+  return memories.map(m => ({
+    memoryId: m.memory.memoryId,
+    text: m.memory.text?.slice(0, 200) || '',
+    relevanceScore: m.retrievalScore,
+    salienceScore: m.memory.salienceScore || 0,
+    matchedOn: determineMatchReasons(m, frame),
+    createdAt: m.memory.createdAt || '',
+  }));
+}
+
+/**
+ * Determine why a memory matched the current frame.
+ */
+function determineMatchReasons(
+  memory: any,
+  frame: ContextFrame
+): ('person' | 'location' | 'activity' | 'topic' | 'time')[] {
+  const reasons: ('person' | 'location' | 'activity' | 'topic' | 'time')[] = [];
+  const text = (memory.memory.text || '').toLowerCase();
+  const people = memory.memory.extractedFeatures?.peopleMentioned || [];
+
+  // Check people
+  for (const personDim of frame.people) {
+    if (people.some((p: string) => p.toLowerCase().includes(personDim.value.toLowerCase())) ||
+        text.includes(personDim.value.toLowerCase())) {
+      reasons.push('person');
+      break;
+    }
+  }
+
+  // Check location
+  if (frame.location && text.includes(frame.location.value.toLowerCase())) {
+    reasons.push('location');
+  }
+
+  // Check activity
+  if (frame.activity && text.includes(frame.activity.value.toLowerCase())) {
+    reasons.push('activity');
+  }
+
+  // Default to topic match
+  if (reasons.length === 0) {
+    reasons.push('topic');
+  }
+
+  return reasons;
+}
+
+/**
+ * Generate suggested conversation topics from surfaced data.
+ */
+function generateSuggestedTopics(data: ContextualMemories): string[] {
+  const topics: string[] = [];
+
+  // From open loops
+  for (const personData of data.aboutPeople) {
+    const overdueLoops = personData.openLoops.filter(l => l.isOverdue);
+    if (overdueLoops.length > 0) {
+      topics.push(`Follow up on: ${overdueLoops[0].description}`);
+    }
+
+    const theirEvents = personData.upcomingEvents.filter(e => e.goodToMention && e.daysUntil && e.daysUntil <= 7);
+    if (theirEvents.length > 0) {
+      topics.push(`Ask about: ${theirEvents[0].description}`);
+    }
+  }
+
+  return topics.slice(0, 5); // Top 5 suggestions
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+function createEmptyFrame(userId: string, now: string): ContextFrame {
+  const hour = new Date().getHours();
+
+  return {
+    userId,
+    people: [],
+    timeOfDay:
+      hour < 12 ? 'morning' :
+      hour < 17 ? 'afternoon' :
+      hour < 21 ? 'evening' : 'night',
+    dayType: [0, 6].includes(new Date().getDay()) ? 'weekend' : 'weekday',
+    frameId: `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: now,
+    expiresAt: new Date(Date.now() + FRAME_TTL * 1000).toISOString(),
+    lastUpdated: now,
+  };
+}
+
+async function saveFrame(frame: ContextFrame): Promise<void> {
+  if (redisClient) {
+    try {
+      await redisClient.setEx(
+        FRAME_KEY(frame.userId),
+        FRAME_TTL,
+        JSON.stringify(frame)
+      );
+    } catch (error) {
+      console.error('[ContextFrame] Error saving to Redis:', error);
+      inMemoryFrames.set(frame.userId, frame);
+    }
+  } else {
+    inMemoryFrames.set(frame.userId, frame);
+  }
+}
+
+// ============================================================================
+// MCP TOOL HELPERS
+// ============================================================================
+
+/**
+ * Set context for MCP - simplified interface.
+ * Example: "I'm at the park meeting Judy"
+ */
+export async function setContext(
+  userId: string,
+  context: {
+    location?: string;
+    people?: string[];
+    activity?: string;
+    calendarEvent?: ContextFrame['calendarEvent'];
+  }
+): Promise<ContextualMemories> {
+  const { memoriesSurfaced } = await updateContextFrame(userId, context, {
+    surfaceMemories: true,
+  });
+
+  return memoriesSurfaced || {
+    aboutPeople: [],
+    aboutLocation: [],
+    aboutActivity: [],
+    recentRelevant: [],
+    briefings: new Map(),
+    suggestedTopics: [],
+    sensitivities: [],
+    forFrame: '',
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Get what's relevant right now based on current frame.
+ */
+export async function whatMattersNow(userId: string): Promise<{
+  frame: ContextFrame | null;
+  memories: ContextualMemories | null;
+}> {
+  const frame = await getContextFrame(userId);
+  if (!frame) {
+    return { frame: null, memories: null };
+  }
+
+  const memories = await surfaceMemoriesForFrame(frame);
+  return { frame, memories };
+}
