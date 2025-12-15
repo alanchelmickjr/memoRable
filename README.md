@@ -72,16 +72,14 @@ aws configure
 
 ### AWS Services Used
 
-| Service | Purpose | Estimated Cost |
-|---------|---------|----------------|
-| **ECS Fargate** | Container orchestration | ~$30-50/mo |
-| **DocumentDB** | MongoDB-compatible database | ~$200/mo (db.t3.medium) |
-| **ElastiCache** | Redis caching layer | ~$25/mo (cache.t3.micro) |
-| **ALB** | Load balancing & SSL | ~$20/mo |
-| **Secrets Manager** | API key management | ~$1/mo |
-| **CloudWatch** | Logging & monitoring | ~$5/mo |
-
-**Total estimated cost: ~$280-300/month** for a production-ready deployment.
+| Service | Purpose |
+|---------|---------|
+| **ECS Fargate** | Container orchestration |
+| **DocumentDB** | MongoDB-compatible database |
+| **ElastiCache** | Redis caching layer |
+| **ALB** | Load balancing & SSL |
+| **Secrets Manager** | API key management |
+| **CloudWatch** | Logging & monitoring |
 
 ### Environment Variables (AWS)
 
