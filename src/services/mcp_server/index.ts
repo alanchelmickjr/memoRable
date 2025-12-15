@@ -64,7 +64,16 @@ import {
   reassociateMemory,
   exportMemories,
   importMemories,
+  // Anticipation service (predictive memory)
+  initAnticipationService,
+  observeContext,
+  recordFeedback,
+  getAnticipatedContext,
+  getPatternStats,
+  generateDayAnticipation,
   type LLMClient,
+  type CalendarEvent,
+  type FeedbackSignal,
 } from '../salience_service/index.js';
 
 // Configuration
@@ -143,6 +152,7 @@ async function initializeDb(): Promise<void> {
   db = mongoClient.db();
 
   await initializeSalienceService(db, { verbose: false });
+  initAnticipationService(db);
   console.error('[MCP] Database initialized');
 }
 
@@ -489,6 +499,98 @@ function createServer(): Server {
               description: 'Include related timeline events',
             },
           },
+        },
+      },
+      // Anticipation Tools (Predictive Memory)
+      {
+        name: 'anticipate',
+        description:
+          'Get predicted context and pre-surfaced memories based on calendar and learned patterns. The magic: surfaces what you need BEFORE you ask. Requires 21 days of usage to form reliable patterns.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            calendar: {
+              type: 'array',
+              description: 'Upcoming calendar events (optional - enhances predictions)',
+              items: {
+                type: 'object',
+                properties: {
+                  eventId: { type: 'string' },
+                  title: { type: 'string' },
+                  startTime: { type: 'string', description: 'ISO8601 datetime' },
+                  endTime: { type: 'string', description: 'ISO8601 datetime' },
+                  attendees: { type: 'array', items: { type: 'string' } },
+                  location: { type: 'string' },
+                  recurring: { type: 'boolean' },
+                },
+                required: ['title', 'startTime'],
+              },
+            },
+            lookAheadMinutes: {
+              type: 'number',
+              description: 'How far ahead to look (default: 60 minutes)',
+            },
+          },
+        },
+      },
+      {
+        name: 'day_outlook',
+        description:
+          'Get a predictive outlook for the day based on calendar and learned behavior patterns. Best used in the morning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            calendar: {
+              type: 'array',
+              description: 'Today\'s calendar events',
+              items: {
+                type: 'object',
+                properties: {
+                  eventId: { type: 'string' },
+                  title: { type: 'string' },
+                  startTime: { type: 'string' },
+                  endTime: { type: 'string' },
+                  attendees: { type: 'array', items: { type: 'string' } },
+                  location: { type: 'string' },
+                  recurring: { type: 'boolean' },
+                },
+                required: ['title', 'startTime'],
+              },
+            },
+          },
+        },
+      },
+      {
+        name: 'pattern_stats',
+        description:
+          'Get statistics about learned patterns. Shows how much data has been collected and whether predictions are ready.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'memory_feedback',
+        description:
+          'Tell the system whether a surfaced memory was useful. Improves future predictions via reinforcement learning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            patternId: {
+              type: 'string',
+              description: 'ID of the pattern that surfaced the memory',
+            },
+            memoryId: {
+              type: 'string',
+              description: 'ID of the memory (optional)',
+            },
+            action: {
+              type: 'string',
+              enum: ['used', 'ignored', 'dismissed'],
+              description: 'What you did with the surfaced memory',
+            },
+          },
+          required: ['patternId', 'action'],
         },
       },
     ],
@@ -932,6 +1034,134 @@ function createServer(): Server {
                   count: memories.length,
                   memories,
                 }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Anticipation Tools (Predictive Memory - the "voodoo")
+        case 'anticipate': {
+          const { calendar = [], lookAheadMinutes = 60 } = args as {
+            calendar?: CalendarEvent[];
+            lookAheadMinutes?: number;
+          };
+
+          const anticipated = await getAnticipatedContext(
+            CONFIG.defaultUserId,
+            calendar,
+            lookAheadMinutes
+          );
+
+          const stats = await getPatternStats(CONFIG.defaultUserId);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  readyForPrediction: stats.readyForPrediction,
+                  dataCollectionDays: stats.dataCollectionDays,
+                  daysUntilReady: stats.readyForPrediction ? 0 : Math.max(0, 21 - stats.dataCollectionDays),
+                  anticipatedContexts: anticipated.map(a => ({
+                    triggerTime: a.triggerTime,
+                    confidence: Math.round(a.confidence * 100) + '%',
+                    context: {
+                      timeOfDay: a.features.timeOfDay,
+                      activity: a.features.activity,
+                      people: a.features.people,
+                    },
+                    suggestedBriefings: a.suggestedBriefings,
+                    suggestedTopics: a.suggestedTopics,
+                    suggestedMemories: a.suggestedMemories.slice(0, 3),
+                    basedOn: a.basedOn.calendarEvent?.title || a.basedOn.recurringBehavior || 'learned pattern',
+                  })),
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'day_outlook': {
+          const { calendar = [] } = args as { calendar?: CalendarEvent[] };
+
+          const outlook = await generateDayAnticipation(CONFIG.defaultUserId, calendar);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  greeting: outlook.greeting,
+                  outlook: outlook.dayOutlook,
+                  insights: outlook.patternInsights,
+                  upcomingContextSwitches: outlook.anticipatedContexts.slice(0, 5).map(a => ({
+                    time: new Date(a.triggerTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    confidence: Math.round(a.confidence * 100) + '%',
+                    briefingsNeeded: a.suggestedBriefings,
+                    topicsLikely: a.suggestedTopics.slice(0, 3),
+                    trigger: a.basedOn.calendarEvent?.title || a.basedOn.recurringBehavior,
+                  })),
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'pattern_stats': {
+          const stats = await getPatternStats(CONFIG.defaultUserId);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ...stats,
+                  message: stats.readyForPrediction
+                    ? `Ready! ${stats.formedPatterns} patterns learned with ${Math.round(stats.averageConfidence * 100)}% average confidence.`
+                    : `Still learning (${stats.dataCollectionDays}/21 days). ${21 - stats.dataCollectionDays} days until predictions unlock.`,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'memory_feedback': {
+          const { patternId, memoryId, action } = args as {
+            patternId: string;
+            memoryId?: string;
+            action: 'used' | 'ignored' | 'dismissed';
+          };
+
+          const now = new Date();
+          const feedback: FeedbackSignal = {
+            patternId,
+            memoryId,
+            action,
+            context: {
+              timeOfDay: now.getHours() >= 5 && now.getHours() < 12 ? 'morning'
+                : now.getHours() >= 12 && now.getHours() < 17 ? 'afternoon'
+                : now.getHours() >= 17 && now.getHours() < 21 ? 'evening'
+                : 'night',
+              dayOfWeek: now.getDay(),
+            },
+            timestamp: now.toISOString(),
+          };
+
+          await recordFeedback(CONFIG.defaultUserId, feedback);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  recorded: true,
+                  action,
+                  message: action === 'used'
+                    ? 'Great! This pattern will be reinforced.'
+                    : action === 'dismissed'
+                    ? 'Got it. This pattern will be down-weighted.'
+                    : 'Noted. Neutral feedback recorded.',
+                }),
               },
             ],
           };

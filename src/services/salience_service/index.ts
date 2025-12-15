@@ -188,6 +188,24 @@ export {
   type ExportOptions,
 } from './memory_operations';
 
+// Re-export anticipation service (predictive memory surfacing)
+export {
+  initAnticipationService,
+  observeContext,
+  recordFeedback,
+  getAnticipatedContext,
+  getPatternStats,
+  generateDayAnticipation,
+  THRESHOLDS as ANTICIPATION_THRESHOLDS,
+  WINDOWS as ANTICIPATION_WINDOWS,
+  type PatternFeatures,
+  type LearnedPattern,
+  type CalendarEvent,
+  type AnticipatedContext,
+  type FeedbackSignal,
+  type PatternStats,
+} from './anticipation_service';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
