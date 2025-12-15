@@ -22,6 +22,8 @@ MemoRable: Here's what you need to know:
   - Sensitivity: Don't bring up the merger
 ```
 
+**Predictive Memory**: After 21 days of learning your patterns, MemoRable surfaces what you need *before you ask*.
+
 ---
 
 ## Quick Start: Claude Code / VS Code
@@ -61,10 +63,11 @@ Now in Claude Code you can say:
 - *"What do I owe Mike?"*
 - *"I'm meeting with the engineering team - what's relevant?"*
 - *"Forget everything about Project X"*
+- *"What's my day outlook?"* (after 21 days of learning)
 
 ---
 
-## MCP Tools Reference
+## MCP Tools Reference (18 Tools)
 
 ### Context Management
 | Tool | Description |
@@ -91,6 +94,92 @@ Now in Claude Code you can say:
 | `list_loops` | Open commitments (you owe / they owe) |
 | `close_loop` | Mark a commitment as done |
 | `get_status` | System status and metrics |
+
+### Predictive Memory (21-Day Learning)
+| Tool | Description |
+|------|-------------|
+| `anticipate` | Get predictions based on calendar + learned patterns |
+| `day_outlook` | Morning briefing with predicted context switches |
+| `pattern_stats` | Check learning progress (X/21 days) |
+| `memory_feedback` | RL feedback: was the surfaced memory useful? |
+
+---
+
+## Predictive Memory System
+
+MemoRable learns your patterns over 21 days and surfaces what you need *before you ask*.
+
+### How It Works
+
+```
+Day 1-21:  System observes patterns silently
+           "Monday 9am + standup + engineering team = needs sprint context"
+
+Day 22+:   Predictions unlock
+           Morning: "You have standup at 9am with Sarah, Mike, Jake.
+                     Based on patterns, you'll likely discuss:
+                     - Sprint velocity (80% confidence)
+                     - The payment bug (75% confidence)
+                     Here's Sarah's briefing pre-loaded..."
+```
+
+### Pattern Learning
+
+Based on research into habit formation (see `src/core/predictiveBehavior.js` legacy):
+
+| Phase | Days | Confidence | What Happens |
+|-------|------|------------|--------------|
+| Collection | 1-7 | 40% | Observing patterns, no predictions |
+| Formation | 8-21 | 40-60% | Patterns emerging, low confidence |
+| Established | 21+ | 60-80% | Reliable predictions based on consistency |
+
+### Reinforcement Learning
+
+The system improves via feedback:
+
+```typescript
+// User found the surfaced memory useful
+await memory_feedback({ patternId: "xxx", action: "used" });    // +1.0 reward
+
+// User ignored it
+await memory_feedback({ patternId: "xxx", action: "ignored" }); // -0.1 reward
+
+// User explicitly dismissed it
+await memory_feedback({ patternId: "xxx", action: "dismissed" }); // -0.5 reward
+```
+
+Patterns with consistently negative feedback are down-weighted.
+
+### Example: Morning Briefing
+
+```typescript
+// Call day_outlook with your calendar
+const outlook = await day_outlook({
+  calendar: [
+    { title: "Standup", startTime: "2024-01-15T09:00:00", attendees: ["Sarah", "Mike"] },
+    { title: "1:1 with Jake", startTime: "2024-01-15T14:00:00", attendees: ["Jake"] },
+  ]
+});
+
+// Response:
+{
+  "greeting": "Good morning, ready for Monday?",
+  "outlook": "2 scheduled events. First up: Standup at 9:00 AM.",
+  "insights": [
+    "Tracking 12 established patterns with 73% average confidence.",
+    "3 predicted context switches today based on your patterns."
+  ],
+  "upcomingContextSwitches": [
+    {
+      "time": "8:45 AM",
+      "confidence": "78%",
+      "briefingsNeeded": ["Sarah", "Mike"],
+      "topicsLikely": ["sprint velocity", "payment bug", "Q4 planning"],
+      "trigger": "Standup"
+    }
+  ]
+}
+```
 
 ---
 
@@ -386,29 +475,60 @@ print(f"Migrated {len(all_memories)} memories with salience enrichment")
 
 ---
 
-## AWS Deployment
+## Deployment
 
-### Quick Deploy
+### Local Development
 
 ```bash
 git clone https://github.com/alanchelmickjr/memoRable.git
-cd memorable
+cd memoRable
+
+# Install dependencies
+npm install
 
 # Auto-generates secure credentials
 npm run setup
 
 # Start all services
 docker-compose up -d
+
+# Run tests
+npm test
+npx tsx scripts/test_salience.ts  # Unit tests for salience service
 ```
 
-### Production (AWS)
+### GitHub Actions (Recommended for AWS)
+
+1. Add secrets to your repo (Settings → Secrets):
+   - `AWS_ACCESS_KEY_ID`
+   - `AWS_SECRET_ACCESS_KEY`
+   - `STAGING_URL` (after first deploy)
+   - `PRODUCTION_URL` (after first deploy)
+
+2. Push to `main` → auto-deploys to staging
+
+3. Manual production deploy: Actions → Deploy to AWS → Run workflow → Select "production"
+
+### AWS Setup Script
 
 ```bash
-# Deploy to AWS (ECS + DocumentDB + ElastiCache)
-./scripts/aws-deploy.sh --region us-east-1 --environment production
+# First time infrastructure setup
+./scripts/aws-setup.sh staging
+
+# Update your secrets
+aws secretsmanager update-secret \
+  --secret-id memorable/staging/anthropic \
+  --secret-string '{"api_key":"sk-ant-YOUR_REAL_KEY"}'
+
+# Build and push Docker image
+docker build -t memorable -f docker/Dockerfile .
+aws ecr get-login-password | docker login --username AWS --password-stdin YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
+docker tag memorable:latest YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
+docker push YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
 ```
 
-**Architecture:**
+### AWS Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AWS Cloud                                 │
@@ -484,6 +604,38 @@ active → archived → suppressed → deleted (30-day retention)
     restore
 ```
 
+### Pattern Learning (21-Day Rule)
+
+Based on habit formation research:
+- Patterns need 21 days to form reliably
+- Confidence starts at 40%, ramps to 80% with consistency
+- Post-formation: confidence = (occurrences / days) × 0.8
+- RL feedback adjusts pattern weights over time
+
+---
+
+## Testing
+
+```bash
+# Run all Jest tests
+npm test
+
+# Run salience service unit tests (standalone)
+npx tsx scripts/test_salience.ts
+
+# Example output:
+# === Anticipation Service Tests ===
+# ✓ THRESHOLDS are correctly defined
+# ✓ WINDOWS are correctly defined (21 days for pattern formation)
+# ✓ getTimeOfDay returns correct values
+# ✓ calculatePatternConfidence: Day 1 (brand new pattern)
+# ✓ calculatePatternConfidence: Day 21 with 21 occurrences (fully formed)
+# ✓ calculateRewardSignal: Mixed feedback
+# === Test Summary ===
+# Passed: 12
+# Failed: 0
+```
+
 ---
 
 ## Project Structure
@@ -491,26 +643,32 @@ active → archived → suppressed → deleted (30-day retention)
 ```
 memorable/
 ├── src/services/
-│   ├── mcp_server/           # MCP server for Claude Code
-│   │   └── index.ts          # 14 MCP tools
-│   ├── salience_service/     # Core memory intelligence
-│   │   ├── index.ts          # Main exports
-│   │   ├── context_frame.ts  # Rolling context windows
-│   │   ├── memory_operations.ts  # Forget/reassociate/export
-│   │   ├── feature_extractor.ts  # LLM feature extraction
+│   ├── mcp_server/              # MCP server for Claude Code
+│   │   └── index.ts             # 18 MCP tools
+│   ├── salience_service/        # Core memory intelligence
+│   │   ├── index.ts             # Main exports
+│   │   ├── anticipation_service.ts  # Predictive memory (21-day learning)
+│   │   ├── context_frame.ts     # Rolling context windows
+│   │   ├── memory_operations.ts # Forget/reassociate/export
+│   │   ├── feature_extractor.ts # LLM feature extraction
 │   │   ├── salience_calculator.ts
 │   │   ├── open_loop_tracker.ts
 │   │   ├── relationship_tracker.ts
 │   │   ├── briefing_generator.ts
 │   │   ├── retrieval.ts
 │   │   ├── adaptive_learning.ts
-│   │   ├── metrics.ts        # Prometheus metrics
-│   │   └── startup.ts        # Health checks
-│   ├── ingestion_service/    # Memory ingestion API
-│   └── embedding_service/    # Vector embeddings
-├── docker-compose.yml        # Full stack
+│   │   ├── metrics.ts           # Prometheus metrics
+│   │   └── startup.ts           # Health checks
+│   ├── ingestion_service/       # Memory ingestion API
+│   └── embedding_service/       # Vector embeddings
 ├── scripts/
-│   └── setup.js              # Auto-credential generation
+│   ├── setup.js                 # Auto-credential generation
+│   ├── aws-setup.sh             # AWS infrastructure setup
+│   └── test_salience.ts         # Unit tests
+├── .github/workflows/
+│   ├── ci.yml                   # CI pipeline
+│   └── deploy-aws.yml           # AWS deployment
+├── docker-compose.yml           # Full stack
 └── docs/
 ```
 
