@@ -39,12 +39,15 @@ MemoRable is designed around the following core principles:
   - AI response handling
   - File management
   - Extensible sensor framework
-- **Night Processing Intelligence**
-  - Automated pattern analysis (1 AM - 4 AM)
-  - Model performance optimization
-  - Cache warming strategies
-  - Memory usage predictions
-  - Task pattern analysis
+- **Memory Salience System v2.0** ⚡ NEW
+  - Calculate importance at capture time, not overnight
+  - 5-factor salience scoring (emotional, novelty, relevance, social, consequential)
+  - Adaptive weights that learn what matters to you
+  - Open loop tracking (commitments, promises, follow-ups)
+  - Other people's timeline tracking ("Sarah's daughter's recital is Thursday")
+  - Relationship rhythm detection (cold relationships, engagement trends)
+  - Pre-conversation briefings ("the dance")
+  - Cost: ~$0.003/memory vs $120/day for batch processing (99.8% cheaper)
 - **Contextual Indexing**
   - Environmental data tracking
   - Temporal awareness
@@ -145,6 +148,61 @@ graph LR
 ```
 
 This architecture allows for efficient large-scale memory management, mimicking how humans might pay less conscious attention to routine information while being able to quickly access relevant details when needed.
+
+### Memory Salience System: Human-Like Importance Scoring
+
+The key insight we discovered: **humans calculate salience at encoding time, not during sleep**. The emotional spike happens when the thing happens, not eight hours later. Sleep just moves things around—it doesn't decide what matters.
+
+```mermaid
+graph LR
+    subgraph CaptureTime["At Capture Time (~$0.003)"]
+        M[Memory Input] --> FE[Feature Extraction]
+        FE --> SC[Salience Calculator]
+        SC --> |Score 0-100| Store[(Storage)]
+    end
+
+    subgraph Components["5 Salience Factors"]
+        E[Emotional 30%]
+        N[Novelty 20%]
+        R[Relevance 20%]
+        S[Social 15%]
+        C[Consequential 15%]
+    end
+
+    subgraph SideEffects["Automatic Tracking"]
+        OL[Open Loops]
+        TL[Timeline Events]
+        RL[Relationship Patterns]
+    end
+
+    FE --> Components
+    FE --> SideEffects
+
+    style CaptureTime fill:#E8F5E9,stroke:#4CAF50
+    style Components fill:#E3F2FD,stroke:#2196F3
+    style SideEffects fill:#FFF3E0,stroke:#FF9800
+```
+
+**What makes memories "loom":**
+
+| Factor | Weight | Observable Signals |
+|--------|--------|-------------------|
+| **Emotional** | 30% | Keywords (died, love, fired), sentiment intensity, intimacy signals |
+| **Novelty** | 20% | New people, new locations, unusual times, novel topics |
+| **Relevance** | 20% | Mentions your name, your interests, your goals, close contacts |
+| **Social** | 15% | Relationship events (death, marriage, promotion), conflict, vulnerability |
+| **Consequential** | 15% | Action items, decisions, money mentioned, deadlines |
+
+**"The Dance" - Pre-Conversation Briefings:**
+
+Before you talk to someone, the system assembles what you need to know:
+- What you owe them (open commitments)
+- What they owe you
+- Their upcoming events (daughter's recital, Series B closing)
+- Recent emotional context
+- Sensitivities to avoid ("don't ask about mom")
+
+This transforms memory from a passive archive into an active social intelligence layer.
 
 ### Memory Weaving: The Fabric of Understanding
 
@@ -293,6 +351,11 @@ memorable/
 │   ├── core/             # Core system components
 │   ├── models/           # Data models
 │   ├── services/         # Business logic
+│   │   ├── ingestion_service/   # Memory ingestion pipeline
+│   │   ├── salience_service/    # Memory salience system v2.0
+│   │   ├── embedding_service/   # Vector embeddings
+│   │   ├── retrieval_service/   # Memory retrieval
+│   │   └── nnna_service/        # Analysis service
 │   ├── utils/            # Utility functions
 │   └── index.js          # Application entry point
 ├── tests/                # Test files
@@ -323,6 +386,7 @@ Detailed documentation is available in the [docs](./docs) directory:
 - [Advanced Usage](./docs/7_advanced_usage.md)
 - [Technical Architecture](./docs/technical-architecture.md)
 - [Deployment Guide](./docs/deployment-guide.md)
+- [**Memory Salience Service**](./src/services/salience_service/README.md) ⚡ NEW
 
 ## Collaboration
 
