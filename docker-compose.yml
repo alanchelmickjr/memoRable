@@ -266,6 +266,34 @@ services:
       timeout: 10s
       retries: 3
 
+  memorable_mcp_server: # MCP Server for Claude Code / VS Code integration
+    build:
+      context: .
+      dockerfile: src/services/mcp_server/Dockerfile
+    container_name: memorable_mcp_server
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
+      - MCP_USER_ID=${MCP_USER_ID:-default}
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      memorable_mongo:
+        condition: service_healthy
+    networks:
+      - memorable_net
+    # MCP uses stdio, so no ports exposed
+    # Connect via: docker exec -i memorable_mcp_server node dist/index.js
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
   memorable_autoheal: # Renamed from 'autoheal'
     image: willfarrell/autoheal
     container_name: memorable_autoheal_monitor
