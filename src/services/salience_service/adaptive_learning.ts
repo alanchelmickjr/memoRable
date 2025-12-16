@@ -16,6 +16,7 @@ import type {
 } from './models';
 import { DEFAULT_SALIENCE_WEIGHTS } from './models';
 import { collections } from './database';
+import { invalidateWeightsCache } from './salience_calculator';
 
 /**
  * Configuration for adaptive learning.
@@ -207,7 +208,7 @@ function calculateConsistency(logs: RetrievalLog[]): number {
 }
 
 /**
- * Save learned weights to database.
+ * Save learned weights to database and invalidate cache.
  */
 async function saveLearnedWeights(weights: LearnedWeights): Promise<void> {
   await collections.learnedWeights().updateOne(
@@ -215,6 +216,9 @@ async function saveLearnedWeights(weights: LearnedWeights): Promise<void> {
     { $set: weights },
     { upsert: true }
   );
+
+  // Invalidate cache so next salience calculation uses fresh weights
+  invalidateWeightsCache(weights.userId);
 }
 
 /**

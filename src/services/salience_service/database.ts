@@ -193,20 +193,27 @@ export interface ContactDocument {
 
 /**
  * Get or create a contact by name.
+ * Sanitizes name input for security.
  */
 export async function getOrCreateContact(
   userId: string,
   name: string,
   metadata?: Partial<ContactDocument>
 ): Promise<ContactDocument> {
+  // Sanitize name first
+  const sanitizedName = sanitizeContactName(name);
+  if (!sanitizedName) {
+    throw new Error('Invalid contact name');
+  }
+
   const contactsCollection = getCollection<ContactDocument>('contacts');
 
   // Try to find existing contact
   const existing = await contactsCollection.findOne({
     userId,
     $or: [
-      { name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } },
-      { aliases: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } }
+      { name: { $regex: new RegExp(`^${escapeRegex(sanitizedName)}$`, 'i') } },
+      { aliases: { $regex: new RegExp(`^${escapeRegex(sanitizedName)}$`, 'i') } }
     ]
   });
 
@@ -228,7 +235,7 @@ export async function getOrCreateContact(
   const now = new Date().toISOString();
   const newContact: ContactDocument = {
     userId,
-    name,
+    name: sanitizedName,
     firstSeenAt: now,
     lastSeenAt: now,
     createdAt: now,
@@ -245,6 +252,134 @@ export async function getOrCreateContact(
  */
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Maximum contact name length (characters).
+ */
+const MAX_CONTACT_NAME_LENGTH = 200;
+
+/**
+ * Sanitize contact name for storage.
+ * - Removes control characters
+ * - Trims whitespace
+ * - Limits length
+ * - Returns null if name is empty/invalid
+ */
+function sanitizeContactName(name: string): string | null {
+  if (!name || typeof name !== 'string') return null;
+
+  // Remove control characters and null bytes
+  let sanitized = name.replace(/[\x00-\x1F\x7F]/g, '');
+
+  // Trim whitespace
+  sanitized = sanitized.trim();
+
+  // Limit length
+  sanitized = sanitized.slice(0, MAX_CONTACT_NAME_LENGTH);
+
+  // Return null if empty after sanitization
+  return sanitized.length > 0 ? sanitized : null;
+}
+
+/**
+ * Batch get or create contacts by names.
+ * Much more efficient than calling getOrCreateContact in a loop.
+ * Returns a Map of lowercase name -> ContactDocument for O(1) lookup.
+ * Sanitizes all names for security.
+ */
+export async function batchGetOrCreateContacts(
+  userId: string,
+  names: string[]
+): Promise<Map<string, ContactDocument>> {
+  const contactsCollection = getCollection<ContactDocument>('contacts');
+  const result = new Map<string, ContactDocument>();
+
+  // Sanitize and filter names - deduplicate by sanitized lowercase
+  const sanitizedNames = new Map<string, string>(); // lowercase -> sanitized
+  for (const name of names) {
+    const sanitized = sanitizeContactName(name);
+    if (sanitized && sanitized.toLowerCase() !== 'unknown') {
+      sanitizedNames.set(sanitized.toLowerCase(), sanitized);
+    }
+  }
+
+  const uniqueNames = Array.from(sanitizedNames.values());
+
+  if (uniqueNames.length === 0) return result;
+
+  // Build regex patterns for all names (case-insensitive)
+  const namePatterns = uniqueNames.map(name => ({
+    original: name,
+    regex: new RegExp(`^${escapeRegex(name)}$`, 'i')
+  }));
+
+  // Single query to find all existing contacts
+  const existing = await contactsCollection.find({
+    userId,
+    $or: namePatterns.flatMap(({ regex }) => [
+      { name: { $regex: regex } },
+      { aliases: { $regex: regex } }
+    ])
+  }).toArray();
+
+  // Map existing contacts by their names (lowercase for matching)
+  const existingByName = new Map<string, ContactDocument>();
+  for (const contact of existing) {
+    existingByName.set(contact.name.toLowerCase(), contact);
+    // Also map any aliases
+    for (const alias of contact.aliases || []) {
+      existingByName.set(alias.toLowerCase(), contact);
+    }
+  }
+
+  // Track which names need to be created
+  const toCreate: string[] = [];
+  const now = new Date().toISOString();
+
+  for (const name of uniqueNames) {
+    const lowerName = name.toLowerCase();
+    const existingContact = existingByName.get(lowerName);
+
+    if (existingContact) {
+      result.set(lowerName, existingContact);
+    } else {
+      toCreate.push(name);
+    }
+  }
+
+  // Batch create new contacts
+  if (toCreate.length > 0) {
+    const newContacts: ContactDocument[] = toCreate.map(name => ({
+      userId,
+      name,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    const insertResult = await contactsCollection.insertMany(newContacts as any);
+
+    // Map the created contacts
+    for (let i = 0; i < toCreate.length; i++) {
+      const contact = {
+        ...newContacts[i],
+        _id: insertResult.insertedIds[i]?.toString()
+      };
+      result.set(toCreate[i].toLowerCase(), contact);
+    }
+  }
+
+  // Batch update lastSeenAt for existing contacts (single operation)
+  if (existing.length > 0) {
+    await contactsCollection.updateMany(
+      { _id: { $in: existing.map(c => c._id) } },
+      { $set: { lastSeenAt: now, updatedAt: now } }
+    );
+  }
+
+  return result;
 }
 
 /**

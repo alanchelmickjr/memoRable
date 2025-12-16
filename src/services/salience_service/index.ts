@@ -33,6 +33,55 @@ export * from './models';
 // Re-export database utilities
 export { setupSalienceDatabase, collections } from './database';
 
+// Re-export startup/health utilities
+export {
+  initializeSalienceService,
+  initializeWithRetry,
+  getHealthStatus,
+  isHealthy,
+  isReady,
+  isAlive,
+  shutdown,
+  healthEndpoint,
+  probes,
+  getState,
+  type StartupConfig,
+  type HealthStatus,
+} from './startup';
+
+// Re-export metrics utilities
+export {
+  metrics,
+  metricsEndpoint,
+  getMetricsSummary,
+  exportPrometheus,
+  exportJSON,
+  resetMetrics,
+  startTimer,
+  withTiming,
+  // Convenience metric functions
+  incMemoriesProcessed,
+  incOpenLoopsCreated,
+  incOpenLoopsClosed,
+  incTimelineEvents,
+  incRetrievals,
+  incBriefings,
+  incFeatureExtractions,
+  incRelationshipUpdates,
+  incErrors,
+  setActiveLoops,
+  setOverdueLoops,
+  setActiveRelationships,
+  setColdRelationships,
+  setWeightsConfidence,
+  observeProcessingTime,
+  observeFeatureExtractionTime,
+  observeRetrievalTime,
+  observeBriefingTime,
+  observeSalienceScore,
+  observeLLMCallTime,
+} from './metrics';
+
 // Re-export individual services
 export { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
 export {
@@ -41,6 +90,8 @@ export {
   buildCaptureContext,
   calculateDecayModifier,
   calculateRetrievalBoost,
+  invalidateWeightsCache,
+  clearWeightsCache,
 } from './salience_calculator';
 export {
   createOpenLoopsFromFeatures,
@@ -51,6 +102,7 @@ export {
   getUpcomingDueLoops,
   markReminderSent,
   abandonLoop,
+  type OpenLoopWithOverdue,
 } from './open_loop_tracker';
 export {
   createTimelineEventsFromFeatures,
@@ -102,6 +154,58 @@ export {
   batchRecalibrateWeights,
 } from './adaptive_learning';
 
+// Re-export context frame system
+export {
+  initContextFrame,
+  getContextFrame,
+  updateContextFrame,
+  clearContextFrame,
+  addPersonToFrame,
+  removePersonFromFrame,
+  surfaceMemoriesForFrame,
+  setContext,
+  whatMattersNow,
+  type ContextFrame,
+  type ContextualMemories,
+  type SurfacedMemory,
+  type QuickBriefing,
+} from './context_frame';
+
+// Re-export memory operations (forget, reassociate, export)
+export {
+  forgetMemory,
+  forgetPerson,
+  restoreMemory,
+  reassociateMemory,
+  mergeMemories,
+  exportMemories,
+  importMemories,
+  type MemoryState,
+  type ForgetOptions,
+  type ForgetResult,
+  type ReassociateOptions,
+  type ExportedMemory,
+  type ExportOptions,
+} from './memory_operations';
+
+// Re-export anticipation service (predictive memory surfacing)
+export {
+  initAnticipationService,
+  observeContext,
+  recordPatternFeedback,
+  getAnticipatedContext,
+  getPatternStats,
+  generateDayAnticipation,
+  THRESHOLDS as ANTICIPATION_THRESHOLDS,
+  WINDOWS as ANTICIPATION_WINDOWS,
+  type PatternFeatures,
+  type LearnedPattern,
+  type CalendarEvent,
+  type AnticipatedContext,
+  type FeedbackSignal,
+  type PatternStats,
+} from './anticipation_service';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
@@ -109,15 +213,19 @@ import { computeSalienceForUser, buildCaptureContext } from './salience_calculat
 import { createOpenLoopsFromFeatures, checkLoopClosures } from './open_loop_tracker';
 import { createTimelineEventsFromFeatures } from './timeline_tracker';
 import { updateRelationshipFromFeatures } from './relationship_tracker';
+import {
+  startTimer,
+  incMemoriesProcessed,
+  incOpenLoopsCreated,
+  incOpenLoopsClosed,
+  incTimelineEvents,
+  incErrors,
+  observeProcessingTime,
+  observeSalienceScore,
+} from './metrics';
 
-/**
- * Initialize the salience service.
- * Call this during application startup.
- */
-export async function initializeSalienceService(db: Db): Promise<void> {
-  await setupSalienceDatabase(db);
-  console.log('[SalienceService] Initialized successfully');
-}
+// Note: initializeSalienceService is exported from './startup' with enhanced
+// retry logic, health checks, and zero-data handling. Use that version for production.
 
 /**
  * Main salience enrichment pipeline.
@@ -131,6 +239,8 @@ export async function enrichMemoryWithSalience(
   llmClient: LLMClient,
   userProfile?: UserProfile
 ): Promise<SalienceCalculationResult> {
+  const endTimer = startTimer();
+
   try {
     const memoryCreatedAt = new Date();
 
@@ -150,26 +260,28 @@ export async function enrichMemoryWithSalience(
       userProfile
     );
 
-    // Step 4: Create open loops from commitments
-    const openLoops = await createOpenLoopsFromFeatures(
-      features,
-      input.userId,
-      input.memoryId,
-      memoryCreatedAt
-    );
-
-    // Step 5: Create timeline events for other people
-    const timelineEvents = await createTimelineEventsFromFeatures(
-      features,
-      input.userId,
-      input.memoryId,
-      memoryCreatedAt
-    );
-
-    // Step 6: Update relationship patterns
-    await updateRelationshipFromFeatures(input.userId, features, memoryCreatedAt);
+    // Steps 4, 5, 6: Run in parallel (all independent - depend only on features)
+    const [openLoops, timelineEvents] = await Promise.all([
+      // Step 4: Create open loops from commitments
+      createOpenLoopsFromFeatures(
+        features,
+        input.userId,
+        input.memoryId,
+        memoryCreatedAt
+      ),
+      // Step 5: Create timeline events for other people
+      createTimelineEventsFromFeatures(
+        features,
+        input.userId,
+        input.memoryId,
+        memoryCreatedAt
+      ),
+      // Step 6: Update relationship patterns (no return value needed)
+      updateRelationshipFromFeatures(input.userId, features, memoryCreatedAt),
+    ]);
 
     // Step 7: Check if this memory closes any existing loops
+    // Runs AFTER loop creation to ensure consistent state (excludes same-memory loops)
     const closedLoopIds = await checkLoopClosures(
       input.text,
       features,
@@ -178,8 +290,23 @@ export async function enrichMemoryWithSalience(
       llmClient
     );
 
-    // Log if loops were closed
+    // Record metrics
+    const durationMs = endTimer();
+    observeProcessingTime('llm', durationMs);
+    observeSalienceScore(salience.score);
+    incMemoriesProcessed('llm', 'success');
+
+    // Track created artifacts
+    for (const loop of openLoops) {
+      incOpenLoopsCreated(loop.owner);
+    }
+    for (const event of timelineEvents) {
+      incTimelineEvents(event.type || 'unknown');
+    }
     if (closedLoopIds.length > 0) {
+      for (let i = 0; i < closedLoopIds.length; i++) {
+        incOpenLoopsClosed('auto');
+      }
       console.log(`[SalienceService] Closed ${closedLoopIds.length} open loops`);
     }
 
@@ -191,6 +318,11 @@ export async function enrichMemoryWithSalience(
       timelineEventsCreated: timelineEvents,
     };
   } catch (error) {
+    // Record error metrics
+    observeProcessingTime('llm', endTimer());
+    incMemoriesProcessed('llm', 'error');
+    incErrors('enrichMemoryWithSalience');
+
     console.error('[SalienceService] Error enriching memory:', error);
     return {
       success: false,
@@ -210,6 +342,8 @@ export async function enrichMemoryWithSalienceHeuristic(
   input: SalienceCalculationInput,
   userProfile?: UserProfile
 ): Promise<SalienceCalculationResult> {
+  const endTimer = startTimer();
+
   try {
     const memoryCreatedAt = new Date();
 
@@ -229,6 +363,12 @@ export async function enrichMemoryWithSalienceHeuristic(
       userProfile
     );
 
+    // Record metrics
+    const durationMs = endTimer();
+    observeProcessingTime('heuristic', durationMs);
+    observeSalienceScore(salience.score);
+    incMemoriesProcessed('heuristic', 'success');
+
     // Note: Skip loop/timeline creation with heuristics (less reliable)
 
     return {
@@ -239,6 +379,11 @@ export async function enrichMemoryWithSalienceHeuristic(
       timelineEventsCreated: [],
     };
   } catch (error) {
+    // Record error metrics
+    observeProcessingTime('heuristic', endTimer());
+    incMemoriesProcessed('heuristic', 'error');
+    incErrors('enrichMemoryWithSalienceHeuristic');
+
     console.error('[SalienceService] Error in heuristic enrichment:', error);
     return {
       success: false,
