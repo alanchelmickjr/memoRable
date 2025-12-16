@@ -131,50 +131,45 @@ export async function enrichMementoWithSalience(
       salienceVersion: SALIENCE_ALGORITHM_VERSION,
     };
 
-    // Step 5: Create open loops (if enabled and using LLM)
-    let openLoopsCreated: OpenLoop[] = [];
-    if (!options.skipLoopCreation && options.useLLM) {
-      openLoopsCreated = await createOpenLoopsFromFeatures(
-        features,
-        memento.agentId,
-        memento.mementoId,
-        memoryCreatedAt
-      );
-      enrichedData.hasOpenLoops = openLoopsCreated.length > 0;
+    // Steps 5, 6, 7: Run in parallel (all independent - depend only on features)
+    // Build promises array based on enabled options
+    const parallelOps: Promise<any>[] = [];
 
-      // Find earliest due date
-      if (openLoopsCreated.length > 0) {
-        const dueDates = openLoopsCreated
-          .map((l) => l.dueDate || l.softDeadline)
-          .filter((d): d is string => !!d)
-          .sort();
-        if (dueDates.length > 0) {
-          enrichedData.earliestDueDate = dueDates[0];
-        }
+    // Step 5: Create open loops (if enabled and using LLM)
+    const loopCreationPromise = (!options.skipLoopCreation && options.useLLM)
+      ? createOpenLoopsFromFeatures(features, memento.agentId, memento.mementoId, memoryCreatedAt)
+      : Promise.resolve([]);
+    parallelOps.push(loopCreationPromise);
+
+    // Step 6: Create timeline events (if enabled and using LLM)
+    const timelinePromise = (!options.skipTimelineCreation && options.useLLM)
+      ? createTimelineEventsFromFeatures(features, memento.agentId, memento.mementoId, memoryCreatedAt)
+      : Promise.resolve([]);
+    parallelOps.push(timelinePromise);
+
+    // Step 7: Update relationship patterns (if enabled)
+    const relationshipPromise = (!options.skipRelationshipUpdates)
+      ? updateRelationshipFromFeatures(memento.agentId, features, memoryCreatedAt)
+      : Promise.resolve();
+    parallelOps.push(relationshipPromise);
+
+    // Wait for all parallel operations
+    const [openLoopsCreated, timelineEventsCreated] = await Promise.all(parallelOps) as [OpenLoop[], PersonTimelineEvent[]];
+
+    // Post-process loop creation results
+    if (openLoopsCreated.length > 0) {
+      enrichedData.hasOpenLoops = true;
+      const dueDates = openLoopsCreated
+        .map((l) => l.dueDate || l.softDeadline)
+        .filter((d): d is string => !!d)
+        .sort();
+      if (dueDates.length > 0) {
+        enrichedData.earliestDueDate = dueDates[0];
       }
     }
 
-    // Step 6: Create timeline events (if enabled and using LLM)
-    let timelineEventsCreated: PersonTimelineEvent[] = [];
-    if (!options.skipTimelineCreation && options.useLLM) {
-      timelineEventsCreated = await createTimelineEventsFromFeatures(
-        features,
-        memento.agentId,
-        memento.mementoId,
-        memoryCreatedAt
-      );
-    }
-
-    // Step 7: Update relationship patterns (if enabled)
-    if (!options.skipRelationshipUpdates) {
-      await updateRelationshipFromFeatures(
-        memento.agentId,
-        features,
-        memoryCreatedAt
-      );
-    }
-
     // Step 8: Check for loop closures (if enabled and using LLM)
+    // Runs AFTER loop creation to ensure consistent state (excludes same-memory loops)
     let loopsClosed: string[] = [];
     if (!options.skipLoopClosureDetection && options.useLLM && options.llmClient) {
       loopsClosed = await checkLoopClosures(

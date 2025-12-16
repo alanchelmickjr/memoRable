@@ -250,6 +250,7 @@ function applyTemporalFocus(
 
 /**
  * Log memory retrieval for adaptive learning.
+ * Non-critical operation - errors are logged but don't propagate.
  */
 export async function logRetrieval(
   userId: string,
@@ -262,25 +263,30 @@ export async function logRetrieval(
   resultedInAction: boolean = false,
   userFeedback?: 'helpful' | 'not_helpful' | 'neutral'
 ): Promise<void> {
-  const log = {
-    id: crypto.randomUUID(),
-    userId,
-    memoryId,
-    retrievedAt: new Date().toISOString(),
-    query,
-    salienceComponents: memory.salienceComponents || {
-      emotional: 50,
-      novelty: 50,
-      relevance: 50,
-      social: 50,
-      consequential: 50,
-    },
-    salienceScore: memory.salienceScore,
-    resultedInAction,
-    userFeedback,
-  };
+  try {
+    const log = {
+      id: crypto.randomUUID(),
+      userId,
+      memoryId,
+      retrievedAt: new Date().toISOString(),
+      query,
+      salienceComponents: memory.salienceComponents || {
+        emotional: 50,
+        novelty: 50,
+        relevance: 50,
+        social: 50,
+        consequential: 50,
+      },
+      salienceScore: memory.salienceScore,
+      resultedInAction,
+      userFeedback,
+    };
 
-  await collections.retrievalLogs().insertOne(log);
+    await collections.retrievalLogs().insertOne(log);
+  } catch (error) {
+    console.error('[Retrieval] Error logging retrieval:', error);
+    // Non-critical - don't propagate
+  }
 }
 
 /**

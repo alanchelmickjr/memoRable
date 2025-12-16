@@ -74,26 +74,27 @@ export async function generateBriefing(
   const contact = await collections.contacts?.().findOne({ _id: contactId }) as ContactDocument | null;
   const contactName = contact?.name || 'Unknown';
 
-  // Fetch all data in parallel
+  // Fetch all data in parallel (consolidated open loops query: 1 DB call instead of 3)
   const [
     pattern,
     snapshot,
-    openLoopsYouOwe,
-    openLoopsTheyOwe,
-    openLoopsMutual,
+    allOpenLoops,
     upcomingEvents,
     recentEvents,
     sensitiveContext,
   ] = await Promise.all([
     getRelationshipPattern(userId, contactId),
     getLatestSnapshot(userId, contactId),
-    getOpenLoops(userId, { contactId, owner: 'self', status: 'open' }),
-    getOpenLoops(userId, { contactId, owner: 'them', status: 'open' }),
-    getOpenLoops(userId, { contactId, owner: 'mutual', status: 'open' }),
+    getOpenLoops(userId, { contactId, status: 'open' }), // Single query for all owners
     getUpcomingEventsForContact(userId, contactId, opts.upcomingEventsDays),
     getRecentEventsForContact(userId, contactId, opts.recentEventsDays),
     getSensitiveContext(userId, contactId),
   ]);
+
+  // Client-side filtering by owner (replaces 3 DB queries with 1 + filtering)
+  const openLoopsYouOwe = allOpenLoops.filter(l => l.owner === 'self');
+  const openLoopsTheyOwe = allOpenLoops.filter(l => l.owner === 'them');
+  const openLoopsMutual = allOpenLoops.filter(l => l.owner === 'mutual');
 
   // Get high-salience memories with this person
   // Note: This would query the memories collection with salience filter
@@ -506,12 +507,16 @@ export async function generateQuickBriefing(
 }> {
   const contact = await collections.contacts?.().findOne({ _id: contactId }) as ContactDocument | null;
 
-  const [loopsYouOwe, loopsTheyOwe, upcoming, sensitive] = await Promise.all([
-    getOpenLoops(userId, { contactId, owner: 'self', status: 'open' }),
-    getOpenLoops(userId, { contactId, owner: 'them', status: 'open' }),
+  // Consolidated: 1 query for all loops instead of 2
+  const [allLoops, upcoming, sensitive] = await Promise.all([
+    getOpenLoops(userId, { contactId, status: 'open' }),
     getUpcomingEventsForContact(userId, contactId, 7),
     getSensitiveContext(userId, contactId),
   ]);
+
+  // Client-side filtering
+  const loopsYouOwe = allLoops.filter(l => l.owner === 'self');
+  const loopsTheyOwe = allLoops.filter(l => l.owner === 'them');
 
   return {
     name: contact?.name || 'Unknown',

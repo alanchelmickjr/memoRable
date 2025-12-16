@@ -49,6 +49,7 @@ const RELATIONSHIP_EVENT_MAPPING: Record<
 
 /**
  * Create timeline events from extracted features.
+ * Gracefully handles errors to avoid disrupting the main ingestion flow.
  */
 export async function createTimelineEventsFromFeatures(
   features: ExtractedFeatures,
@@ -58,43 +59,63 @@ export async function createTimelineEventsFromFeatures(
 ): Promise<PersonTimelineEvent[]> {
   const events: PersonTimelineEvent[] = [];
 
-  // Process dates mentioned (other people's events)
-  for (const date of features.datesMentioned) {
-    if (date.whose && date.whose.toLowerCase() !== 'self') {
-      const event = await createEventFromDate(date, userId, memoryId, memoryCreatedAt);
-      if (event) events.push(event);
-    }
-  }
-
-  // Process relationship events
-  for (const person of features.peopleMentioned) {
-    for (const relEvent of features.relationshipEvents) {
-      const event = await createEventFromRelationship(
-        person,
-        relEvent,
-        userId,
-        memoryId,
-        memoryCreatedAt
-      );
-      if (event) events.push(event);
-    }
-  }
-
-  // Deduplicate events (same person + similar description + close date)
-  const uniqueEvents = deduplicateEvents(events);
-
-  // Store events
-  if (uniqueEvents.length > 0) {
-    // Check for existing similar events to avoid duplicates in DB
-    for (const event of uniqueEvents) {
-      const existing = await findSimilarEvent(userId, event);
-      if (!existing) {
-        await collections.personTimelineEvents().insertOne(event);
+  try {
+    // Process dates mentioned (other people's events)
+    for (const date of features.datesMentioned) {
+      if (date.whose && date.whose.toLowerCase() !== 'self') {
+        try {
+          const event = await createEventFromDate(date, userId, memoryId, memoryCreatedAt);
+          if (event) events.push(event);
+        } catch (error) {
+          console.error('[TimelineTracker] Error creating event from date:', error);
+          // Continue processing other dates
+        }
       }
     }
-  }
 
-  return uniqueEvents;
+    // Process relationship events
+    for (const person of features.peopleMentioned) {
+      for (const relEvent of features.relationshipEvents) {
+        try {
+          const event = await createEventFromRelationship(
+            person,
+            relEvent,
+            userId,
+            memoryId,
+            memoryCreatedAt
+          );
+          if (event) events.push(event);
+        } catch (error) {
+          console.error('[TimelineTracker] Error creating event from relationship:', error);
+          // Continue processing other events
+        }
+      }
+    }
+
+    // Deduplicate events (same person + similar description + close date)
+    const uniqueEvents = deduplicateEvents(events);
+
+    // Store events
+    if (uniqueEvents.length > 0) {
+      // Check for existing similar events to avoid duplicates in DB
+      for (const event of uniqueEvents) {
+        try {
+          const existing = await findSimilarEvent(userId, event);
+          if (!existing) {
+            await collections.personTimelineEvents().insertOne(event);
+          }
+        } catch (error) {
+          console.error('[TimelineTracker] Error storing timeline event:', error);
+          // Continue with other events
+        }
+      }
+    }
+
+    return uniqueEvents;
+  } catch (error) {
+    console.error('[TimelineTracker] Error creating timeline events:', error);
+    return events; // Return whatever was successfully created
+  }
 }
 
 /**
