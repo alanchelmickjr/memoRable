@@ -206,6 +206,27 @@ export {
   type PatternStats,
 } from './anticipation_service';
 
+// Re-export energy-aware task retrieval (TaskForge Triage integration)
+export {
+  getEnergyAwareTasks,
+  getQuickWins,
+  getDeepWorkTasks,
+  getTasksForTimeBlock,
+  triageTask,
+  batchTriageTasks,
+  getEnergyDescription,
+  getCognitiveLoadDescription,
+  suggestEnergyForTimeOfDay,
+  type EnergyLevel,
+  type CognitiveLoad,
+  type TaskComplexity,
+  type TimeBlock,
+  type EnergyAwareTask,
+  type TriageCategory,
+  type EnergyContext,
+  type EnergyAwareTaskResult,
+} from './energy_aware_tasks';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
