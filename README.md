@@ -482,73 +482,103 @@ print(f"Migrated {len(all_memories)} memories with salience enrichment")
 ```bash
 git clone https://github.com/alanchelmickjr/memoRable.git
 cd memoRable
-
-# Install dependencies
 npm install
-
-# Auto-generates secure credentials
-npm run setup
-
-# Start all services
+npm run setup      # Auto-generates secure credentials
 docker-compose up -d
-
-# Run tests
 npm test
-npx tsx scripts/test_salience.ts  # Unit tests for salience service
 ```
 
-### GitHub Actions (Recommended for AWS)
+---
 
-1. Add secrets to your repo (Settings → Secrets):
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `STAGING_URL` (after first deploy)
-   - `PRODUCTION_URL` (after first deploy)
+### AWS Deployment (Terraform)
 
-2. Push to `main` → auto-deploys to staging
+Full infrastructure as code. Estimated costs: **~$150/mo staging, ~$800/mo production**.
 
-3. Manual production deploy: Actions → Deploy to AWS → Run workflow → Select "production"
-
-### AWS Setup Script
+#### Step 1: Create IAM User for Deployment
 
 ```bash
-# First time infrastructure setup
-./scripts/aws-setup.sh staging
+# In AWS Console: IAM → Users → Create User
+# Name: memorable-deploy
+# Attach policies:
+#   - AmazonEC2FullAccess
+#   - AmazonECS_FullAccess
+#   - AmazonVPCFullAccess
+#   - SecretsManagerReadWrite
+#   - AmazonElastiCacheFullAccess
+#   - AmazonDocDBFullAccess
+#   - AmazonS3FullAccess
+#   - AmazonDynamoDBFullAccess
+#   - IAMFullAccess
+#   - CloudWatchLogsFullAccess
+#   - AmazonEC2ContainerRegistryFullAccess
+#   - ElasticLoadBalancingFullAccess
 
-# Update your secrets
-aws secretsmanager update-secret \
-  --secret-id memorable/staging/anthropic \
-  --secret-string '{"api_key":"sk-ant-YOUR_REAL_KEY"}'
-
-# Build and push Docker image
-docker build -t memorable -f docker/Dockerfile .
-aws ecr get-login-password | docker login --username AWS --password-stdin YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
-docker tag memorable:latest YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
-docker push YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
+# Create access key → Download CSV
 ```
+
+#### Step 2: Add GitHub Secrets
+
+Go to your repo → Settings → Secrets and variables → Actions → New repository secret:
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | From IAM user CSV |
+| `AWS_SECRET_ACCESS_KEY` | From IAM user CSV |
+| `ANTHROPIC_API_KEY` | Your Anthropic key (`sk-ant-...`) |
+| `OPENAI_API_KEY` | (Optional) Your OpenAI key |
+
+#### Step 3: Bootstrap Terraform State
+
+```bash
+# Install AWS CLI if needed: https://aws.amazon.com/cli/
+aws configure  # Enter your access key, secret, region (us-east-1)
+
+# Create S3 bucket for Terraform state
+./scripts/terraform-bootstrap.sh staging
+```
+
+#### Step 4: Deploy
+
+**Option A: GitHub Actions (Recommended)**
+- Push to `main` → auto-deploys to staging
+- Manual: Actions → "Deploy to AWS" → Run workflow
+
+**Option B: Local Terraform**
+```bash
+cd terraform
+terraform init -backend-config="bucket=memorable-terraform-state-staging"
+export TF_VAR_anthropic_api_key="sk-ant-xxx"
+terraform plan -var-file="environments/staging.tfvars"
+terraform apply -var-file="environments/staging.tfvars"
+```
+
+#### Step 5: Get Your URL
+
+```bash
+terraform output alb_dns_name
+# → memorable-staging-alb-xxxxx.us-east-1.elb.amazonaws.com
+```
+
+---
 
 ### AWS Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AWS Cloud                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Route 53  │──│     ALB     │──│      ECS Fargate        │  │
-│  │   (DNS)     │  │ (Load Bal.) │  │  ┌─────────────────┐    │  │
-│  └─────────────┘  └─────────────┘  │  │ MemoRable App   │    │  │
-│                                     │  │ Salience Service│    │  │
-│  ┌─────────────┐  ┌─────────────┐  │  │ MCP Server      │    │  │
-│  │  Secrets    │  │ CloudWatch  │  │  └─────────────────┘    │  │
-│  │  Manager    │  │  (Metrics)  │  └─────────────────────────┘  │
-│  └─────────────┘  └─────────────┘                               │
 │                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    Data Layer                            │    │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │    │
-│  │  │ DocumentDB  │  │ ElastiCache │  │    Weaviate     │  │    │
-│  │  │ (MongoDB)   │  │   (Redis)   │  │   (Vectors)     │  │    │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌──────────┐     ┌──────────┐     ┌───────────────────────┐   │
+│  │   ALB    │────▶│   ECS    │────▶│     Data Layer        │   │
+│  │ (HTTPS)  │     │ Fargate  │     │  ┌─────────────────┐  │   │
+│  └──────────┘     │          │     │  │   DocumentDB    │  │   │
+│       │           │ • App    │     │  │   (MongoDB)     │  │   │
+│       │           │ • Ingest │     │  ├─────────────────┤  │   │
+│  ┌────▼─────┐     │          │     │  │  ElastiCache    │  │   │
+│  │ Secrets  │     └──────────┘     │  │   (Redis)       │  │   │
+│  │ Manager  │                      │  └─────────────────┘  │   │
+│  └──────────┘                      └───────────────────────┘   │
+│                                                                  │
+│  VPC: 10.0.0.0/16 │ Private Subnets │ NAT Gateway │ Auto-scale │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
