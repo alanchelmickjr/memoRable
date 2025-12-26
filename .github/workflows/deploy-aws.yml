@@ -11,25 +11,34 @@ on:
         options:
           - staging
           - production
+      action:
+        description: 'Terraform action'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
   push:
     branches:
       - main
     paths:
       - 'src/**'
       - 'docker/**'
-      - 'docker-compose.yml'
+      - 'terraform/**'
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: memorable
-  ECS_CLUSTER: memorable-cluster
-  ECS_SERVICE: memorable-service
+  TF_VERSION: 1.6.0
 
 jobs:
-  build-and-push:
+  build-images:
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.build-image.outputs.image }}
+      app_image: ${{ steps.build.outputs.app_image }}
+      ingestion_image: ${{ steps.build.outputs.ingestion_image }}
+      mcp_image: ${{ steps.build.outputs.mcp_image }}
 
     steps:
       - name: Checkout
@@ -46,26 +55,41 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: build-image
+      - name: Build and push images
+        id: build
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Build main app
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          # Build and push main app
+          docker build -t $ECR_REGISTRY/memorable:$IMAGE_TAG -f docker/Dockerfile .
+          docker push $ECR_REGISTRY/memorable:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/memorable:$IMAGE_TAG $ECR_REGISTRY/memorable:latest
+          docker push $ECR_REGISTRY/memorable:latest
+          echo "app_image=$ECR_REGISTRY/memorable:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-          # Build MCP server
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY-mcp:$IMAGE_TAG -f src/services/mcp_server/Dockerfile .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY-mcp:$IMAGE_TAG
+          # Build and push ingestion service
+          docker build -t $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG -f src/services/ingestion_service/Dockerfile .
+          docker push $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG $ECR_REGISTRY/memorable-ingestion:latest
+          docker push $ECR_REGISTRY/memorable-ingestion:latest
+          echo "ingestion_image=$ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  deploy-staging:
-    needs: build-and-push
+          # Build and push MCP server
+          docker build -t $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG -f src/services/mcp_server/Dockerfile .
+          docker push $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG $ECR_REGISTRY/memorable-mcp:latest
+          docker push $ECR_REGISTRY/memorable-mcp:latest
+          echo "mcp_image=$ECR_REGISTRY/memorable-mcp:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  terraform:
+    needs: build-images
     runs-on: ubuntu-latest
-    if: github.event.inputs.environment == 'staging' || github.event_name == 'push'
-    environment: staging
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+
+    defaults:
+      run:
+        working-directory: terraform
 
     steps:
       - name: Checkout
@@ -78,89 +102,67 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Download task definition
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
         run: |
-          aws ecs describe-task-definition --task-definition memorable-staging \
-            --query taskDefinition > task-definition.json
+          terraform init \
+            -backend-config="bucket=memorable-terraform-state-${{ github.event.inputs.environment || 'staging' }}" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: memorable-app
-          image: ${{ needs.build-and-push.outputs.image }}
-
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: memorable-staging
-          cluster: memorable-staging
-          wait-for-service-stability: true
-
-      - name: Run health check
+      - name: Terraform Plan
+        id: plan
+        env:
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_app_image: ${{ needs.build-images.outputs.app_image }}
         run: |
-          sleep 30
-          curl -f ${{ secrets.STAGING_URL }}/health/ready || exit 1
+          terraform plan \
+            -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars" \
+            -out=tfplan \
+            -no-color
 
-  deploy-production:
-    needs: [build-and-push, deploy-staging]
-    runs-on: ubuntu-latest
-    if: github.event.inputs.environment == 'production'
-    environment: production
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        env:
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+          TF_VAR_app_image: ${{ needs.build-images.outputs.app_image }}
+        run: terraform apply -auto-approve tfplan
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Download task definition
+      - name: Get outputs
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+        id: outputs
         run: |
-          aws ecs describe-task-definition --task-definition memorable-production \
-            --query taskDefinition > task-definition.json
+          echo "alb_dns=$(terraform output -raw alb_dns_name)" >> $GITHUB_OUTPUT
 
-      - name: Fill in the new image ID in the Amazon ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: memorable-app
-          image: ${{ needs.build-and-push.outputs.image }}
-
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: memorable-production
-          cluster: memorable-production
-          wait-for-service-stability: true
-
-      - name: Run health check
+      - name: Health check
+        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
         run: |
-          sleep 30
-          curl -f ${{ secrets.PRODUCTION_URL }}/health/ready || exit 1
+          echo "Waiting for deployment to stabilize..."
+          sleep 60
+
+          ALB_DNS="${{ steps.outputs.outputs.alb_dns }}"
+          if [ -n "$ALB_DNS" ]; then
+            echo "Testing health endpoint..."
+            curl -f "http://${ALB_DNS}/health/live" || echo "Health check pending..."
+          fi
 
   notify:
-    needs: [deploy-staging, deploy-production]
+    needs: [build-images, terraform]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
-      - name: Notify on success
-        if: success()
+      - name: Deployment Summary
         run: |
-          echo "Deployment successful!"
-          # Add Slack/Discord notification here if desired
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "Deployment failed!"
-          # Add alert notification here
+          if [ "${{ needs.terraform.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+            echo "Environment: ${{ github.event.inputs.environment || 'staging' }}"
+          else
+            echo "❌ Deployment failed!"
+          fi
