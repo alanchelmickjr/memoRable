@@ -1,5 +1,7 @@
 # MemoRable - Context-Aware Memory for AI Agents
 
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Ready-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
 [![Mem0 Compatible](https://img.shields.io/badge/Mem0-Compatible-purple?style=for-the-badge)](https://mem0.ai)
@@ -490,74 +492,84 @@ npm test
 
 ---
 
-### AWS Deployment (Terraform)
+### AWS One-Click Deploy
 
-Full infrastructure as code. Estimated costs: **~$150/mo staging, ~$800/mo production**.
+**Click the button. Enter your Anthropic key. Done.**
 
-#### Step 1: Create IAM User for Deployment
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+
+| What you need | Where to get it |
+|---------------|-----------------|
+| AWS Account | [aws.amazon.com](https://aws.amazon.com) |
+| Anthropic API Key | [console.anthropic.com](https://console.anthropic.com) |
+
+**That's it.** The stack creates everything: VPC, databases, load balancer, auto-scaling.
+
+#### After Deploy: Push Your Docker Image
 
 ```bash
-# In AWS Console: IAM → Users → Create User
-# Name: memorable-deploy
-# Attach policies:
-#   - AmazonEC2FullAccess
-#   - AmazonECS_FullAccess
-#   - AmazonVPCFullAccess
-#   - SecretsManagerReadWrite
-#   - AmazonElastiCacheFullAccess
-#   - AmazonDocDBFullAccess
-#   - AmazonS3FullAccess
-#   - AmazonDynamoDBFullAccess
-#   - IAMFullAccess
-#   - CloudWatchLogsFullAccess
-#   - AmazonEC2ContainerRegistryFullAccess
-#   - ElasticLoadBalancingFullAccess
+# Get your ECR URL from CloudFormation outputs, then:
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URL>
+docker build -t memorable -f docker/Dockerfile .
+docker tag memorable:latest <ECR_URL>:latest
+docker push <ECR_URL>:latest
 
+# Force ECS to pull new image
+aws ecs update-service --cluster memorable-cluster --service memorable-app --force-new-deployment
+```
+
+#### Costs
+
+| Size | Monthly Cost | Use Case |
+|------|--------------|----------|
+| Small | ~$150 | Development, testing |
+| Medium | ~$400 | Small production |
+| Large | ~$800 | Production with HA |
+
+---
+
+### AWS Advanced (Terraform)
+
+For CI/CD pipelines, multi-environment, or infrastructure customization.
+
+<details>
+<summary>Click to expand Terraform instructions</summary>
+
+#### Step 1: Create IAM User
+
+```bash
+# IAM → Users → Create User → "memorable-deploy"
+# Attach: AmazonEC2FullAccess, AmazonECS_FullAccess, AmazonVPCFullAccess,
+#         SecretsManagerReadWrite, AmazonElastiCacheFullAccess, AmazonDocDBFullAccess,
+#         AmazonS3FullAccess, AmazonDynamoDBFullAccess, IAMFullAccess,
+#         CloudWatchLogsFullAccess, AmazonEC2ContainerRegistryFullAccess,
+#         ElasticLoadBalancingFullAccess
 # Create access key → Download CSV
 ```
 
 #### Step 2: Add GitHub Secrets
 
-Go to your repo → Settings → Secrets and variables → Actions → New repository secret:
-
 | Secret | Value |
 |--------|-------|
-| `AWS_ACCESS_KEY_ID` | From IAM user CSV |
-| `AWS_SECRET_ACCESS_KEY` | From IAM user CSV |
-| `ANTHROPIC_API_KEY` | Your Anthropic key (`sk-ant-...`) |
-| `OPENAI_API_KEY` | (Optional) Your OpenAI key |
+| `AWS_ACCESS_KEY_ID` | From CSV |
+| `AWS_SECRET_ACCESS_KEY` | From CSV |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` |
 
-#### Step 3: Bootstrap Terraform State
+#### Step 3: Bootstrap & Deploy
 
 ```bash
-# Install AWS CLI if needed: https://aws.amazon.com/cli/
-aws configure  # Enter your access key, secret, region (us-east-1)
-
-# Create S3 bucket for Terraform state
+aws configure
 ./scripts/terraform-bootstrap.sh staging
-```
 
-#### Step 4: Deploy
-
-**Option A: GitHub Actions (Recommended)**
-- Push to `main` → auto-deploys to staging
-- Manual: Actions → "Deploy to AWS" → Run workflow
-
-**Option B: Local Terraform**
-```bash
 cd terraform
 terraform init -backend-config="bucket=memorable-terraform-state-staging"
 export TF_VAR_anthropic_api_key="sk-ant-xxx"
-terraform plan -var-file="environments/staging.tfvars"
 terraform apply -var-file="environments/staging.tfvars"
 ```
 
-#### Step 5: Get Your URL
+Or just push to `main` and GitHub Actions handles it.
 
-```bash
-terraform output alb_dns_name
-# → memorable-staging-alb-xxxxx.us-east-1.elb.amazonaws.com
-```
+</details>
 
 ---
 
