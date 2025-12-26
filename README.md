@@ -494,7 +494,7 @@ npm test
 
 ### AWS One-Click Deploy
 
-**Click the button. Enter your Anthropic key. Done.**
+**Click the button. Enter your Anthropic key. Wait 15 minutes. Done.**
 
 [![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
 
@@ -503,20 +503,13 @@ npm test
 | AWS Account | [aws.amazon.com](https://aws.amazon.com) |
 | Anthropic API Key | [console.anthropic.com](https://console.anthropic.com) |
 
-**That's it.** The stack creates everything: VPC, databases, load balancer, auto-scaling.
+**That's it.** The stack:
+1. Creates VPC, databases, load balancer, auto-scaling
+2. Pulls the code from GitHub
+3. Builds the Docker image
+4. Deploys to ECS
 
-#### After Deploy: Push Your Docker Image
-
-```bash
-# Get your ECR URL from CloudFormation outputs, then:
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_URL>
-docker build -t memorable -f docker/Dockerfile .
-docker tag memorable:latest <ECR_URL>:latest
-docker push <ECR_URL>:latest
-
-# Force ECS to pull new image
-aws ecs update-service --cluster memorable-cluster --service memorable-app --force-new-deployment
-```
+Your URL appears in CloudFormation Outputs when complete.
 
 #### Costs
 
