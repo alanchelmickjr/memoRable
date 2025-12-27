@@ -160,6 +160,11 @@ export interface ReasoningContext {
 }
 
 /**
+ * Device type for multi-device tracking.
+ */
+export type DeviceType = 'mobile' | 'desktop' | 'web' | 'api' | 'mcp' | 'unknown';
+
+/**
  * Core entity: MemoryMemento.
  * The atomic unit of recall.
  */
@@ -172,13 +177,17 @@ export interface MemoryMemento {
   updatedAt: string; // ISO8601Timestamp - When the memento was last updated
   eventTimestamp: string; // ISO8601Timestamp - When the original event occurred
 
+  // Multi-device tracking (brain-inspired architecture)
+  deviceId?: string; // Unique device identifier
+  deviceType?: DeviceType; // Type of device that created this memory
+
   sourceSystem: string;
   sourceIdentifier?: string;
   contentType: ContentType;
   content: string | object; // Normalized/primary content for the memento
   originalContentRaw?: string | object; // Optional: store the absolute raw input
   summary?: string | object; // Optional: summary of the content
-  
+
   tags?: string[];
   entities?: DetectedEntity[]; // Using a more detailed DetectedEntity type
   emotionalContext?: Partial<EmotionalContext>; // Using Partial as it's built incrementally
@@ -212,6 +221,10 @@ export interface RawInputData {
   eventTimestamp: string; // ISO8601Timestamp, if provided by the source - making this required for ProcessedInputData
   agentId: string; // UUID, provided in request or derived from authenticated context
   metadata: Record<string, any>; // Any other source-specific metadata - making this required for ProcessedInputData
+
+  // Multi-device tracking
+  deviceId?: string; // Unique device identifier
+  deviceType?: DeviceType; // Type of device (mobile, desktop, web, api, mcp)
 }
 
 /**
@@ -224,6 +237,10 @@ export interface ProcessedInputData {
   originalContentType: ContentType;
   originalContentRaw: any;
   agentId: string; // UUID
+
+  // Multi-device tracking (passed through from RawInputData)
+  deviceId?: string;
+  deviceType?: DeviceType;
 
   // Derived/Enriched Fields
   normalizedContent: string | object; // Cleaned and normalized version of contentRaw
@@ -274,6 +291,10 @@ export interface IngestionRequest {
   agentId: string; // UUID (or derived from auth context)
   tags?: string[]; // Initial tags from source
   metadata?: Record<string, any>; // Other optional contextual hints
+
+  // Multi-device support
+  deviceId?: string; // Unique device identifier for tracking which device created the memory
+  deviceType?: DeviceType; // Type of device (mobile, desktop, web, api, mcp)
 }
 
 /**
