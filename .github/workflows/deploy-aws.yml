@@ -32,6 +32,11 @@ env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.6.0
 
+# Required for OIDC authentication with AWS
+permissions:
+  id-token: write   # Required for requesting the JWT
+  contents: read    # Required for actions/checkout
+
 jobs:
   build-images:
     runs-on: ubuntu-latest
@@ -44,16 +49,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      # OIDC Authentication - No secrets needed!
+      # Requires: cloudformation/github-oidc.yaml deployed first
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/memorable-github-actions-memoRable
+          role-session-name: github-actions-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repositories exist
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # Create repositories if they don't exist
+          for repo in memorable memorable-ingestion memorable-mcp; do
+            aws ecr describe-repositories --repository-names $repo 2>/dev/null || \
+            aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true
+          done
 
       - name: Build and push images
         id: build
@@ -95,11 +112,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      # OIDC Authentication
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/memorable-github-actions-memoRable
+          role-session-name: github-actions-terraform-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
@@ -160,9 +178,19 @@ jobs:
     steps:
       - name: Deployment Summary
         run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
           if [ "${{ needs.terraform.result }}" == "success" ]; then
-            echo "✅ Deployment successful!"
-            echo "Environment: ${{ github.event.inputs.environment || 'staging' }}"
+            echo "✅ **Status:** Deployment successful!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔐 Authentication" >> $GITHUB_STEP_SUMMARY
+            echo "Used OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Deployment failed!"
+            echo "❌ **Status:** Deployment failed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the workflow logs for details." >> $GITHUB_STEP_SUMMARY
           fi

@@ -563,12 +563,47 @@ Your URL appears in CloudFormation Outputs when complete.
 
 ---
 
-### AWS Advanced (Terraform)
+### AWS CI/CD Setup (OIDC - Recommended)
 
-For CI/CD pipelines, multi-environment, or infrastructure customization.
+Secure, keyless authentication from GitHub Actions to AWS. No stored credentials.
 
 <details>
-<summary>Click to expand Terraform instructions</summary>
+<summary>Click to expand OIDC setup instructions</summary>
+
+#### Step 1: Deploy OIDC Infrastructure (One-Time)
+
+[![Deploy OIDC](https://img.shields.io/badge/Deploy-GitHub_OIDC-232F3E?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/github-oidc.yaml&stackName=memorable-github-oidc)
+
+Or manually:
+```bash
+aws cloudformation create-stack \
+  --stack-name memorable-github-oidc \
+  --template-body file://cloudformation/github-oidc.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters ParameterKey=GitHubOrg,ParameterValue=YOUR_ORG \
+               ParameterKey=GitHubRepo,ParameterValue=memoRable
+```
+
+#### Step 2: Add ONE GitHub Secret
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCOUNT_ID` | Your 12-digit AWS account ID (e.g., `123456789012`) |
+
+That's it. No access keys, no rotating credentials, no security risks.
+
+#### Step 3: Push and Deploy
+
+Push to `main` and GitHub Actions automatically:
+1. Authenticates via OIDC (keyless)
+2. Builds Docker images
+3. Pushes to ECR
+4. Deploys via Terraform
+
+</details>
+
+<details>
+<summary>Click to expand legacy access key instructions (not recommended)</summary>
 
 #### Step 1: Create IAM User
 
@@ -588,7 +623,7 @@ For CI/CD pipelines, multi-environment, or infrastructure customization.
 |--------|-------|
 | `AWS_ACCESS_KEY_ID` | From CSV |
 | `AWS_SECRET_ACCESS_KEY` | From CSV |
-| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` (only if using Anthropic provider) |
 
 #### Step 3: Bootstrap & Deploy
 
@@ -601,8 +636,6 @@ terraform init -backend-config="bucket=memorable-terraform-state-staging"
 export TF_VAR_anthropic_api_key="sk-ant-xxx"
 terraform apply -var-file="environments/staging.tfvars"
 ```
-
-Or just push to `main` and GitHub Actions handles it.
 
 </details>
 
