@@ -74,6 +74,8 @@ import {
   getAnticipatedContext,
   getPatternStats,
   generateDayAnticipation,
+  // LLM provider abstraction (supports Bedrock, Anthropic, OpenAI)
+  createLLMClient as createLLMProvider,
   type LLMClient,
   type CalendarEvent,
   type FeedbackSignal,
@@ -86,9 +88,11 @@ import type { DeviceType } from '../salience_service/device_context.js';
 const CONFIG = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/memorable',
   defaultUserId: process.env.MCP_USER_ID || 'default',
-  llmProvider: process.env.LLM_PROVIDER || 'anthropic',
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-  openaiApiKey: process.env.OPENAI_API_KEY,
+  // LLM provider is auto-detected from environment:
+  // - USE_BEDROCK=true or AWS_EXECUTION_ENV set → Bedrock (IAM auth)
+  // - ANTHROPIC_API_KEY set → Anthropic direct
+  // - OPENAI_API_KEY set → OpenAI direct
+  llmProvider: process.env.LLM_PROVIDER || 'auto',
 };
 
 // Database connection
@@ -96,53 +100,22 @@ let db: Db | null = null;
 let mongoClient: MongoClient | null = null;
 
 /**
- * Create an LLM client based on configuration.
+ * Create an LLM client using the unified provider abstraction.
+ * Supports Bedrock (AWS IAM), Anthropic, and OpenAI.
+ * Provider is auto-detected from environment variables.
  */
 function createLLMClient(): LLMClient | null {
-  if (CONFIG.llmProvider === 'anthropic' && CONFIG.anthropicApiKey) {
-    return {
-      async complete(prompt: string, options?: { temperature?: number; maxTokens?: number }) {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': CONFIG.anthropicApiKey!,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: 'claude-3-haiku-20240307',
-            max_tokens: options?.maxTokens || 500,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        });
-        const data = await response.json();
-        return data.content?.[0]?.text || '';
-      },
-    };
+  try {
+    // The createLLMProvider function auto-detects the best provider:
+    // - Bedrock if USE_BEDROCK=true or running in AWS (Lambda/ECS)
+    // - Anthropic if ANTHROPIC_API_KEY is set
+    // - OpenAI if OPENAI_API_KEY is set
+    return createLLMProvider();
+  } catch (error) {
+    // No valid provider configured
+    console.error('[MCP] LLM provider initialization failed:', error);
+    return null;
   }
-
-  if (CONFIG.llmProvider === 'openai' && CONFIG.openaiApiKey) {
-    return {
-      async complete(prompt: string, options?: { temperature?: number; maxTokens?: number }) {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${CONFIG.openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            max_tokens: options?.maxTokens || 500,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        });
-        const data = await response.json();
-        return data.choices?.[0]?.message?.content || '';
-      },
-    };
-  }
-
-  return null;
 }
 
 let llmClient: LLMClient | null = null;

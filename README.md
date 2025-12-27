@@ -30,12 +30,14 @@ MemoRable: Here's what you need to know:
 
 ### Option A: Deploy to AWS (Production)
 
-**Click. Enter API key. Done.**
+**Click. Configure. Done.**
 
 [![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
 
 1. Click the button above
-2. Enter your [Anthropic API key](https://console.anthropic.com)
+2. Choose your LLM provider:
+   - **Bedrock** (default): No API key needed - uses AWS IAM. Perfect for SaaS billing.
+   - **Anthropic**: Bring your own [API key](https://console.anthropic.com)
 3. Wait 15 minutes
 4. Get your URL from CloudFormation Outputs
 
@@ -533,20 +535,21 @@ npm test
 
 ### AWS One-Click Deploy
 
-**Click the button. Enter your Anthropic key. Wait 15 minutes. Done.**
+**Click the button. Choose provider. Wait 15 minutes. Done.**
 
 [![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
 
-| What you need | Where to get it |
-|---------------|-----------------|
-| AWS Account | [aws.amazon.com](https://aws.amazon.com) |
-| Anthropic API Key | [console.anthropic.com](https://console.anthropic.com) |
+| LLM Provider | What you need | Best for |
+|--------------|---------------|----------|
+| **Bedrock** (default) | Just AWS Account | SaaS (bill via AWS), enterprise, no API key management |
+| **Anthropic** | AWS Account + [API Key](https://console.anthropic.com) | Self-hosted, direct API pricing |
 
 **That's it.** The stack:
 1. Creates VPC, databases, load balancer, auto-scaling
-2. Pulls the code from GitHub
-3. Builds the Docker image
-4. Deploys to ECS
+2. Configures Bedrock IAM permissions (or Anthropic secret)
+3. Pulls the code from GitHub
+4. Builds the Docker image
+5. Deploys to ECS
 
 Your URL appears in CloudFormation Outputs when complete.
 
@@ -816,9 +819,23 @@ POST /api/ingest/memory
 # Required
 MONGODB_URI=mongodb://localhost:27017/memorable
 
-# LLM (for salience extraction)
-ANTHROPIC_API_KEY=sk-ant-xxx   # Recommended
-OPENAI_API_KEY=sk-xxx          # Alternative
+# LLM Provider (choose one)
+# Option 1: AWS Bedrock (recommended for AWS deployment - no API key needed)
+LLM_PROVIDER=bedrock          # or set USE_BEDROCK=true
+AWS_REGION=us-east-1          # Bedrock uses IAM authentication
+
+# Option 2: Anthropic Direct API
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-xxx
+
+# Option 3: OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-xxx
+
+# Auto-detection (when LLM_PROVIDER not set):
+# - Running in AWS (Lambda/ECS)? → Bedrock
+# - ANTHROPIC_API_KEY set? → Anthropic
+# - OPENAI_API_KEY set? → OpenAI
 
 # Optional
 REDIS_URL=redis://localhost:6379
