@@ -69,14 +69,15 @@ Now in Claude Code you can say:
 
 ---
 
-## MCP Tools Reference (18 Tools)
+## MCP Tools Reference (19 Tools)
 
-### Context Management
+### Context Management (Multi-Device)
 | Tool | Description |
 |------|-------------|
-| `set_context` | Set where you are, who you're with. Auto-surfaces relevant memories. |
-| `whats_relevant` | Get what matters NOW based on current context |
-| `clear_context` | Clear context when leaving/ending |
+| `set_context` | Set where you are, who you're with. Auto-surfaces relevant memories. Supports `deviceId` and `deviceType` for multi-device sync. |
+| `whats_relevant` | Get what matters NOW. Pass `unified: true` for brain-inspired fusion across all devices. |
+| `clear_context` | Clear context when leaving/ending. Pass `deviceId` to clear specific device. |
+| `list_devices` | List all active devices and their context status. |
 
 ### Memory Operations
 | Tool | Description |
@@ -623,6 +624,40 @@ Rolling window of what's happening NOW:
 - **Project**: What codebase/task you're in
 
 When context changes, relevant memories automatically surface.
+
+### Multi-Device Architecture (Brain-Inspired)
+
+Same user on multiple devices? MemoRable handles it like your brain handles sensory data:
+
+```
+Phone (GPS)      → Location Stream  ─┐
+Laptop (Calendar)→ Activity Stream  ─┼──▶ Context Integration ──▶ Unified "Now"
+Smart Glasses   → Visual Stream    ─┤     (Thalamus-inspired)
+Smart Watch     → Biometric Stream ─┘
+```
+
+**How it works:**
+- Each device maintains its own context stream (like sensory subsystems)
+- Contexts are fused using resolution strategies:
+  - **Location**: Mobile wins (has GPS)
+  - **People**: Merged from all devices
+  - **Activity**: Most recent wins
+- Device-specific Redis keys prevent race conditions
+- Query `unified: true` to get the fused context
+
+```typescript
+// Phone reports location
+set_context({ location: "coffee shop", deviceId: "iphone-123", deviceType: "mobile" })
+
+// Laptop reports calendar context
+set_context({ people: ["Sarah"], activity: "meeting", deviceId: "macbook-456", deviceType: "desktop" })
+
+// Get unified view across all devices
+whats_relevant({ unified: true })
+// → { location: "coffee shop", people: ["Sarah"], activity: "meeting", activeDevices: 2 }
+```
+
+**Sensor types supported**: location, audio, visual (LIDAR), calendar, activity, biometric, environment, social, semantic.
 
 ### Open Loops
 
