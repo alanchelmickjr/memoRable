@@ -14,7 +14,16 @@ import { v4 as uuidv4 } from 'uuid';
 // Device Types & Interfaces
 // ============================================================================
 
-export type DeviceType = 'mobile' | 'desktop' | 'web' | 'api' | 'mcp' | 'unknown';
+export type DeviceType =
+  | 'mobile'
+  | 'desktop'
+  | 'web'
+  | 'api'
+  | 'mcp'
+  | 'wearable'      // Smartwatch, fitness tracker
+  | 'smartglasses'  // AR glasses, smart glasses with LIDAR
+  | 'smarthome'     // Smart speakers, IoT sensors
+  | 'unknown';
 
 export interface DeviceInfo {
   deviceId: string;
@@ -35,6 +44,7 @@ export interface DeviceCapabilities {
   hasBiometrics: boolean;       // Heart rate, stress, etc.
   hasAmbient: boolean;          // Light, noise, temperature
   isAlwaysOn: boolean;          // Server/API vs interactive device
+  supportedSensors?: SensorType[];  // List of sensor types this device supports
 }
 
 // ============================================================================
@@ -235,6 +245,9 @@ export interface DeviceContextFrame {
     confidence: number;
   };
 
+  // Sensor readings from this device
+  sensors?: Map<SensorType, SensorReading>;
+
   // Device-specific metadata
   metadata?: Record<string, unknown>;
 }
@@ -424,11 +437,14 @@ export class DeviceRegistry {
 export const STALENESS_CONFIG = {
   // How long before a device context is considered stale
   deviceContextTTL: {
-    mobile: 5 * 60 * 1000,      // 5 minutes - phones update frequently
-    desktop: 15 * 60 * 1000,    // 15 minutes - desktops less frequent
-    web: 10 * 60 * 1000,        // 10 minutes
-    api: 60 * 60 * 1000,        // 1 hour - APIs are persistent
-    mcp: 30 * 60 * 1000,        // 30 minutes
+    mobile: 5 * 60 * 1000,       // 5 minutes - phones update frequently
+    desktop: 15 * 60 * 1000,     // 15 minutes - desktops less frequent
+    web: 10 * 60 * 1000,         // 10 minutes
+    api: 60 * 60 * 1000,         // 1 hour - APIs are persistent
+    mcp: 30 * 60 * 1000,         // 30 minutes
+    wearable: 2 * 60 * 1000,     // 2 minutes - constant heartbeat
+    smartglasses: 1 * 60 * 1000, // 1 minute - real-time visual
+    smarthome: 30 * 60 * 1000,   // 30 minutes - ambient sensors
     unknown: 10 * 60 * 1000,
   },
 

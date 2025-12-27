@@ -196,6 +196,23 @@ export {
   resetContextIntegrationService,
 } from './context_integration';
 
+// Re-export real-time sync service (omnipresence layer)
+export {
+  RealtimeSyncService,
+  ContextHub,
+  getSyncService,
+  getContextHub,
+  resetSyncServices,
+  SYNC_CHANNELS,
+  SENSOR_PRIORITY,
+  type ContextUpdateMessage,
+  type SensorUpdateMessage,
+  type HeartbeatMessage,
+  type UnifiedContextMessage,
+  type ControlMessage,
+  type SyncMessage,
+} from './realtime_sync';
+
 // Re-export memory operations (forget, reassociate, export)
 export {
   forgetMemory,
