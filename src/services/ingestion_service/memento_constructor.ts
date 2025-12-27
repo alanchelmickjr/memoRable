@@ -63,6 +63,9 @@ export class MementoConstructor {
      // Basic mapping, more sophisticated logic might be needed based on content types
      const mementoData: Omit<MemoryMemento, 'mementoId' | 'version' | 'createdAt' | 'updatedAt'> = {
        agentId: processedData.agentId,
+       // Multi-device tracking - pass through from processed data
+       deviceId: processedData.deviceId,
+       deviceType: processedData.deviceType,
        // creationTimestamp will be part of MemoryMemento, not directly from ProcessedInputData for this field
        sourceSystem: processedData.sourceSystem,
        sourceIdentifier: processedData.sourceIdentifier,

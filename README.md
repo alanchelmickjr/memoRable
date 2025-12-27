@@ -26,6 +26,46 @@ MemoRable: Here's what you need to know:
 
 ---
 
+## Get Started in 2 Minutes
+
+### Option A: Deploy to AWS (Production)
+
+**Click. Enter API key. Done.**
+
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+
+1. Click the button above
+2. Enter your [Anthropic API key](https://console.anthropic.com)
+3. Wait 15 minutes
+4. Get your URL from CloudFormation Outputs
+
+**Costs**: ~$150/mo (small) | ~$400/mo (medium) | ~$800/mo (large)
+
+---
+
+### Option B: Local Development
+
+```bash
+git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+npm install && npm run setup && docker-compose up -d
+```
+
+---
+
+### Option C: Add to Your Project
+
+**TypeScript/Node.js:**
+```bash
+npm install @memorable/sdk
+```
+
+**Python:**
+```bash
+pip install memorable-sdk
+```
+
+---
+
 ## Quick Start: Claude Code / VS Code
 
 Add MemoRable to your Claude Code MCP settings:
@@ -67,14 +107,15 @@ Now in Claude Code you can say:
 
 ---
 
-## MCP Tools Reference (18 Tools)
+## MCP Tools Reference (19 Tools)
 
-### Context Management
+### Context Management (Multi-Device)
 | Tool | Description |
 |------|-------------|
-| `set_context` | Set where you are, who you're with. Auto-surfaces relevant memories. |
-| `whats_relevant` | Get what matters NOW based on current context |
-| `clear_context` | Clear context when leaving/ending |
+| `set_context` | Set where you are, who you're with. Auto-surfaces relevant memories. Supports `deviceId` and `deviceType` for multi-device sync. |
+| `whats_relevant` | Get what matters NOW. Pass `unified: true` for brain-inspired fusion across all devices. |
+| `clear_context` | Clear context when leaving/ending. Pass `deviceId` to clear specific device. |
+| `list_devices` | List all active devices and their context status. |
 
 ### Memory Operations
 | Tool | Description |
@@ -482,73 +523,106 @@ print(f"Migrated {len(all_memories)} memories with salience enrichment")
 ```bash
 git clone https://github.com/alanchelmickjr/memoRable.git
 cd memoRable
-
-# Install dependencies
 npm install
-
-# Auto-generates secure credentials
-npm run setup
-
-# Start all services
+npm run setup      # Auto-generates secure credentials
 docker-compose up -d
-
-# Run tests
 npm test
-npx tsx scripts/test_salience.ts  # Unit tests for salience service
 ```
 
-### GitHub Actions (Recommended for AWS)
+---
 
-1. Add secrets to your repo (Settings → Secrets):
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-   - `STAGING_URL` (after first deploy)
-   - `PRODUCTION_URL` (after first deploy)
+### AWS One-Click Deploy
 
-2. Push to `main` → auto-deploys to staging
+**Click the button. Enter your Anthropic key. Wait 15 minutes. Done.**
 
-3. Manual production deploy: Actions → Deploy to AWS → Run workflow → Select "production"
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
 
-### AWS Setup Script
+| What you need | Where to get it |
+|---------------|-----------------|
+| AWS Account | [aws.amazon.com](https://aws.amazon.com) |
+| Anthropic API Key | [console.anthropic.com](https://console.anthropic.com) |
+
+**That's it.** The stack:
+1. Creates VPC, databases, load balancer, auto-scaling
+2. Pulls the code from GitHub
+3. Builds the Docker image
+4. Deploys to ECS
+
+Your URL appears in CloudFormation Outputs when complete.
+
+#### Costs
+
+| Size | Monthly Cost | Use Case |
+|------|--------------|----------|
+| Small | ~$150 | Development, testing |
+| Medium | ~$400 | Small production |
+| Large | ~$800 | Production with HA |
+
+---
+
+### AWS Advanced (Terraform)
+
+For CI/CD pipelines, multi-environment, or infrastructure customization.
+
+<details>
+<summary>Click to expand Terraform instructions</summary>
+
+#### Step 1: Create IAM User
 
 ```bash
-# First time infrastructure setup
-./scripts/aws-setup.sh staging
-
-# Update your secrets
-aws secretsmanager update-secret \
-  --secret-id memorable/staging/anthropic \
-  --secret-string '{"api_key":"sk-ant-YOUR_REAL_KEY"}'
-
-# Build and push Docker image
-docker build -t memorable -f docker/Dockerfile .
-aws ecr get-login-password | docker login --username AWS --password-stdin YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
-docker tag memorable:latest YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
-docker push YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com/memorable:latest
+# IAM → Users → Create User → "memorable-deploy"
+# Attach: AmazonEC2FullAccess, AmazonECS_FullAccess, AmazonVPCFullAccess,
+#         SecretsManagerReadWrite, AmazonElastiCacheFullAccess, AmazonDocDBFullAccess,
+#         AmazonS3FullAccess, AmazonDynamoDBFullAccess, IAMFullAccess,
+#         CloudWatchLogsFullAccess, AmazonEC2ContainerRegistryFullAccess,
+#         ElasticLoadBalancingFullAccess
+# Create access key → Download CSV
 ```
+
+#### Step 2: Add GitHub Secrets
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | From CSV |
+| `AWS_SECRET_ACCESS_KEY` | From CSV |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` |
+
+#### Step 3: Bootstrap & Deploy
+
+```bash
+aws configure
+./scripts/terraform-bootstrap.sh staging
+
+cd terraform
+terraform init -backend-config="bucket=memorable-terraform-state-staging"
+export TF_VAR_anthropic_api_key="sk-ant-xxx"
+terraform apply -var-file="environments/staging.tfvars"
+```
+
+Or just push to `main` and GitHub Actions handles it.
+
+</details>
+
+---
 
 ### AWS Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        AWS Cloud                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │   Route 53  │──│     ALB     │──│      ECS Fargate        │  │
-│  │   (DNS)     │  │ (Load Bal.) │  │  ┌─────────────────┐    │  │
-│  └─────────────┘  └─────────────┘  │  │ MemoRable App   │    │  │
-│                                     │  │ Salience Service│    │  │
-│  ┌─────────────┐  ┌─────────────┐  │  │ MCP Server      │    │  │
-│  │  Secrets    │  │ CloudWatch  │  │  └─────────────────┘    │  │
-│  │  Manager    │  │  (Metrics)  │  └─────────────────────────┘  │
-│  └─────────────┘  └─────────────┘                               │
 │                                                                  │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │                    Data Layer                            │    │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │    │
-│  │  │ DocumentDB  │  │ ElastiCache │  │    Weaviate     │  │    │
-│  │  │ (MongoDB)   │  │   (Redis)   │  │   (Vectors)     │  │    │
-│  │  └─────────────┘  └─────────────┘  └─────────────────┘  │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌──────────┐     ┌──────────┐     ┌───────────────────────┐   │
+│  │   ALB    │────▶│   ECS    │────▶│     Data Layer        │   │
+│  │ (HTTPS)  │     │ Fargate  │     │  ┌─────────────────┐  │   │
+│  └──────────┘     │          │     │  │   DocumentDB    │  │   │
+│       │           │ • App    │     │  │   (MongoDB)     │  │   │
+│       │           │ • Ingest │     │  ├─────────────────┤  │   │
+│  ┌────▼─────┐     │          │     │  │  ElastiCache    │  │   │
+│  │ Secrets  │     └──────────┘     │  │   (Redis)       │  │   │
+│  │ Manager  │                      │  └─────────────────┘  │   │
+│  └──────────┘                      └───────────────────────┘   │
+│                                                                  │
+│  VPC: 10.0.0.0/16 │ Private Subnets │ NAT Gateway │ Auto-scale │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -588,6 +662,40 @@ Rolling window of what's happening NOW:
 - **Project**: What codebase/task you're in
 
 When context changes, relevant memories automatically surface.
+
+### Multi-Device Architecture (Brain-Inspired)
+
+Same user on multiple devices? MemoRable handles it like your brain handles sensory data:
+
+```
+Phone (GPS)      → Location Stream  ─┐
+Laptop (Calendar)→ Activity Stream  ─┼──▶ Context Integration ──▶ Unified "Now"
+Smart Glasses   → Visual Stream    ─┤     (Thalamus-inspired)
+Smart Watch     → Biometric Stream ─┘
+```
+
+**How it works:**
+- Each device maintains its own context stream (like sensory subsystems)
+- Contexts are fused using resolution strategies:
+  - **Location**: Mobile wins (has GPS)
+  - **People**: Merged from all devices
+  - **Activity**: Most recent wins
+- Device-specific Redis keys prevent race conditions
+- Query `unified: true` to get the fused context
+
+```typescript
+// Phone reports location
+set_context({ location: "coffee shop", deviceId: "iphone-123", deviceType: "mobile" })
+
+// Laptop reports calendar context
+set_context({ people: ["Sarah"], activity: "meeting", deviceId: "macbook-456", deviceType: "desktop" })
+
+// Get unified view across all devices
+whats_relevant({ unified: true })
+// → { location: "coffee shop", people: ["Sarah"], activity: "meeting", activeDevices: 2 }
+```
+
+**Sensor types supported**: location, audio, visual (LIDAR), calendar, activity, biometric, environment, social, semantic.
 
 ### Open Loops
 
