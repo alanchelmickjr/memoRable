@@ -1,7 +1,5 @@
 # MemoRable - Context-Aware Memory for AI Agents
 
-[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
-
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Ready-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
 [![Mem0 Compatible](https://img.shields.io/badge/Mem0-Compatible-purple?style=for-the-badge)](https://mem0.ai)
@@ -25,6 +23,46 @@ MemoRable: Here's what you need to know:
 ```
 
 **Predictive Memory**: After 21 days of learning your patterns, MemoRable surfaces what you need *before you ask*.
+
+---
+
+## Get Started in 2 Minutes
+
+### Option A: Deploy to AWS (Production)
+
+**Click. Enter API key. Done.**
+
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+
+1. Click the button above
+2. Enter your [Anthropic API key](https://console.anthropic.com)
+3. Wait 15 minutes
+4. Get your URL from CloudFormation Outputs
+
+**Costs**: ~$150/mo (small) | ~$400/mo (medium) | ~$800/mo (large)
+
+---
+
+### Option B: Local Development
+
+```bash
+git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+npm install && npm run setup && docker-compose up -d
+```
+
+---
+
+### Option C: Add to Your Project
+
+**TypeScript/Node.js:**
+```bash
+npm install @memorable/sdk
+```
+
+**Python:**
+```bash
+pip install memorable-sdk
+```
 
 ---
 
