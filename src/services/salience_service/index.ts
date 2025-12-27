@@ -269,6 +269,16 @@ export {
   type EnergyAwareTaskResult,
 } from './energy_aware_tasks';
 
+// Re-export LLM provider abstraction (Bedrock, Anthropic, OpenAI)
+export {
+  createLLMClient,
+  BedrockLLMClient,
+  AnthropicLLMClient,
+  OpenAILLMClient,
+  type LLMProvider,
+  type LLMProviderConfig,
+} from './llm_providers';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
