@@ -53,10 +53,13 @@ import {
   getColdRelationships,
   initializeSalienceService,
   getMetricsSummary,
-  // Context frame
+  // Context frame (now device-aware)
   setContext,
   whatMattersNow,
   clearContextFrame,
+  getAllDeviceContexts,
+  getUnifiedUserContext,
+  clearDeviceContext,
   // Memory operations
   forgetMemory,
   forgetPerson,
@@ -75,6 +78,9 @@ import {
   type CalendarEvent,
   type FeedbackSignal,
 } from '../salience_service/index.js';
+
+// Device types for multi-device support
+import type { DeviceType } from '../salience_service/device_context.js';
 
 // Configuration
 const CONFIG = {
@@ -303,11 +309,11 @@ function createServer(): Server {
           properties: {},
         },
       },
-      // Context Frame Tools
+      // Context Frame Tools (Multi-Device Aware)
       {
         name: 'set_context',
         description:
-          'Set your current context (where you are, who you\'re with). Automatically surfaces relevant memories. Example: "I\'m at the park meeting Judy"',
+          'Set your current context (where you are, who you\'re with). Automatically surfaces relevant memories. Example: "I\'m at the park meeting Judy". Supports multi-device: each device maintains its own context stream.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -324,15 +330,33 @@ function createServer(): Server {
               type: 'string',
               description: 'What you\'re doing (meeting, working, relaxing)',
             },
+            deviceId: {
+              type: 'string',
+              description: 'Unique device identifier (auto-generated if not provided). Use the same ID for consistent device tracking.',
+            },
+            deviceType: {
+              type: 'string',
+              enum: ['mobile', 'desktop', 'web', 'api', 'mcp'],
+              description: 'Type of device setting context (helps with context resolution - mobile wins for location)',
+            },
           },
         },
       },
       {
         name: 'whats_relevant',
-        description: 'Get what\'s relevant right now based on your current context.',
+        description: 'Get what\'s relevant right now based on your current context. Can query device-specific or unified context.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            deviceId: {
+              type: 'string',
+              description: 'Query context for a specific device. Omit to get unified context across all devices.',
+            },
+            unified: {
+              type: 'boolean',
+              description: 'If true, returns context fused from all active devices (brain-inspired integration).',
+            },
+          },
         },
       },
       {
@@ -346,7 +370,19 @@ function createServer(): Server {
               items: { type: 'string', enum: ['location', 'people', 'activity', 'calendar', 'mood'] },
               description: 'Which dimensions to clear (default: all)',
             },
+            deviceId: {
+              type: 'string',
+              description: 'Clear context for a specific device. Omit to clear user-level context.',
+            },
           },
+        },
+      },
+      {
+        name: 'list_devices',
+        description: 'List all active devices and their context status for the current user.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
         },
       },
       // Memory Management Tools
@@ -776,23 +812,31 @@ function createServer(): Server {
           };
         }
 
-        // Context Frame Tools
+        // Context Frame Tools (Multi-Device Aware)
         case 'set_context': {
-          const { location, people, activity } = args as {
+          const { location, people, activity, deviceId, deviceType } = args as {
             location?: string;
             people?: string[];
             activity?: string;
+            deviceId?: string;
+            deviceType?: DeviceType;
           };
 
-          const memories = await setContext(CONFIG.defaultUserId, {
-            location,
-            people,
-            activity,
-          });
+          // Generate device ID if not provided (for consistent tracking)
+          const effectiveDeviceId = deviceId || `mcp_${Date.now().toString(36)}`;
+          const effectiveDeviceType = deviceType || 'mcp';
+
+          const memories = await setContext(
+            CONFIG.defaultUserId,
+            { location, people, activity },
+            { deviceId: effectiveDeviceId, deviceType: effectiveDeviceType }
+          );
 
           // Format the response nicely
           const response: any = {
             contextSet: true,
+            deviceId: effectiveDeviceId,
+            deviceType: effectiveDeviceType,
             location,
             people,
             activity,
@@ -826,7 +870,36 @@ function createServer(): Server {
         }
 
         case 'whats_relevant': {
-          const { frame, memories } = await whatMattersNow(CONFIG.defaultUserId);
+          const { deviceId, unified } = args as {
+            deviceId?: string;
+            unified?: boolean;
+          };
+
+          // If unified requested, get fused context from all devices
+          if (unified) {
+            const unifiedContext = await getUnifiedUserContext(CONFIG.defaultUserId);
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    type: 'unified',
+                    activeDevices: unifiedContext.activeDeviceCount,
+                    primaryDevice: unifiedContext.primaryDevice,
+                    currentContext: {
+                      location: unifiedContext.location,
+                      people: unifiedContext.people,
+                      activity: unifiedContext.activity,
+                    },
+                    note: 'Context fused from all active devices using brain-inspired integration (mobile wins for location, people merged, activity from most recent)',
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          const { frame, memories } = await whatMattersNow(CONFIG.defaultUserId, deviceId);
 
           if (!frame || !memories) {
             return {
@@ -835,6 +908,7 @@ function createServer(): Server {
                   type: 'text',
                   text: JSON.stringify({
                     message: 'No context set. Use set_context first.',
+                    hint: 'Pass unified: true to see context from all devices',
                   }),
                 },
               ],
@@ -846,6 +920,8 @@ function createServer(): Server {
               {
                 type: 'text',
                 text: JSON.stringify({
+                  deviceId: frame.deviceId,
+                  deviceType: frame.deviceType,
                   currentContext: {
                     location: frame.location?.value,
                     people: frame.people.map(p => p.value),
@@ -866,11 +942,12 @@ function createServer(): Server {
         }
 
         case 'clear_context': {
-          const { dimensions } = args as {
+          const { dimensions, deviceId } = args as {
             dimensions?: ('location' | 'people' | 'activity' | 'calendar' | 'mood')[];
+            deviceId?: string;
           };
 
-          const frame = await clearContextFrame(CONFIG.defaultUserId, dimensions);
+          const frame = await clearContextFrame(CONFIG.defaultUserId, dimensions, deviceId);
 
           return {
             content: [
@@ -878,12 +955,50 @@ function createServer(): Server {
                 type: 'text',
                 text: JSON.stringify({
                   cleared: dimensions || 'all',
+                  deviceId: frame.deviceId,
                   remainingContext: {
                     location: frame.location?.value,
                     people: frame.people.map(p => p.value),
                     activity: frame.activity?.value,
                   },
                 }),
+              },
+            ],
+          };
+        }
+
+        case 'list_devices': {
+          const contexts = await getAllDeviceContexts(CONFIG.defaultUserId);
+
+          if (contexts.length === 0) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    activeDevices: 0,
+                    message: 'No active devices. Use set_context to register a device.',
+                  }),
+                },
+              ],
+            };
+          }
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  activeDevices: contexts.length,
+                  devices: contexts.map(ctx => ({
+                    deviceId: ctx.deviceId,
+                    deviceType: ctx.deviceType,
+                    lastUpdated: ctx.lastUpdated,
+                    location: ctx.location?.value,
+                    activity: ctx.activity?.value,
+                    peopleCount: ctx.people.length,
+                  })),
+                }, null, 2),
               },
             ],
           };

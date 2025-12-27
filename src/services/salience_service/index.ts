@@ -154,7 +154,7 @@ export {
   batchRecalibrateWeights,
 } from './adaptive_learning';
 
-// Re-export context frame system
+// Re-export context frame system (now multi-device aware)
 export {
   initContextFrame,
   getContextFrame,
@@ -165,11 +165,53 @@ export {
   surfaceMemoriesForFrame,
   setContext,
   whatMattersNow,
+  // Multi-device support
+  getAllDeviceContexts,
+  getUnifiedUserContext,
+  clearDeviceContext,
   type ContextFrame,
   type ContextualMemories,
   type SurfacedMemory,
   type QuickBriefing,
 } from './context_frame';
+
+// Re-export device context types for multi-device architecture
+export {
+  DeviceRegistry,
+  DeviceType,
+  DeviceInfo,
+  DeviceCapabilities,
+  DeviceContextFrame,
+  SensorType,
+  SensorReading,
+  DEVICE_REDIS_KEYS,
+  STALENESS_CONFIG,
+  createDefaultDeviceContext,
+} from './device_context';
+
+// Re-export context integration service (brain-inspired fusion)
+export {
+  ContextIntegrationService,
+  getContextIntegrationService,
+  resetContextIntegrationService,
+} from './context_integration';
+
+// Re-export real-time sync service (omnipresence layer)
+export {
+  RealtimeSyncService,
+  ContextHub,
+  getSyncService,
+  getContextHub,
+  resetSyncServices,
+  SYNC_CHANNELS,
+  SENSOR_PRIORITY,
+  type ContextUpdateMessage,
+  type SensorUpdateMessage,
+  type HeartbeatMessage,
+  type UnifiedContextMessage,
+  type ControlMessage,
+  type SyncMessage,
+} from './realtime_sync';
 
 // Re-export memory operations (forget, reassociate, export)
 export {

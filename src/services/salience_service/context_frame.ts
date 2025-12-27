@@ -12,6 +12,12 @@
  * - Time: Calendar events, time of day, day patterns
  * - Emotion: Current emotional state (optional)
  *
+ * Multi-Device Architecture (Brain-Inspired):
+ * - Each device maintains its own context stream (like sensory subsystems)
+ * - Contexts are integrated into a unified perception of "now"
+ * - Device-specific Redis keys prevent cross-device interference
+ * - Resolution strategies handle conflicts (mobile wins for location, etc.)
+ *
  * The frame is stored in Redis for fast access and automatically
  * queries relevant memories when components change.
  */
@@ -22,6 +28,14 @@ import { retrieveWithSalience, getMemoriesForPerson } from './retrieval';
 import { generateQuickBriefing } from './briefing_generator';
 import { getOpenLoops } from './open_loop_tracker';
 import { getUpcomingEventsForContact } from './timeline_tracker';
+import {
+  DeviceContextFrame,
+  DeviceType,
+  DeviceRegistry,
+  DEVICE_REDIS_KEYS,
+  STALENESS_CONFIG,
+  createDefaultDeviceContext,
+} from './device_context';
 
 // ============================================================================
 // CONTEXT FRAME TYPES
@@ -39,9 +53,14 @@ export interface FrameDimension {
 
 /**
  * The complete context frame - what's happening right now.
+ * Now device-aware for multi-device support.
  */
 export interface ContextFrame {
   userId: string;
+
+  // Device identity (for multi-device support)
+  deviceId?: string;              // Optional for backwards compatibility
+  deviceType?: DeviceType;        // mobile, desktop, web, api, mcp
 
   // Core dimensions
   location?: FrameDimension;
@@ -133,11 +152,34 @@ export interface QuickBriefing {
 }
 
 // ============================================================================
-// REDIS KEYS
+// REDIS KEYS (Device-Aware)
 // ============================================================================
 
-const FRAME_KEY = (userId: string) => `memorable:frame:${userId}`;
+/**
+ * Generate Redis key for context frame.
+ * Uses device-specific key if deviceId provided, otherwise user-level key.
+ */
+const FRAME_KEY = (userId: string, deviceId?: string) =>
+  deviceId
+    ? DEVICE_REDIS_KEYS.deviceContext(userId, deviceId)
+    : `memorable:frame:${userId}`;
+
+/**
+ * Key for unified context across all devices
+ */
+const UNIFIED_FRAME_KEY = (userId: string) =>
+  DEVICE_REDIS_KEYS.unifiedContext(userId);
+
+/**
+ * Key for tracking active devices
+ */
+const ACTIVE_DEVICES_KEY = (userId: string) =>
+  DEVICE_REDIS_KEYS.activeDevices(userId);
+
 const FRAME_TTL = 3600; // 1 hour default
+
+// Device registry for managing device information
+const deviceRegistry = new DeviceRegistry();
 
 // ============================================================================
 // CONTEXT FRAME OPERATIONS
@@ -154,20 +196,58 @@ export function initContextFrame(redis: RedisClientType): void {
 
 /**
  * Get or create the current context frame for a user.
+ * If deviceId is provided, returns device-specific context.
+ * Otherwise returns the legacy user-level context (for backwards compatibility).
  */
-export async function getContextFrame(userId: string): Promise<ContextFrame | null> {
+export async function getContextFrame(
+  userId: string,
+  deviceId?: string
+): Promise<ContextFrame | null> {
   if (!redisClient) {
     console.warn('[ContextFrame] Redis not initialized, using in-memory fallback');
-    return inMemoryFrames.get(userId) || null;
+    const key = deviceId ? `${userId}:${deviceId}` : userId;
+    return inMemoryFrames.get(key) || null;
   }
 
   try {
-    const data = await redisClient.get(FRAME_KEY(userId));
+    const data = await redisClient.get(FRAME_KEY(userId, deviceId));
     if (!data) return null;
     return JSON.parse(data) as ContextFrame;
   } catch (error) {
     console.error('[ContextFrame] Error getting frame:', error);
     return null;
+  }
+}
+
+/**
+ * Get all active device contexts for a user.
+ * Returns array of contexts from all recently-active devices.
+ */
+export async function getAllDeviceContexts(userId: string): Promise<ContextFrame[]> {
+  if (!redisClient) {
+    console.warn('[ContextFrame] Redis not initialized');
+    return [];
+  }
+
+  try {
+    // Get list of active devices
+    const deviceIds = await redisClient.sMembers(ACTIVE_DEVICES_KEY(userId));
+    const contexts: ContextFrame[] = [];
+
+    for (const deviceId of deviceIds) {
+      const context = await getContextFrame(userId, deviceId);
+      if (context) {
+        contexts.push(context);
+      } else {
+        // Device context expired, remove from active set
+        await redisClient.sRem(ACTIVE_DEVICES_KEY(userId), deviceId);
+      }
+    }
+
+    return contexts;
+  } catch (error) {
+    console.error('[ContextFrame] Error getting all device contexts:', error);
+    return [];
   }
 }
 
@@ -177,6 +257,11 @@ const inMemoryFrames = new Map<string, ContextFrame>();
 /**
  * Update the context frame with new information.
  * Triggers memory surfacing when significant changes occur.
+ *
+ * Multi-Device Support:
+ * - If deviceId is provided, updates that device's specific context
+ * - Device context is stored separately and tracked in active devices set
+ * - Unified context is recomputed asynchronously after device updates
  */
 export async function updateContextFrame(
   userId: string,
@@ -191,6 +276,8 @@ export async function updateContextFrame(
     source?: FrameDimension['source'];
     confidence?: number;
     surfaceMemories?: boolean;
+    deviceId?: string;
+    deviceType?: DeviceType;
   } = {}
 ): Promise<{
   frame: ContextFrame;
@@ -200,13 +287,20 @@ export async function updateContextFrame(
   const now = new Date().toISOString();
   const source = options.source || 'explicit';
   const confidence = options.confidence || 1.0;
+  const { deviceId, deviceType } = options;
 
-  // Get existing frame or create new
-  let frame = await getContextFrame(userId);
+  // Get existing frame or create new (device-specific if deviceId provided)
+  let frame = await getContextFrame(userId, deviceId);
   const isNewFrame = !frame;
 
   if (!frame) {
-    frame = createEmptyFrame(userId, now);
+    frame = createEmptyFrame(userId, now, deviceId, deviceType);
+  }
+
+  // Ensure device info is set on frame
+  if (deviceId) {
+    frame.deviceId = deviceId;
+    frame.deviceType = deviceType || frame.deviceType;
   }
 
   // Track what changed
@@ -330,20 +424,25 @@ export async function updateContextFrame(
 
 /**
  * Clear the context frame (e.g., when leaving a location or ending a meeting).
+ *
+ * Multi-Device: Pass deviceId to clear device-specific context.
  */
 export async function clearContextFrame(
   userId: string,
-  dimensions?: ('location' | 'people' | 'activity' | 'calendar' | 'mood')[]
+  dimensions?: ('location' | 'people' | 'activity' | 'calendar' | 'mood')[],
+  deviceId?: string
 ): Promise<ContextFrame> {
-  let frame = await getContextFrame(userId);
+  let frame = await getContextFrame(userId, deviceId);
 
   if (!frame) {
-    return createEmptyFrame(userId, new Date().toISOString());
+    return createEmptyFrame(userId, new Date().toISOString(), deviceId);
   }
 
   if (!dimensions) {
-    // Clear everything
-    frame = createEmptyFrame(userId, new Date().toISOString());
+    // Clear everything but preserve device info
+    const preservedDeviceId = frame.deviceId;
+    const preservedDeviceType = frame.deviceType;
+    frame = createEmptyFrame(userId, new Date().toISOString(), preservedDeviceId, preservedDeviceType);
   } else {
     // Clear specific dimensions
     if (dimensions.includes('location')) frame.location = undefined;
@@ -361,17 +460,26 @@ export async function clearContextFrame(
 
 /**
  * Add a person to the current frame (e.g., someone joined the conversation).
+ *
+ * Multi-Device: Pass deviceId to add person to device-specific context.
  */
 export async function addPersonToFrame(
   userId: string,
   person: string,
-  options: { source?: FrameDimension['source']; surfaceMemories?: boolean } = {}
+  options: {
+    source?: FrameDimension['source'];
+    surfaceMemories?: boolean;
+    deviceId?: string;
+    deviceType?: DeviceType;
+  } = {}
 ): Promise<{
   frame: ContextFrame;
   briefing?: QuickBriefing;
   memories?: SurfacedMemory[];
 }> {
-  const frame = await getContextFrame(userId) || createEmptyFrame(userId, new Date().toISOString());
+  const { deviceId, deviceType } = options;
+  const frame = await getContextFrame(userId, deviceId) ||
+    createEmptyFrame(userId, new Date().toISOString(), deviceId, deviceType);
 
   // Check if person already in frame
   if (frame.people.some(p => p.value.toLowerCase() === person.toLowerCase())) {
@@ -404,13 +512,16 @@ export async function addPersonToFrame(
 
 /**
  * Remove a person from the current frame.
+ *
+ * Multi-Device: Pass deviceId to remove from device-specific context.
  */
 export async function removePersonFromFrame(
   userId: string,
-  person: string
+  person: string,
+  deviceId?: string
 ): Promise<ContextFrame> {
-  const frame = await getContextFrame(userId);
-  if (!frame) return createEmptyFrame(userId, new Date().toISOString());
+  const frame = await getContextFrame(userId, deviceId);
+  if (!frame) return createEmptyFrame(userId, new Date().toISOString(), deviceId);
 
   frame.people = frame.people.filter(
     p => p.value.toLowerCase() !== person.toLowerCase()
@@ -694,11 +805,22 @@ function generateSuggestedTopics(data: ContextualMemories): string[] {
 // HELPER FUNCTIONS
 // ============================================================================
 
-function createEmptyFrame(userId: string, now: string): ContextFrame {
+/**
+ * Create an empty context frame.
+ * Now supports device-specific frames.
+ */
+function createEmptyFrame(
+  userId: string,
+  now: string,
+  deviceId?: string,
+  deviceType?: DeviceType
+): ContextFrame {
   const hour = new Date().getHours();
 
   return {
     userId,
+    deviceId,
+    deviceType,
     people: [],
     timeOfDay:
       hour < 12 ? 'morning' :
@@ -712,20 +834,46 @@ function createEmptyFrame(userId: string, now: string): ContextFrame {
   };
 }
 
+/**
+ * Save a context frame to Redis.
+ * If the frame has a deviceId, saves to device-specific key and tracks in active devices.
+ */
 async function saveFrame(frame: ContextFrame): Promise<void> {
+  const key = frame.deviceId
+    ? `${frame.userId}:${frame.deviceId}`
+    : frame.userId;
+
   if (redisClient) {
     try {
+      // Save frame with device-aware key
       await redisClient.setEx(
-        FRAME_KEY(frame.userId),
+        FRAME_KEY(frame.userId, frame.deviceId),
         FRAME_TTL,
         JSON.stringify(frame)
       );
+
+      // If device-specific, track in active devices set
+      if (frame.deviceId) {
+        await redisClient.sAdd(
+          ACTIVE_DEVICES_KEY(frame.userId),
+          frame.deviceId
+        );
+
+        // Register device if we have a registry
+        if (frame.deviceType) {
+          deviceRegistry.registerDevice(
+            frame.userId,
+            frame.deviceId,
+            frame.deviceType
+          );
+        }
+      }
     } catch (error) {
       console.error('[ContextFrame] Error saving to Redis:', error);
-      inMemoryFrames.set(frame.userId, frame);
+      inMemoryFrames.set(key, frame);
     }
   } else {
-    inMemoryFrames.set(frame.userId, frame);
+    inMemoryFrames.set(key, frame);
   }
 }
 
@@ -736,6 +884,8 @@ async function saveFrame(frame: ContextFrame): Promise<void> {
 /**
  * Set context for MCP - simplified interface.
  * Example: "I'm at the park meeting Judy"
+ *
+ * Multi-Device: Pass deviceId and deviceType to set device-specific context.
  */
 export async function setContext(
   userId: string,
@@ -744,10 +894,16 @@ export async function setContext(
     people?: string[];
     activity?: string;
     calendarEvent?: ContextFrame['calendarEvent'];
+  },
+  deviceOptions?: {
+    deviceId?: string;
+    deviceType?: DeviceType;
   }
 ): Promise<ContextualMemories> {
   const { memoriesSurfaced } = await updateContextFrame(userId, context, {
     surfaceMemories: true,
+    deviceId: deviceOptions?.deviceId,
+    deviceType: deviceOptions?.deviceType,
   });
 
   return memoriesSurfaced || {
@@ -765,16 +921,99 @@ export async function setContext(
 
 /**
  * Get what's relevant right now based on current frame.
+ *
+ * Multi-Device: Pass deviceId to get device-specific context.
+ * Without deviceId, returns user-level context for backwards compatibility.
  */
-export async function whatMattersNow(userId: string): Promise<{
+export async function whatMattersNow(
+  userId: string,
+  deviceId?: string
+): Promise<{
   frame: ContextFrame | null;
   memories: ContextualMemories | null;
 }> {
-  const frame = await getContextFrame(userId);
+  const frame = await getContextFrame(userId, deviceId);
   if (!frame) {
     return { frame: null, memories: null };
   }
 
   const memories = await surfaceMemoriesForFrame(frame);
   return { frame, memories };
+}
+
+/**
+ * Clear context for a specific device or all devices.
+ */
+export async function clearDeviceContext(
+  userId: string,
+  deviceId: string
+): Promise<void> {
+  if (!redisClient) return;
+
+  try {
+    await redisClient.del(FRAME_KEY(userId, deviceId));
+    await redisClient.sRem(ACTIVE_DEVICES_KEY(userId), deviceId);
+  } catch (error) {
+    console.error('[ContextFrame] Error clearing device context:', error);
+  }
+}
+
+/**
+ * Get unified context by integrating all device contexts.
+ * Uses the brain-inspired fusion approach - mobile for location, merge people, etc.
+ */
+export async function getUnifiedUserContext(userId: string): Promise<{
+  location: string;
+  activity: string;
+  people: string[];
+  primaryDevice: string | null;
+  activeDeviceCount: number;
+}> {
+  const contexts = await getAllDeviceContexts(userId);
+
+  if (contexts.length === 0) {
+    return {
+      location: 'Unknown',
+      activity: 'idle',
+      people: [],
+      primaryDevice: null,
+      activeDeviceCount: 0,
+    };
+  }
+
+  // Resolve location: mobile devices win (they have GPS)
+  const mobileContexts = contexts.filter(c => c.deviceType === 'mobile');
+  const locationContext = mobileContexts.length > 0
+    ? mobileContexts.reduce((a, b) =>
+        new Date(b.lastUpdated) > new Date(a.lastUpdated) ? b : a
+      )
+    : contexts.reduce((a, b) =>
+        new Date(b.lastUpdated) > new Date(a.lastUpdated) ? b : a
+      );
+
+  // Resolve activity: most recent wins
+  const activityContext = contexts.reduce((a, b) =>
+    new Date(b.lastUpdated) > new Date(a.lastUpdated) ? b : a
+  );
+
+  // Merge people from all devices
+  const allPeople = new Set<string>();
+  for (const ctx of contexts) {
+    for (const person of ctx.people) {
+      allPeople.add(person.value);
+    }
+  }
+
+  // Find primary device (most recently updated)
+  const primaryDevice = contexts.reduce((a, b) =>
+    new Date(b.lastUpdated) > new Date(a.lastUpdated) ? b : a
+  ).deviceId || null;
+
+  return {
+    location: locationContext.location?.value || 'Unknown',
+    activity: activityContext.activity?.value || 'idle',
+    people: Array.from(allPeople),
+    primaryDevice,
+    activeDeviceCount: contexts.length,
+  };
 }
