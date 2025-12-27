@@ -11,7 +11,10 @@ export default {
   coverageDirectory: 'coverage',
   collectCoverageFrom: [
     'src/**/*.js',
-    '!src/index.js'
+    'src/**/*.ts',
+    '!src/index.js',
+    '!src/**/*.d.ts',
+    '!src/services/mcp_server/index.ts'
   ],
   coverageThreshold: {
     global: {
