@@ -35,6 +35,7 @@ MemoRable + Mem0: Here's what you need to know:
 | Pre-meeting briefings | ❌ | ✅ |
 | Multi-device context sync | ❌ | ✅ |
 | Predictive memory (21-day learning) | ❌ | ✅ |
+| **Behavioral identity** | ❌ | ✅ |
 | MCP protocol support | ❌ | ✅ |
 
 ---
@@ -624,6 +625,99 @@ async function getRelatedDecisions(topic: string) {
     limit: 10
   });
 }
+```
+
+---
+
+## Behavioral Identity
+
+**Know who you're talking to without login credentials.** MemoRable learns each user's unique communication fingerprint - vocabulary patterns, phrasing style, topic preferences, temporal habits. After enough interaction, it can identify users by *how* they communicate.
+
+### How It Works
+
+```
+User Input: "hey can u check the payment thing from yesterday"
+
+┌─────────────────────────────────────────────────────────────┐
+│                  Behavioral Fingerprint                     │
+├─────────────────────────────────────────────────────────────┤
+│  Linguistic Patterns                                        │
+│  ├─ Lowercase preference: 92%                               │
+│  ├─ Abbreviation usage: high (u, thx, pls)                 │
+│  ├─ Avg sentence length: 8.3 words                         │
+│  └─ Question style: implicit ("can u" vs "could you")      │
+│                                                             │
+│  Temporal Patterns                                          │
+│  ├─ Active hours: 9am-6pm EST                              │
+│  ├─ Peak activity: Tuesday/Thursday                        │
+│  └─ Session length: 15-45 minutes                          │
+│                                                             │
+│  Topic Patterns                                             │
+│  ├─ Frequent: payments, API, deployment                    │
+│  ├─ People: Mike (engineering), Sarah (product)            │
+│  └─ Projects: payment-v2, dashboard-redesign               │
+│                                                             │
+│  Confidence: 94% match → User: alex@company.com            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Signals Analyzed
+
+| Signal Type | What We Learn | Identity Weight |
+|-------------|---------------|-----------------|
+| **Vocabulary** | Word frequency, jargon, abbreviations | High |
+| **Syntax** | Sentence structure, punctuation, capitalization | High |
+| **Timing** | Active hours, response patterns, session length | Medium |
+| **Topics** | Subject preferences, people mentioned, projects | Medium |
+| **Style** | Politeness markers, emoji usage, formality level | Medium |
+| **Context** | Locations mentioned, devices used, workflows | Low |
+
+### Use Cases
+
+**1. Seamless Multi-Device Experience**
+```python
+# User switches from laptop to phone mid-conversation
+# MemoRable recognizes them by communication style, not just session token
+result = memorable.identify_user(message_text)
+# → {"userId": "alex@company.com", "confidence": 0.94, "signals": [...]}
+```
+
+**2. Anomaly Detection**
+```python
+# Alert when behavior doesn't match known patterns
+if result.confidence < 0.5:
+    # Possibly compromised account or new user
+    trigger_verification()
+```
+
+**3. Personalization Without Login**
+```python
+# First message in a session - no auth yet
+# MemoRable can still personalize based on detected identity
+briefing = memorable.get_briefing_for_detected_user(message_text)
+```
+
+### Privacy & Consent
+
+- Behavioral signatures are **local to your deployment** - never shared
+- Users can **view their fingerprint** and **opt out** of behavioral tracking
+- All signals are derived from **content they voluntarily provide**
+- Compliant with GDPR "legitimate interest" for security purposes
+
+### Configuration
+
+```env
+# Enable behavioral identity (default: true)
+BEHAVIORAL_IDENTITY_ENABLED=true
+
+# Minimum interactions before fingerprinting (default: 50)
+BEHAVIORAL_MIN_SAMPLES=50
+
+# Confidence threshold for identity match (default: 0.75)
+BEHAVIORAL_CONFIDENCE_THRESHOLD=0.75
+
+# Include in identity verification flow (default: false)
+BEHAVIORAL_AUTH_ENABLED=false
 ```
 
 ---
