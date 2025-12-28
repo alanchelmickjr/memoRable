@@ -1,0 +1,130 @@
+# Docker Compose for Remote MCP Server Deployment
+# Use this for Claude.ai web integration with OAuth 2.0
+#
+# Usage:
+#   docker-compose -f docker-compose.remote.yml up -d
+#
+# Required Environment Variables (create .env.remote or export):
+#   - OAUTH_CLIENT_ID
+#   - OAUTH_CLIENT_SECRET
+#   - JWT_SECRET
+#   - MONGODB_URI (or use included MongoDB)
+#
+# Note: For production, use a proper reverse proxy (nginx/traefik) with TLS
+
+version: '3.8'
+
+services:
+  # MCP Server with HTTP transport and OAuth
+  memorable_mcp_remote:
+    build:
+      context: .
+      dockerfile: src/services/mcp_server/Dockerfile
+    container_name: memorable_mcp_remote
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Transport Configuration
+      - TRANSPORT_TYPE=http
+      - MCP_HTTP_PORT=8080
+
+      # OAuth 2.0 Configuration (required for Claude.ai)
+      - OAUTH_ENABLED=true
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - OAUTH_TOKEN_EXPIRY=1h
+      - OAUTH_REFRESH_EXPIRY=7d
+
+      # CORS Configuration
+      - ALLOWED_ORIGINS=https://claude.ai,https://claude.com
+
+      # Database
+      - MONGODB_URI=${MONGODB_URI:-mongodb://memorable_mongo:27017/memorable}
+      - REDIS_URL=${REDIS_URL:-redis://memorable_redis:6379}
+
+      # LLM Provider (choose one)
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - USE_BEDROCK=${USE_BEDROCK:-false}
+
+      # User Configuration
+      - MCP_USER_ID=${MCP_USER_ID:-default}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_ENV=production
+    depends_on:
+      - memorable_mongo
+      - memorable_redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - memorable_network
+
+  # MongoDB Database
+  memorable_mongo:
+    image: mongo:7.0
+    container_name: memorable_mongo
+    restart: unless-stopped
+    volumes:
+      - memorable_mongo_data:/data/db
+      - memorable_mongo_config:/data/configdb
+    environment:
+      - MONGO_INITDB_DATABASE=memorable
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memorable_network
+
+  # Redis for Context Frames and Session Storage
+  memorable_redis:
+    image: redis:7-alpine
+    container_name: memorable_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - memorable_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - memorable_network
+
+  # Nginx Reverse Proxy with TLS (optional but recommended)
+  memorable_proxy:
+    image: nginx:alpine
+    container_name: memorable_proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - memorable_mcp_remote
+    networks:
+      - memorable_network
+    profiles:
+      - with-proxy
+
+networks:
+  memorable_network:
+    driver: bridge
+
+volumes:
+  memorable_mongo_data:
+  memorable_mongo_config:
+  memorable_redis_data:
