@@ -109,7 +109,63 @@ Now in Claude Code you can say:
 
 ---
 
-## MCP Tools Reference (19 Tools)
+## Claude.ai Web Integration
+
+MemoRable can be used with Claude.ai in the browser for seamless memory access across web and desktop.
+
+### Option 1: Custom Connector (No Approval Required)
+
+Deploy MemoRable as a remote MCP server and add it as a custom connector:
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+
+# 2. Generate OAuth credentials
+./scripts/setup-oauth.sh
+
+# 3. Deploy with Docker
+docker-compose -f docker-compose.remote.yml --env-file .env.remote up -d
+```
+
+Then in Claude.ai:
+1. Go to **Settings** → **Connectors**
+2. Click **Add custom connector**
+3. Enter your server URL: `https://your-deployment.com/mcp`
+4. Authenticate via OAuth
+
+Works on Pro, Max, Team, and Enterprise plans.
+
+### Option 2: Official Directory Listing
+
+MemoRable is available in the [Anthropic MCP Connectors Directory](https://claude.com/partners/mcp).
+
+### Remote Deployment Requirements
+
+For Claude.ai web integration, MemoRable requires:
+
+| Requirement | Description |
+|-------------|-------------|
+| **OAuth 2.0/2.1** | Authentication for Claude.ai |
+| **Streamable HTTP** | Modern MCP transport (not stdio) |
+| **HTTPS** | Valid TLS certificate |
+| **CORS** | Allow claude.ai and claude.com origins |
+
+Environment variables for remote mode:
+
+```env
+TRANSPORT_TYPE=http
+OAUTH_ENABLED=true
+OAUTH_CLIENT_ID=your-client-id
+OAUTH_CLIENT_SECRET=your-client-secret
+ALLOWED_ORIGINS=https://claude.ai,https://claude.com
+```
+
+For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude-ai-integration.md).
+
+---
+
+## MCP Tools Reference (20 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
@@ -899,5 +955,8 @@ MIT License - see [LICENSE](LICENSE)
 
 - [MCP Server Documentation](./src/services/mcp_server/README.md)
 - [Salience Service Documentation](./src/services/salience_service/README.md)
+- [Claude.ai Integration Guide](./docs/claude-ai-integration.md)
+- [Example Prompts](./docs/example-prompts.md)
+- [Privacy Policy](./PRIVACY.md)
 - [API Reference](./docs/api-reference.md)
 - [Deployment Guide](./docs/deployment-guide.md)

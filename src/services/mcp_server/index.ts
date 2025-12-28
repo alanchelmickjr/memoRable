@@ -26,6 +26,7 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -38,6 +39,10 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { MongoClient, Db } from 'mongodb';
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 
 // Import salience service functions
 import {
@@ -93,7 +98,43 @@ const CONFIG = {
   // - ANTHROPIC_API_KEY set → Anthropic direct
   // - OPENAI_API_KEY set → OpenAI direct
   llmProvider: process.env.LLM_PROVIDER || 'auto',
+  // Transport configuration: 'stdio' (default) or 'http'
+  transportType: process.env.TRANSPORT_TYPE || 'stdio',
+  httpPort: parseInt(process.env.MCP_HTTP_PORT || '8080', 10),
+  // OAuth 2.0 configuration (required for remote deployment)
+  oauth: {
+    enabled: process.env.OAUTH_ENABLED === 'true',
+    clientId: process.env.OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.OAUTH_CLIENT_SECRET || '',
+    jwtSecret: process.env.JWT_SECRET || randomUUID(),
+    tokenExpiry: process.env.OAUTH_TOKEN_EXPIRY || '1h',
+    refreshExpiry: process.env.OAUTH_REFRESH_EXPIRY || '7d',
+  },
+  // CORS configuration for Claude.ai web integration
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://claude.ai,https://claude.com').split(','),
 };
+
+// OAuth token store (in-memory for development, use Redis in production)
+interface OAuthToken {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  clientId: string;
+  expiresAt: Date;
+  scope: string[];
+}
+
+interface AuthorizationCode {
+  code: string;
+  clientId: string;
+  redirectUri: string;
+  userId: string;
+  scope: string[];
+  expiresAt: Date;
+}
+
+const tokenStore = new Map<string, OAuthToken>();
+const authCodeStore = new Map<string, AuthorizationCode>();
 
 // Database connection
 let db: Db | null = null;
@@ -186,6 +227,13 @@ function createServer(): Server {
           },
           required: ['text'],
         },
+        annotations: {
+          title: 'Store Memory',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
       },
       {
         name: 'recall',
@@ -213,6 +261,13 @@ function createServer(): Server {
           },
           required: ['query'],
         },
+        annotations: {
+          title: 'Recall Memories',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'get_briefing',
@@ -231,6 +286,13 @@ function createServer(): Server {
             },
           },
           required: ['person'],
+        },
+        annotations: {
+          title: 'Get Briefing',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       {
@@ -255,6 +317,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'List Open Loops',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'close_loop',
@@ -273,6 +342,13 @@ function createServer(): Server {
           },
           required: ['loopId'],
         },
+        annotations: {
+          title: 'Close Loop',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'get_status',
@@ -280,6 +356,13 @@ function createServer(): Server {
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+        annotations: {
+          title: 'Get Status',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       // Context Frame Tools (Multi-Device Aware)
@@ -314,6 +397,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'Set Context',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'whats_relevant',
@@ -330,6 +420,13 @@ function createServer(): Server {
               description: 'If true, returns context fused from all active devices (brain-inspired integration).',
             },
           },
+        },
+        annotations: {
+          title: "What's Relevant",
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       {
@@ -349,6 +446,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'Clear Context',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'list_devices',
@@ -356,6 +460,13 @@ function createServer(): Server {
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+        annotations: {
+          title: 'List Devices',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       // Memory Management Tools
@@ -380,6 +491,13 @@ function createServer(): Server {
             },
           },
           required: ['memoryId'],
+        },
+        annotations: {
+          title: 'Forget Memory',
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       {
@@ -408,6 +526,13 @@ function createServer(): Server {
           },
           required: ['person'],
         },
+        annotations: {
+          title: 'Forget Person',
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'restore',
@@ -421,6 +546,13 @@ function createServer(): Server {
             },
           },
           required: ['memoryId'],
+        },
+        annotations: {
+          title: 'Restore Memory',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       {
@@ -470,6 +602,13 @@ function createServer(): Server {
           },
           required: ['memoryId'],
         },
+        annotations: {
+          title: 'Reassociate Memory',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
       },
       {
         name: 'export_memories',
@@ -509,6 +648,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'Export Memories',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       // Anticipation Tools (Predictive Memory)
       {
@@ -541,6 +687,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'Anticipate',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'day_outlook',
@@ -568,6 +721,13 @@ function createServer(): Server {
             },
           },
         },
+        annotations: {
+          title: 'Day Outlook',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
       },
       {
         name: 'pattern_stats',
@@ -576,6 +736,13 @@ function createServer(): Server {
         inputSchema: {
           type: 'object',
           properties: {},
+        },
+        annotations: {
+          title: 'Pattern Stats',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       },
       {
@@ -600,6 +767,13 @@ function createServer(): Server {
             },
           },
           required: ['patternId', 'action'],
+        },
+        annotations: {
+          title: 'Memory Feedback',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
         },
       },
     ],
@@ -1508,6 +1682,185 @@ ${briefing.sensitivities?.length ? briefing.sensitivities.join('\n') : 'None fla
 }
 
 /**
+ * Create Express app with OAuth endpoints for remote MCP server.
+ */
+function createExpressApp() {
+  const app = express();
+
+  // CORS configuration for Claude.ai
+  app.use(cors({
+    origin: CONFIG.allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // Health check endpoint
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({
+      status: 'healthy',
+      version: '2.0.0',
+      transport: 'http',
+      oauth: CONFIG.oauth.enabled,
+    });
+  });
+
+  // OAuth 2.0 Authorization endpoint
+  app.get('/oauth/authorize', (req: Request, res: Response) => {
+    if (!CONFIG.oauth.enabled) {
+      return res.status(501).json({ error: 'OAuth not enabled' });
+    }
+
+    const { client_id, redirect_uri, response_type, scope, state } = req.query;
+
+    if (response_type !== 'code') {
+      return res.status(400).json({ error: 'unsupported_response_type' });
+    }
+
+    if (client_id !== CONFIG.oauth.clientId) {
+      return res.status(400).json({ error: 'invalid_client' });
+    }
+
+    // Generate authorization code
+    const code = randomUUID();
+    const authCode: AuthorizationCode = {
+      code,
+      clientId: client_id as string,
+      redirectUri: redirect_uri as string,
+      userId: CONFIG.defaultUserId, // In production, this would come from user session
+      scope: (scope as string || 'read write').split(' '),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    };
+    authCodeStore.set(code, authCode);
+
+    // Redirect back to client with code
+    const redirectUrl = new URL(redirect_uri as string);
+    redirectUrl.searchParams.set('code', code);
+    if (state) {
+      redirectUrl.searchParams.set('state', state as string);
+    }
+
+    res.redirect(redirectUrl.toString());
+  });
+
+  // OAuth 2.0 Token endpoint
+  app.post('/oauth/token', (req: Request, res: Response) => {
+    if (!CONFIG.oauth.enabled) {
+      return res.status(501).json({ error: 'OAuth not enabled' });
+    }
+
+    const { grant_type, code, client_id, client_secret, refresh_token } = req.body;
+
+    // Validate client credentials
+    if (client_id !== CONFIG.oauth.clientId || client_secret !== CONFIG.oauth.clientSecret) {
+      return res.status(401).json({ error: 'invalid_client' });
+    }
+
+    if (grant_type === 'authorization_code') {
+      // Exchange authorization code for tokens
+      const authCode = authCodeStore.get(code);
+      if (!authCode || authCode.expiresAt < new Date()) {
+        authCodeStore.delete(code);
+        return res.status(400).json({ error: 'invalid_grant' });
+      }
+
+      authCodeStore.delete(code);
+
+      // Generate tokens
+      const accessToken = jwt.sign(
+        { userId: authCode.userId, scope: authCode.scope },
+        CONFIG.oauth.jwtSecret,
+        { expiresIn: CONFIG.oauth.tokenExpiry }
+      );
+
+      const newRefreshToken = randomUUID();
+      const token: OAuthToken = {
+        accessToken,
+        refreshToken: newRefreshToken,
+        userId: authCode.userId,
+        clientId: authCode.clientId,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        scope: authCode.scope,
+      };
+      tokenStore.set(newRefreshToken, token);
+
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        refresh_token: newRefreshToken,
+        scope: authCode.scope.join(' '),
+      });
+    } else if (grant_type === 'refresh_token') {
+      // Refresh access token
+      const token = tokenStore.get(refresh_token);
+      if (!token || token.expiresAt < new Date()) {
+        tokenStore.delete(refresh_token);
+        return res.status(400).json({ error: 'invalid_grant' });
+      }
+
+      const accessToken = jwt.sign(
+        { userId: token.userId, scope: token.scope },
+        CONFIG.oauth.jwtSecret,
+        { expiresIn: CONFIG.oauth.tokenExpiry }
+      );
+
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        scope: token.scope.join(' '),
+      });
+    }
+
+    return res.status(400).json({ error: 'unsupported_grant_type' });
+  });
+
+  // OAuth 2.0 Token revocation endpoint
+  app.post('/oauth/revoke', (req: Request, res: Response) => {
+    if (!CONFIG.oauth.enabled) {
+      return res.status(501).json({ error: 'OAuth not enabled' });
+    }
+
+    const { token, token_type_hint } = req.body;
+
+    if (token_type_hint === 'refresh_token' || !token_type_hint) {
+      tokenStore.delete(token);
+    }
+
+    // Always return 200 for revocation per RFC 7009
+    res.status(200).json({ revoked: true });
+  });
+
+  // OAuth token validation middleware
+  const validateToken = (req: Request, res: Response, next: NextFunction) => {
+    if (!CONFIG.oauth.enabled) {
+      // If OAuth is disabled, allow all requests (for development)
+      return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'missing_token' });
+    }
+
+    const token = authHeader.slice(7);
+    try {
+      const decoded = jwt.verify(token, CONFIG.oauth.jwtSecret);
+      (req as any).user = decoded;
+      next();
+    } catch (error) {
+      return res.status(401).json({ error: 'invalid_token' });
+    }
+  };
+
+  return { app, validateToken };
+}
+
+/**
  * Main entry point.
  */
 async function main() {
@@ -1520,13 +1873,46 @@ async function main() {
   }
 
   const server = createServer();
-  const transport = new StdioServerTransport();
-
   console.error('[MCP] MemoRable Memory Server starting...');
 
-  await server.connect(transport);
+  if (CONFIG.transportType === 'http') {
+    // HTTP transport for remote deployment (Claude.ai web integration)
+    const { app, validateToken } = createExpressApp();
 
-  console.error('[MCP] Server connected via stdio');
+    // Create HTTP transport
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    // Mount MCP endpoint with OAuth validation
+    app.all('/mcp', validateToken, async (req: Request, res: Response) => {
+      try {
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('[MCP] HTTP transport error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // Connect server to transport
+    await server.connect(transport);
+
+    // Start HTTP server
+    app.listen(CONFIG.httpPort, () => {
+      console.error(`[MCP] Server listening on http://0.0.0.0:${CONFIG.httpPort}`);
+      console.error(`[MCP] MCP endpoint: http://0.0.0.0:${CONFIG.httpPort}/mcp`);
+      if (CONFIG.oauth.enabled) {
+        console.error(`[MCP] OAuth enabled - authorize at /oauth/authorize`);
+      } else {
+        console.error(`[MCP] OAuth disabled - set OAUTH_ENABLED=true for production`);
+      }
+    });
+  } else {
+    // stdio transport for Claude Code / local development
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error('[MCP] Server connected via stdio');
+  }
 }
 
 // Handle shutdown
