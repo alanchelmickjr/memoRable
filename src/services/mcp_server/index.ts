@@ -140,6 +140,203 @@ const authCodeStore = new Map<string, AuthorizationCode>();
 let db: Db | null = null;
 let mongoClient: MongoClient | null = null;
 
+// ============================================
+// BEHAVIORAL IDENTITY HELPER FUNCTIONS
+// ============================================
+
+interface BehavioralSignals {
+  vocabulary: {
+    avgWordLength: number;
+    abbreviationRatio: number;
+    uniqueWordRatio: number;
+    jargonScore: number;
+  };
+  syntax: {
+    avgSentenceLength: number;
+    punctuationStyle: string;
+    capitalizationRatio: number;
+    questionRatio: number;
+  };
+  timing: {
+    hourOfDay: number;
+    dayOfWeek: number;
+  };
+  topics: string[];
+  style: {
+    formalityScore: number;
+    emojiUsage: number;
+    politenessMarkers: number;
+  };
+}
+
+/**
+ * Analyze behavioral signals from a message
+ */
+function analyzeBehavioralSignals(message: string): BehavioralSignals {
+  const words = message.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const sentences = message.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const now = new Date();
+
+  // Vocabulary analysis
+  const avgWordLength = words.length > 0
+    ? words.reduce((sum, w) => sum + w.length, 0) / words.length
+    : 0;
+  const abbreviations = ['u', 'ur', 'thx', 'pls', 'btw', 'idk', 'imo', 'tbh', 'lol', 'omg'];
+  const abbrevCount = words.filter(w => abbreviations.includes(w)).length;
+  const abbreviationRatio = words.length > 0 ? abbrevCount / words.length : 0;
+  const uniqueWords = new Set(words);
+  const uniqueWordRatio = words.length > 0 ? uniqueWords.size / words.length : 0;
+
+  // Syntax analysis
+  const avgSentenceLength = sentences.length > 0 ? words.length / sentences.length : 0;
+  const punctuation = message.match(/[.,!?;:]/g) || [];
+  const punctuationStyle = punctuation.length > 5 ? 'heavy' : punctuation.length > 2 ? 'moderate' : 'light';
+  const upperCase = (message.match(/[A-Z]/g) || []).length;
+  const lowerCase = (message.match(/[a-z]/g) || []).length;
+  const capitalizationRatio = (upperCase + lowerCase) > 0 ? upperCase / (upperCase + lowerCase) : 0;
+  const questions = (message.match(/\?/g) || []).length;
+  const questionRatio = sentences.length > 0 ? questions / sentences.length : 0;
+
+  // Style analysis
+  const formalWords = ['please', 'thank', 'appreciate', 'kindly', 'would', 'could', 'shall'];
+  const formalCount = words.filter(w => formalWords.some(f => w.includes(f))).length;
+  const formalityScore = words.length > 0 ? Math.min(1, formalCount / words.length * 10) : 0.5;
+  const emojis = (message.match(/[\u{1F600}-\u{1F6FF}]/gu) || []).length;
+  const emojiUsage = emojis / Math.max(1, words.length);
+  const politeWords = ['please', 'thanks', 'thank you', 'appreciate', 'sorry'];
+  const politeCount = politeWords.filter(p => message.toLowerCase().includes(p)).length;
+
+  // Topic extraction (simple keyword extraction)
+  const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'although', 'though', 'after', 'before', 'when', 'whenever', 'where', 'wherever', 'whether', 'which', 'while', 'who', 'whoever', 'whom', 'whose', 'that', 'this', 'these', 'those', 'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what']);
+  const topics = words
+    .filter(w => w.length > 3 && !stopWords.has(w))
+    .slice(0, 10);
+
+  return {
+    vocabulary: {
+      avgWordLength,
+      abbreviationRatio,
+      uniqueWordRatio,
+      jargonScore: abbreviationRatio * 0.5 + (1 - capitalizationRatio) * 0.5,
+    },
+    syntax: {
+      avgSentenceLength,
+      punctuationStyle,
+      capitalizationRatio,
+      questionRatio,
+    },
+    timing: {
+      hourOfDay: now.getHours(),
+      dayOfWeek: now.getDay(),
+    },
+    topics,
+    style: {
+      formalityScore,
+      emojiUsage,
+      politenessMarkers: politeCount,
+    },
+  };
+}
+
+/**
+ * Calculate behavioral match score between signals and a fingerprint
+ */
+function calculateBehavioralMatch(
+  signals: BehavioralSignals,
+  fingerprint: any
+): { confidence: number; signals: Record<string, number> } {
+  const fp = fingerprint.signals || {};
+  const scores: Record<string, number> = {};
+
+  // Vocabulary match (weight: 0.25)
+  if (fp.vocabulary) {
+    const wordLengthDiff = Math.abs((signals.vocabulary.avgWordLength || 0) - (fp.vocabulary.avgWordLength || 0));
+    const abbrevDiff = Math.abs((signals.vocabulary.abbreviationRatio || 0) - (fp.vocabulary.abbreviationRatio || 0));
+    scores.vocabulary = Math.max(0, 1 - (wordLengthDiff / 5 + abbrevDiff));
+  } else {
+    scores.vocabulary = 0.5;
+  }
+
+  // Syntax match (weight: 0.25)
+  if (fp.syntax) {
+    const sentLengthDiff = Math.abs((signals.syntax.avgSentenceLength || 0) - (fp.syntax.avgSentenceLength || 0));
+    const capDiff = Math.abs((signals.syntax.capitalizationRatio || 0) - (fp.syntax.capitalizationRatio || 0));
+    scores.syntax = Math.max(0, 1 - (sentLengthDiff / 20 + capDiff));
+  } else {
+    scores.syntax = 0.5;
+  }
+
+  // Timing match (weight: 0.15)
+  if (fp.timing && fp.timing.activeHours) {
+    const hourMatch = fp.timing.activeHours.includes(signals.timing.hourOfDay) ? 1 : 0.3;
+    const dayMatch = fp.timing.activeDays?.includes(signals.timing.dayOfWeek) ? 1 : 0.5;
+    scores.timing = (hourMatch + dayMatch) / 2;
+  } else {
+    scores.timing = 0.5;
+  }
+
+  // Topics match (weight: 0.20)
+  if (fp.topics && fp.topics.length > 0) {
+    const fpTopics = new Set(fp.topics);
+    const matchingTopics = signals.topics.filter(t => fpTopics.has(t)).length;
+    scores.topics = signals.topics.length > 0 ? matchingTopics / signals.topics.length : 0.5;
+  } else {
+    scores.topics = 0.5;
+  }
+
+  // Style match (weight: 0.15)
+  if (fp.style) {
+    const formalityDiff = Math.abs((signals.style.formalityScore || 0.5) - (fp.style.formalityScore || 0.5));
+    const emojiMatch = (signals.style.emojiUsage > 0) === (fp.style.emojiUsage > 0) ? 1 : 0.5;
+    scores.style = Math.max(0, 1 - formalityDiff) * 0.7 + emojiMatch * 0.3;
+  } else {
+    scores.style = 0.5;
+  }
+
+  // Weighted average
+  const weights = { vocabulary: 0.25, syntax: 0.25, timing: 0.15, topics: 0.20, style: 0.15 };
+  const confidence = Object.entries(scores).reduce(
+    (sum, [key, value]) => sum + value * (weights[key as keyof typeof weights] || 0),
+    0
+  );
+
+  return { confidence: Math.min(1, confidence), signals: scores };
+}
+
+/**
+ * Hash a message for storage (privacy-preserving)
+ */
+function hashMessage(message: string): string {
+  let hash = 0;
+  for (let i = 0; i < message.length; i++) {
+    const char = message.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `hash_${Math.abs(hash).toString(36)}`;
+}
+
+/**
+ * Generate ASCII progress bar
+ */
+function generateProgressBar(value: number, max: number, width: number): string {
+  const percentage = Math.min(1, value / max);
+  const filled = Math.round(percentage * width);
+  const empty = width - filled;
+  return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
+/**
+ * Generate ASCII histogram bar
+ */
+function generateHistogramBar(value: number, max: number, width: number): string {
+  if (max === 0) return '░'.repeat(width);
+  const percentage = value / max;
+  const filled = Math.round(percentage * width);
+  const empty = width - filled;
+  return '▓'.repeat(filled) + '░'.repeat(empty);
+}
+
 /**
  * Create an LLM client using the unified provider abstraction.
  * Supports Bedrock (AWS IAM), Anthropic, and OpenAI.
@@ -770,6 +967,94 @@ function createServer(): Server {
         },
         annotations: {
           title: 'Memory Feedback',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      // Behavioral Identity Tools
+      {
+        name: 'identify_user',
+        description:
+          'Analyze a message to identify the user by behavioral patterns. Returns confidence score and matching signals.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'The message to analyze for behavioral fingerprinting',
+            },
+            candidateUsers: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional list of user IDs to match against (faster than full scan)',
+            },
+          },
+          required: ['message'],
+        },
+        annotations: {
+          title: 'Identify User',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'behavioral_metrics',
+        description:
+          'Get behavioral identity metrics dashboard. Shows learning progress, hit/miss rates, signal strengths, and confidence distributions with ASCII visualizations.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            userId: {
+              type: 'string',
+              description: 'Get metrics for a specific user (optional, defaults to all users)',
+            },
+            timeRange: {
+              type: 'string',
+              enum: ['1h', '24h', '7d', '30d', 'all'],
+              description: 'Time range for metrics (default: 24h)',
+            },
+            includeGraph: {
+              type: 'boolean',
+              description: 'Include ASCII graphs in output (default: true)',
+            },
+          },
+        },
+        annotations: {
+          title: 'Behavioral Metrics',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'behavioral_feedback',
+        description:
+          'Provide feedback on behavioral identification. Improves future recognition accuracy.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            predictionId: {
+              type: 'string',
+              description: 'ID of the prediction to provide feedback on',
+            },
+            correct: {
+              type: 'boolean',
+              description: 'Was the identification correct?',
+            },
+            actualUserId: {
+              type: 'string',
+              description: 'The actual user ID (if identification was wrong)',
+            },
+          },
+          required: ['predictionId', 'correct'],
+        },
+        annotations: {
+          title: 'Behavioral Feedback',
           readOnlyHint: false,
           destructiveHint: false,
           idempotentHint: false,
@@ -1426,6 +1711,277 @@ function createServer(): Server {
                 }),
               },
             ],
+          };
+        }
+
+        case 'identify_user': {
+          const { message, candidateUsers } = args as {
+            message: string;
+            candidateUsers?: string[];
+          };
+
+          // Analyze behavioral signals from message
+          const signals = analyzeBehavioralSignals(message);
+
+          // Get behavioral fingerprints to match against
+          const fingerprintsCollection = db!.collection('behavioral_fingerprints');
+          const query = candidateUsers?.length
+            ? { userId: { $in: candidateUsers } }
+            : {};
+          const fingerprints = await fingerprintsCollection.find(query).toArray();
+
+          // Find best match
+          let bestMatch = { userId: 'unknown', confidence: 0, signals: {} as Record<string, number> };
+          for (const fp of fingerprints) {
+            const score = calculateBehavioralMatch(signals, fp);
+            if (score.confidence > bestMatch.confidence) {
+              bestMatch = { userId: fp.userId, ...score };
+            }
+          }
+
+          // Record this prediction for feedback loop
+          const predictionId = `pred_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          await db!.collection('behavioral_predictions').insertOne({
+            predictionId,
+            predictedUser: bestMatch.userId,
+            confidence: bestMatch.confidence,
+            signals: bestMatch.signals,
+            messageHash: hashMessage(message),
+            timestamp: new Date(),
+            feedbackReceived: false,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                predictionId,
+                userId: bestMatch.userId,
+                confidence: bestMatch.confidence,
+                signals: bestMatch.signals,
+                threshold: 0.75,
+                identified: bestMatch.confidence >= 0.75,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'behavioral_metrics': {
+          const { userId, timeRange = '24h', includeGraph = true } = args as {
+            userId?: string;
+            timeRange?: '1h' | '24h' | '7d' | '30d' | 'all';
+            includeGraph?: boolean;
+          };
+
+          // Calculate time filter
+          const timeMs = {
+            '1h': 60 * 60 * 1000,
+            '24h': 24 * 60 * 60 * 1000,
+            '7d': 7 * 24 * 60 * 60 * 1000,
+            '30d': 30 * 24 * 60 * 60 * 1000,
+            'all': 0,
+          }[timeRange];
+          const timeFilter = timeMs > 0
+            ? { timestamp: { $gte: new Date(Date.now() - timeMs) } }
+            : {};
+
+          const predictions = db!.collection('behavioral_predictions');
+          const fingerprints = db!.collection('behavioral_fingerprints');
+
+          // Get predictions with feedback
+          const userFilter = userId ? { predictedUser: userId } : {};
+          const allPredictions = await predictions.find({ ...timeFilter, ...userFilter }).toArray();
+          const withFeedback = allPredictions.filter(p => p.feedbackReceived);
+          const correct = withFeedback.filter(p => p.wasCorrect);
+
+          // Calculate metrics
+          const totalPredictions = allPredictions.length;
+          const feedbackCount = withFeedback.length;
+          const hitRate = feedbackCount > 0 ? (correct.length / feedbackCount) * 100 : 0;
+          const missRate = feedbackCount > 0 ? ((feedbackCount - correct.length) / feedbackCount) * 100 : 0;
+
+          // Get fingerprint stats
+          const fpQuery = userId ? { userId } : {};
+          const allFingerprints = await fingerprints.find(fpQuery).toArray();
+          const avgSamples = allFingerprints.length > 0
+            ? allFingerprints.reduce((sum, fp) => sum + (fp.sampleCount || 0), 0) / allFingerprints.length
+            : 0;
+          const readyUsers = allFingerprints.filter(fp => (fp.sampleCount || 0) >= 50).length;
+
+          // Confidence distribution
+          const confBuckets = [0, 0, 0, 0, 0]; // 0-20, 20-40, 40-60, 60-80, 80-100
+          for (const p of allPredictions) {
+            const bucket = Math.min(4, Math.floor(p.confidence * 5));
+            confBuckets[bucket]++;
+          }
+
+          // Signal strength breakdown (from recent predictions)
+          const signalStrength: Record<string, number> = {
+            vocabulary: 0,
+            syntax: 0,
+            timing: 0,
+            topics: 0,
+            style: 0,
+          };
+          let signalCount = 0;
+          for (const p of allPredictions.slice(-100)) {
+            if (p.signals) {
+              for (const [key, value] of Object.entries(p.signals)) {
+                if (key in signalStrength) {
+                  signalStrength[key] += value as number;
+                  signalCount++;
+                }
+              }
+            }
+          }
+          if (signalCount > 0) {
+            for (const key of Object.keys(signalStrength)) {
+              signalStrength[key] = signalStrength[key] / (allPredictions.slice(-100).length || 1);
+            }
+          }
+
+          // Build ASCII dashboard
+          let dashboard = '';
+          if (includeGraph) {
+            dashboard = `
+╔══════════════════════════════════════════════════════════════════╗
+║                 BEHAVIORAL IDENTITY METRICS                       ║
+║                 Time Range: ${timeRange.padEnd(37)}║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEARNING PROGRESS                                                ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Users with fingerprints: ${String(allFingerprints.length).padStart(4)}                              │  ║
+║  │ Ready for identification: ${String(readyUsers).padStart(4)} (≥50 samples)               │  ║
+║  │ Avg samples per user:    ${String(Math.round(avgSamples)).padStart(4)}                              │  ║
+║  │                                                            │  ║
+║  │ Progress: ${generateProgressBar(avgSamples, 50, 30)}  ${Math.min(100, Math.round(avgSamples / 50 * 100))}%  │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  IDENTIFICATION ACCURACY                                          ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Total predictions: ${String(totalPredictions).padStart(6)}                                  │  ║
+║  │ With feedback:     ${String(feedbackCount).padStart(6)}                                  │  ║
+║  │                                                            │  ║
+║  │ Hit Rate:  ${generateProgressBar(hitRate, 100, 20)} ${hitRate.toFixed(1).padStart(5)}%        │  ║
+║  │ Miss Rate: ${generateProgressBar(missRate, 100, 20)} ${missRate.toFixed(1).padStart(5)}%        │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  CONFIDENCE DISTRIBUTION                                          ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │  0-20%  ${generateHistogramBar(confBuckets[0], Math.max(...confBuckets), 25)} ${String(confBuckets[0]).padStart(4)} │  ║
+║  │ 20-40%  ${generateHistogramBar(confBuckets[1], Math.max(...confBuckets), 25)} ${String(confBuckets[1]).padStart(4)} │  ║
+║  │ 40-60%  ${generateHistogramBar(confBuckets[2], Math.max(...confBuckets), 25)} ${String(confBuckets[2]).padStart(4)} │  ║
+║  │ 60-80%  ${generateHistogramBar(confBuckets[3], Math.max(...confBuckets), 25)} ${String(confBuckets[3]).padStart(4)} │  ║
+║  │ 80-100% ${generateHistogramBar(confBuckets[4], Math.max(...confBuckets), 25)} ${String(confBuckets[4]).padStart(4)} │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  SIGNAL STRENGTH (contribution to identification)                 ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Vocabulary ${generateProgressBar(signalStrength.vocabulary * 100, 100, 25)} ${(signalStrength.vocabulary * 100).toFixed(0).padStart(3)}%   │  ║
+║  │ Syntax     ${generateProgressBar(signalStrength.syntax * 100, 100, 25)} ${(signalStrength.syntax * 100).toFixed(0).padStart(3)}%   │  ║
+║  │ Timing     ${generateProgressBar(signalStrength.timing * 100, 100, 25)} ${(signalStrength.timing * 100).toFixed(0).padStart(3)}%   │  ║
+║  │ Topics     ${generateProgressBar(signalStrength.topics * 100, 100, 25)} ${(signalStrength.topics * 100).toFixed(0).padStart(3)}%   │  ║
+║  │ Style      ${generateProgressBar(signalStrength.style * 100, 100, 25)} ${(signalStrength.style * 100).toFixed(0).padStart(3)}%   │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╚══════════════════════════════════════════════════════════════════╝
+`;
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: dashboard + JSON.stringify({
+                timeRange,
+                learningProgress: {
+                  totalUsers: allFingerprints.length,
+                  readyForIdentification: readyUsers,
+                  avgSamplesPerUser: Math.round(avgSamples),
+                  targetSamples: 50,
+                },
+                accuracy: {
+                  totalPredictions,
+                  withFeedback: feedbackCount,
+                  correct: correct.length,
+                  hitRate: hitRate.toFixed(1) + '%',
+                  missRate: missRate.toFixed(1) + '%',
+                },
+                confidenceDistribution: {
+                  '0-20%': confBuckets[0],
+                  '20-40%': confBuckets[1],
+                  '40-60%': confBuckets[2],
+                  '60-80%': confBuckets[3],
+                  '80-100%': confBuckets[4],
+                },
+                signalStrength,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'behavioral_feedback': {
+          const { predictionId, correct, actualUserId } = args as {
+            predictionId: string;
+            correct: boolean;
+            actualUserId?: string;
+          };
+
+          const predictions = db!.collection('behavioral_predictions');
+          const fingerprints = db!.collection('behavioral_fingerprints');
+
+          // Find the prediction
+          const prediction = await predictions.findOne({ predictionId });
+          if (!prediction) {
+            throw new McpError(ErrorCode.InvalidParams, `Prediction not found: ${predictionId}`);
+          }
+
+          // Update prediction with feedback
+          await predictions.updateOne(
+            { predictionId },
+            {
+              $set: {
+                feedbackReceived: true,
+                wasCorrect: correct,
+                actualUserId: correct ? prediction.predictedUser : actualUserId,
+                feedbackTimestamp: new Date(),
+              }
+            }
+          );
+
+          // If wrong, strengthen the actual user's fingerprint
+          if (!correct && actualUserId) {
+            await fingerprints.updateOne(
+              { userId: actualUserId },
+              {
+                $inc: { sampleCount: 1, correctionCount: 1 },
+                $set: { lastUpdated: new Date() },
+              },
+              { upsert: true }
+            );
+          }
+
+          // Update accuracy tracking
+          const accuracyCollection = db!.collection('behavioral_accuracy');
+          await accuracyCollection.insertOne({
+            predictionId,
+            correct,
+            predictedUser: prediction.predictedUser,
+            actualUser: correct ? prediction.predictedUser : actualUserId,
+            confidence: prediction.confidence,
+            timestamp: new Date(),
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                recorded: true,
+                correct,
+                message: correct
+                  ? '✓ Correct identification! Fingerprint reinforced.'
+                  : `✗ Incorrect. Learning from mistake. Actual user: ${actualUserId}`,
+                impactOnAccuracy: correct ? '+' : 'adjusted',
+              }),
+            }],
           };
         }
 

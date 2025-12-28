@@ -295,7 +295,7 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 
 ---
 
-## MCP Tools Reference (20 Tools)
+## MCP Tools Reference (23 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
@@ -703,6 +703,61 @@ briefing = memorable.get_briefing_for_detected_user(message_text)
 - Users can **view their fingerprint** and **opt out** of behavioral tracking
 - All signals are derived from **content they voluntarily provide**
 - Compliant with GDPR "legitimate interest" for security purposes
+
+### Metrics Dashboard
+
+Real-time visibility into behavioral learning. Call `behavioral_metrics` to see:
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║                 BEHAVIORAL IDENTITY METRICS                       ║
+║                 Time Range: 24h                                   ║
+╠══════════════════════════════════════════════════════════════════╣
+║  LEARNING PROGRESS                                                ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Users with fingerprints:   47                              │  ║
+║  │ Ready for identification:  38 (≥50 samples)               │  ║
+║  │ Avg samples per user:      72                              │  ║
+║  │                                                            │  ║
+║  │ Progress: ██████████████████████████████  144%             │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  IDENTIFICATION ACCURACY                                          ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Total predictions:    892                                  │  ║
+║  │ With feedback:        456                                  │  ║
+║  │                                                            │  ║
+║  │ Hit Rate:  ██████████████████░░  89.2%                    │  ║
+║  │ Miss Rate: ██░░░░░░░░░░░░░░░░░░  10.8%                    │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  CONFIDENCE DISTRIBUTION                                          ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │  0-20%  ▓░░░░░░░░░░░░░░░░░░░░░░░░   12                    │  ║
+║  │ 20-40%  ▓▓░░░░░░░░░░░░░░░░░░░░░░░   34                    │  ║
+║  │ 40-60%  ▓▓▓▓░░░░░░░░░░░░░░░░░░░░░   67                    │  ║
+║  │ 60-80%  ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░  156                    │  ║
+║  │ 80-100% ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  623                    │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  SIGNAL STRENGTH (contribution to identification)                 ║
+║  ┌────────────────────────────────────────────────────────────┐  ║
+║  │ Vocabulary █████████████████████████  92%                  │  ║
+║  │ Syntax     ██████████████████████░░░  85%                  │  ║
+║  │ Timing     ██████████████░░░░░░░░░░░  58%                  │  ║
+║  │ Topics     ███████████████████░░░░░░  74%                  │  ║
+║  │ Style      ████████████████░░░░░░░░░  67%                  │  ║
+║  └────────────────────────────────────────────────────────────┘  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+### MCP Tools (3 new tools)
+
+| Tool | Description |
+|------|-------------|
+| `identify_user` | Analyze a message to identify user by behavioral patterns |
+| `behavioral_metrics` | Get dashboard with learning progress, accuracy, signal strength |
+| `behavioral_feedback` | Mark identification as correct/incorrect for learning |
 
 ### Configuration
 
