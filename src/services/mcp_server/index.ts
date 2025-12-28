@@ -150,12 +150,23 @@ interface BehavioralSignals {
     abbreviationRatio: number;
     uniqueWordRatio: number;
     jargonScore: number;
+    // NEW: Proven stylometry features
+    hapaxRatio: number;           // Words used only once (lexical uniqueness)
+    typeTokenRatio: number;       // Vocabulary richness
+    avgSyllables: number;         // Reading complexity
   };
   syntax: {
     avgSentenceLength: number;
     punctuationStyle: string;
     capitalizationRatio: number;
     questionRatio: number;
+    // NEW: Enhanced syntactic features
+    commaFrequency: number;       // Comma usage per sentence
+    semicolonUsage: boolean;      // Uses semicolons
+    ellipsisUsage: boolean;       // Uses ...
+    exclamationRatio: number;     // Exclamation marks
+    parentheticalRatio: number;   // (parentheses) usage
+    clauseComplexity: number;     // Subordinate clause markers
   };
   timing: {
     hourOfDay: number;
@@ -166,48 +177,262 @@ interface BehavioralSignals {
     formalityScore: number;
     emojiUsage: number;
     politenessMarkers: number;
+    // NEW: Enhanced style features
+    contractionRatio: number;     // don't, can't, etc.
+    numberStyle: string;          // 'numeric' vs 'written'
+    listUsage: boolean;           // Uses bullet points or numbered lists
   };
+  // NEW: Character n-grams (proven most effective for authorship)
+  charNgrams: {
+    top3grams: string[];          // Top 10 character trigrams
+    ngramSignature: string;       // Hash of n-gram distribution
+  };
+  // NEW: Function words (classical stylometry)
+  functionWords: {
+    frequencies: Record<string, number>; // Frequency of each function word
+    signature: string;            // Hash of function word distribution
+  };
+}
+
+// ============================================
+// PROVEN STYLOMETRY: Function Words List
+// Based on authorship attribution research
+// ============================================
+const FUNCTION_WORDS = [
+  // Articles
+  'a', 'an', 'the',
+  // Pronouns
+  'i', 'me', 'my', 'mine', 'myself',
+  'you', 'your', 'yours', 'yourself',
+  'he', 'him', 'his', 'himself',
+  'she', 'her', 'hers', 'herself',
+  'it', 'its', 'itself',
+  'we', 'us', 'our', 'ours', 'ourselves',
+  'they', 'them', 'their', 'theirs', 'themselves',
+  'who', 'whom', 'whose', 'which', 'that',
+  // Prepositions
+  'in', 'on', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into',
+  'through', 'during', 'before', 'after', 'above', 'below', 'from', 'up', 'down',
+  'out', 'off', 'over', 'under', 'again', 'further', 'then', 'once',
+  // Conjunctions
+  'and', 'but', 'or', 'nor', 'so', 'yet', 'both', 'either', 'neither',
+  'not', 'only', 'also', 'as', 'than', 'when', 'while', 'although', 'because',
+  'if', 'unless', 'until', 'whether',
+  // Auxiliary verbs
+  'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'having',
+  'do', 'does', 'did',
+  'will', 'would', 'shall', 'should',
+  'can', 'could', 'may', 'might', 'must',
+  // Determiners
+  'this', 'that', 'these', 'those',
+  'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'any',
+  // Adverbs (common)
+  'very', 'really', 'just', 'still', 'already', 'even', 'also', 'too', 'quite', 'rather',
+  'here', 'there', 'where', 'when', 'how', 'why',
+  'now', 'then', 'always', 'never', 'often', 'sometimes',
+];
+
+/**
+ * Count syllables in a word (approximate)
+ */
+function countSyllables(word: string): number {
+  word = word.toLowerCase().replace(/[^a-z]/g, '');
+  if (word.length <= 3) return 1;
+
+  // Count vowel groups
+  const vowelGroups = word.match(/[aeiouy]+/g) || [];
+  let count = vowelGroups.length;
+
+  // Subtract silent e
+  if (word.endsWith('e') && count > 1) count--;
+  // Subtract silent ed
+  if (word.endsWith('ed') && count > 1) count--;
+
+  return Math.max(1, count);
+}
+
+/**
+ * Generate character n-grams from text
+ */
+function generateCharNgrams(text: string, n: number): Map<string, number> {
+  const ngrams = new Map<string, number>();
+  const cleaned = text.toLowerCase().replace(/[^a-z ]/g, '');
+
+  for (let i = 0; i <= cleaned.length - n; i++) {
+    const ngram = cleaned.slice(i, i + n);
+    ngrams.set(ngram, (ngrams.get(ngram) || 0) + 1);
+  }
+
+  return ngrams;
+}
+
+/**
+ * Create a hash signature from a frequency distribution
+ */
+function createDistributionSignature(freqs: Record<string, number>): string {
+  // Sort by frequency and take top 20
+  const sorted = Object.entries(freqs)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20);
+
+  // Create a simple hash from the sorted keys
+  const sigString = sorted.map(([k, v]) => `${k}:${v.toFixed(2)}`).join('|');
+  let hash = 0;
+  for (let i = 0; i < sigString.length; i++) {
+    const char = sigString.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `sig_${Math.abs(hash).toString(36)}`;
 }
 
 /**
  * Analyze behavioral signals from a message
+ * Uses proven stylometry methods from authorship attribution research:
+ * - Character n-grams (most effective per CNN research)
+ * - Function word frequencies (classical stylometry)
+ * - Lexical richness measures
+ * - Syntactic complexity indicators
  */
 function analyzeBehavioralSignals(message: string): BehavioralSignals {
   const words = message.toLowerCase().split(/\s+/).filter(w => w.length > 0);
   const sentences = message.split(/[.!?]+/).filter(s => s.trim().length > 0);
   const now = new Date();
 
-  // Vocabulary analysis
+  // ============================================
+  // VOCABULARY ANALYSIS (Enhanced with proven metrics)
+  // ============================================
   const avgWordLength = words.length > 0
     ? words.reduce((sum, w) => sum + w.length, 0) / words.length
     : 0;
-  const abbreviations = ['u', 'ur', 'thx', 'pls', 'btw', 'idk', 'imo', 'tbh', 'lol', 'omg'];
+
+  const abbreviations = ['u', 'ur', 'thx', 'pls', 'btw', 'idk', 'imo', 'tbh', 'lol', 'omg', 'brb', 'afk', 'gg', 'np', 'ty', 'yw'];
   const abbrevCount = words.filter(w => abbreviations.includes(w)).length;
   const abbreviationRatio = words.length > 0 ? abbrevCount / words.length : 0;
+
+  // Type-Token Ratio (vocabulary richness)
   const uniqueWords = new Set(words);
   const uniqueWordRatio = words.length > 0 ? uniqueWords.size / words.length : 0;
 
-  // Syntax analysis
+  // Hapax Legomena: words used exactly once (lexical uniqueness indicator)
+  const wordCounts = new Map<string, number>();
+  for (const w of words) {
+    wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+  }
+  const hapaxCount = Array.from(wordCounts.values()).filter(c => c === 1).length;
+  const hapaxRatio = words.length > 0 ? hapaxCount / words.length : 0;
+
+  // Average syllables per word (reading complexity)
+  const avgSyllables = words.length > 0
+    ? words.reduce((sum, w) => sum + countSyllables(w), 0) / words.length
+    : 0;
+
+  // ============================================
+  // SYNTAX ANALYSIS (Enhanced with deeper features)
+  // ============================================
   const avgSentenceLength = sentences.length > 0 ? words.length / sentences.length : 0;
-  const punctuation = message.match(/[.,!?;:]/g) || [];
-  const punctuationStyle = punctuation.length > 5 ? 'heavy' : punctuation.length > 2 ? 'moderate' : 'light';
+
+  const allPunctuation = message.match(/[.,!?;:'"()\-—]/g) || [];
+  const punctuationStyle = allPunctuation.length > 10 ? 'heavy' :
+                           allPunctuation.length > 4 ? 'moderate' : 'light';
+
   const upperCase = (message.match(/[A-Z]/g) || []).length;
   const lowerCase = (message.match(/[a-z]/g) || []).length;
   const capitalizationRatio = (upperCase + lowerCase) > 0 ? upperCase / (upperCase + lowerCase) : 0;
+
   const questions = (message.match(/\?/g) || []).length;
   const questionRatio = sentences.length > 0 ? questions / sentences.length : 0;
 
-  // Style analysis
-  const formalWords = ['please', 'thank', 'appreciate', 'kindly', 'would', 'could', 'shall'];
+  // NEW: Enhanced punctuation analysis
+  const commas = (message.match(/,/g) || []).length;
+  const commaFrequency = sentences.length > 0 ? commas / sentences.length : 0;
+
+  const semicolonUsage = message.includes(';');
+  const ellipsisUsage = message.includes('...') || message.includes('…');
+
+  const exclamations = (message.match(/!/g) || []).length;
+  const exclamationRatio = sentences.length > 0 ? exclamations / sentences.length : 0;
+
+  const parentheses = (message.match(/[()]/g) || []).length;
+  const parentheticalRatio = words.length > 0 ? parentheses / words.length : 0;
+
+  // Clause complexity: count subordinate clause markers
+  const clauseMarkers = ['although', 'because', 'since', 'while', 'whereas', 'if', 'unless', 'until', 'when', 'whenever', 'where', 'wherever', 'whether', 'which', 'who', 'whom', 'whose', 'that'];
+  const clauseCount = words.filter(w => clauseMarkers.includes(w)).length;
+  const clauseComplexity = sentences.length > 0 ? clauseCount / sentences.length : 0;
+
+  // ============================================
+  // STYLE ANALYSIS (Enhanced)
+  // ============================================
+  const formalWords = ['please', 'thank', 'appreciate', 'kindly', 'would', 'could', 'shall', 'regarding', 'concerning', 'furthermore', 'however', 'therefore', 'consequently'];
   const formalCount = words.filter(w => formalWords.some(f => w.includes(f))).length;
   const formalityScore = words.length > 0 ? Math.min(1, formalCount / words.length * 10) : 0.5;
-  const emojis = (message.match(/[\u{1F600}-\u{1F6FF}]/gu) || []).length;
+
+  const emojis = (message.match(/[\u{1F600}-\u{1F6FF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu) || []).length;
   const emojiUsage = emojis / Math.max(1, words.length);
-  const politeWords = ['please', 'thanks', 'thank you', 'appreciate', 'sorry'];
+
+  const politeWords = ['please', 'thanks', 'thank you', 'appreciate', 'sorry', 'excuse me', 'pardon'];
   const politeCount = politeWords.filter(p => message.toLowerCase().includes(p)).length;
 
-  // Topic extraction (simple keyword extraction)
-  const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'although', 'though', 'after', 'before', 'when', 'whenever', 'where', 'wherever', 'whether', 'which', 'while', 'who', 'whoever', 'whom', 'whose', 'that', 'this', 'these', 'those', 'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what']);
+  // NEW: Contraction usage (informal indicator)
+  const contractions = ["n't", "'re", "'ve", "'ll", "'m", "'d", "'s"];
+  const contractionCount = contractions.filter(c => message.toLowerCase().includes(c)).length;
+  const contractionRatio = words.length > 0 ? contractionCount / words.length : 0;
+
+  // NEW: Number style preference
+  const writtenNumbers = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+  const hasWrittenNumbers = words.some(w => writtenNumbers.includes(w));
+  const hasNumericNumbers = /\d+/.test(message);
+  const numberStyle = hasWrittenNumbers && !hasNumericNumbers ? 'written' :
+                      hasNumericNumbers && !hasWrittenNumbers ? 'numeric' : 'mixed';
+
+  // NEW: List usage
+  const listUsage = /^[\-\*•]\s|^\d+[.)]\s/m.test(message);
+
+  // ============================================
+  // CHARACTER N-GRAMS (Most effective for authorship)
+  // Research shows character 3-grams are highly discriminative
+  // ============================================
+  const charNgrams3 = generateCharNgrams(message, 3);
+  const sortedNgrams = Array.from(charNgrams3.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([ngram]) => ngram);
+
+  // Create signature from full n-gram distribution
+  const ngramFreqs: Record<string, number> = {};
+  const totalNgrams = Array.from(charNgrams3.values()).reduce((a, b) => a + b, 0);
+  for (const [ngram, count] of charNgrams3) {
+    ngramFreqs[ngram] = count / totalNgrams;
+  }
+  const ngramSignature = createDistributionSignature(ngramFreqs);
+
+  // ============================================
+  // FUNCTION WORDS (Classical authorship attribution)
+  // ============================================
+  const functionWordFreqs: Record<string, number> = {};
+  let functionWordTotal = 0;
+
+  for (const fw of FUNCTION_WORDS) {
+    const count = words.filter(w => w === fw).length;
+    if (count > 0) {
+      functionWordFreqs[fw] = count;
+      functionWordTotal += count;
+    }
+  }
+
+  // Normalize frequencies
+  for (const fw of Object.keys(functionWordFreqs)) {
+    functionWordFreqs[fw] = functionWordFreqs[fw] / (functionWordTotal || 1);
+  }
+
+  const functionWordSignature = createDistributionSignature(functionWordFreqs);
+
+  // ============================================
+  // TOPIC EXTRACTION
+  // ============================================
+  const stopWords = new Set(FUNCTION_WORDS);
   const topics = words
     .filter(w => w.length > 3 && !stopWords.has(w))
     .slice(0, 10);
@@ -218,12 +443,21 @@ function analyzeBehavioralSignals(message: string): BehavioralSignals {
       abbreviationRatio,
       uniqueWordRatio,
       jargonScore: abbreviationRatio * 0.5 + (1 - capitalizationRatio) * 0.5,
+      hapaxRatio,
+      typeTokenRatio: uniqueWordRatio,
+      avgSyllables,
     },
     syntax: {
       avgSentenceLength,
       punctuationStyle,
       capitalizationRatio,
       questionRatio,
+      commaFrequency,
+      semicolonUsage,
+      ellipsisUsage,
+      exclamationRatio,
+      parentheticalRatio,
+      clauseComplexity,
     },
     timing: {
       hourOfDay: now.getHours(),
@@ -234,12 +468,59 @@ function analyzeBehavioralSignals(message: string): BehavioralSignals {
       formalityScore,
       emojiUsage,
       politenessMarkers: politeCount,
+      contractionRatio,
+      numberStyle,
+      listUsage,
+    },
+    charNgrams: {
+      top3grams: sortedNgrams,
+      ngramSignature,
+    },
+    functionWords: {
+      frequencies: functionWordFreqs,
+      signature: functionWordSignature,
     },
   };
 }
 
 /**
+ * Calculate cosine similarity between two frequency distributions
+ */
+function cosineSimilarity(a: Record<string, number>, b: Record<string, number>): number {
+  const allKeys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const key of allKeys) {
+    const valA = a[key] || 0;
+    const valB = b[key] || 0;
+    dotProduct += valA * valB;
+    normA += valA * valA;
+    normB += valB * valB;
+  }
+
+  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+  return magnitude > 0 ? dotProduct / magnitude : 0;
+}
+
+/**
+ * Calculate Jaccard similarity between two string arrays
+ */
+function jaccardSimilarity(a: string[], b: string[]): number {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const intersection = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return union.size > 0 ? intersection.size / union.size : 0;
+}
+
+/**
  * Calculate behavioral match score between signals and a fingerprint
+ * Uses proven stylometry matching:
+ * - Character n-gram cosine similarity (highest weight - most discriminative)
+ * - Function word frequency matching
+ * - Enhanced syntactic and lexical features
  */
 function calculateBehavioralMatch(
   signals: BehavioralSignals,
@@ -248,25 +529,116 @@ function calculateBehavioralMatch(
   const fp = fingerprint.signals || {};
   const scores: Record<string, number> = {};
 
-  // Vocabulary match (weight: 0.25)
+  // ============================================
+  // CHARACTER N-GRAMS (Weight: 0.25 - Most discriminative)
+  // Research shows this is the most effective single feature
+  // ============================================
+  if (fp.charNgrams?.top3grams && signals.charNgrams.top3grams.length > 0) {
+    // Compare top n-grams using Jaccard similarity
+    const ngramOverlap = jaccardSimilarity(
+      signals.charNgrams.top3grams,
+      fp.charNgrams.top3grams
+    );
+    // Signature match is a strong indicator
+    const signatureMatch = signals.charNgrams.ngramSignature === fp.charNgrams.ngramSignature ? 1 : 0;
+    scores.charNgrams = ngramOverlap * 0.7 + signatureMatch * 0.3;
+  } else {
+    scores.charNgrams = 0.5;
+  }
+
+  // ============================================
+  // FUNCTION WORDS (Weight: 0.20 - Classical authorship)
+  // ============================================
+  if (fp.functionWords?.frequencies && Object.keys(signals.functionWords.frequencies).length > 0) {
+    // Use cosine similarity for function word distributions
+    const funcWordSim = cosineSimilarity(
+      signals.functionWords.frequencies,
+      fp.functionWords.frequencies
+    );
+    // Signature match boost
+    const signatureMatch = signals.functionWords.signature === fp.functionWords.signature ? 0.2 : 0;
+    scores.functionWords = Math.min(1, funcWordSim + signatureMatch);
+  } else {
+    scores.functionWords = 0.5;
+  }
+
+  // ============================================
+  // VOCABULARY (Weight: 0.15)
+  // Enhanced with hapax ratio and syllable count
+  // ============================================
   if (fp.vocabulary) {
     const wordLengthDiff = Math.abs((signals.vocabulary.avgWordLength || 0) - (fp.vocabulary.avgWordLength || 0));
     const abbrevDiff = Math.abs((signals.vocabulary.abbreviationRatio || 0) - (fp.vocabulary.abbreviationRatio || 0));
-    scores.vocabulary = Math.max(0, 1 - (wordLengthDiff / 5 + abbrevDiff));
+    const hapaxDiff = Math.abs((signals.vocabulary.hapaxRatio || 0) - (fp.vocabulary.hapaxRatio || 0));
+    const syllableDiff = Math.abs((signals.vocabulary.avgSyllables || 0) - (fp.vocabulary.avgSyllables || 0));
+    const ttrDiff = Math.abs((signals.vocabulary.typeTokenRatio || 0) - (fp.vocabulary.typeTokenRatio || 0));
+
+    // Normalize each difference and weight
+    const vocabScore = 1 - (
+      (wordLengthDiff / 5) * 0.2 +
+      abbrevDiff * 0.2 +
+      hapaxDiff * 0.2 +
+      (syllableDiff / 2) * 0.2 +
+      ttrDiff * 0.2
+    );
+    scores.vocabulary = Math.max(0, vocabScore);
   } else {
     scores.vocabulary = 0.5;
   }
 
-  // Syntax match (weight: 0.25)
+  // ============================================
+  // SYNTAX (Weight: 0.15)
+  // Enhanced with detailed punctuation analysis
+  // ============================================
   if (fp.syntax) {
     const sentLengthDiff = Math.abs((signals.syntax.avgSentenceLength || 0) - (fp.syntax.avgSentenceLength || 0));
     const capDiff = Math.abs((signals.syntax.capitalizationRatio || 0) - (fp.syntax.capitalizationRatio || 0));
-    scores.syntax = Math.max(0, 1 - (sentLengthDiff / 20 + capDiff));
+    const commaDiff = Math.abs((signals.syntax.commaFrequency || 0) - (fp.syntax.commaFrequency || 0));
+    const clauseDiff = Math.abs((signals.syntax.clauseComplexity || 0) - (fp.syntax.clauseComplexity || 0));
+
+    // Boolean feature matches
+    const semicolonMatch = signals.syntax.semicolonUsage === fp.syntax.semicolonUsage ? 1 : 0.5;
+    const ellipsisMatch = signals.syntax.ellipsisUsage === fp.syntax.ellipsisUsage ? 1 : 0.5;
+    const punctStyleMatch = signals.syntax.punctuationStyle === fp.syntax.punctuationStyle ? 1 : 0.5;
+
+    const syntaxScore = (
+      (1 - sentLengthDiff / 30) * 0.2 +
+      (1 - capDiff) * 0.15 +
+      (1 - commaDiff / 3) * 0.15 +
+      (1 - clauseDiff) * 0.15 +
+      semicolonMatch * 0.1 +
+      ellipsisMatch * 0.1 +
+      punctStyleMatch * 0.15
+    );
+    scores.syntax = Math.max(0, Math.min(1, syntaxScore));
   } else {
     scores.syntax = 0.5;
   }
 
-  // Timing match (weight: 0.15)
+  // ============================================
+  // STYLE (Weight: 0.10)
+  // ============================================
+  if (fp.style) {
+    const formalityDiff = Math.abs((signals.style.formalityScore || 0.5) - (fp.style.formalityScore || 0.5));
+    const emojiMatch = (signals.style.emojiUsage > 0) === ((fp.style.emojiUsage || 0) > 0) ? 1 : 0.5;
+    const contractionDiff = Math.abs((signals.style.contractionRatio || 0) - (fp.style.contractionRatio || 0));
+    const numberStyleMatch = signals.style.numberStyle === fp.style.numberStyle ? 1 : 0.5;
+    const listMatch = signals.style.listUsage === fp.style.listUsage ? 1 : 0.5;
+
+    scores.style = (
+      (1 - formalityDiff) * 0.3 +
+      emojiMatch * 0.2 +
+      (1 - contractionDiff) * 0.2 +
+      numberStyleMatch * 0.15 +
+      listMatch * 0.15
+    );
+  } else {
+    scores.style = 0.5;
+  }
+
+  // ============================================
+  // TIMING (Weight: 0.10)
+  // ============================================
   if (fp.timing && fp.timing.activeHours) {
     const hourMatch = fp.timing.activeHours.includes(signals.timing.hourOfDay) ? 1 : 0.3;
     const dayMatch = fp.timing.activeDays?.includes(signals.timing.dayOfWeek) ? 1 : 0.5;
@@ -275,26 +647,31 @@ function calculateBehavioralMatch(
     scores.timing = 0.5;
   }
 
-  // Topics match (weight: 0.20)
+  // ============================================
+  // TOPICS (Weight: 0.05)
+  // Lower weight - topics can vary by conversation
+  // ============================================
   if (fp.topics && fp.topics.length > 0) {
-    const fpTopics = new Set(fp.topics);
-    const matchingTopics = signals.topics.filter(t => fpTopics.has(t)).length;
-    scores.topics = signals.topics.length > 0 ? matchingTopics / signals.topics.length : 0.5;
+    scores.topics = jaccardSimilarity(signals.topics, fp.topics);
   } else {
     scores.topics = 0.5;
   }
 
-  // Style match (weight: 0.15)
-  if (fp.style) {
-    const formalityDiff = Math.abs((signals.style.formalityScore || 0.5) - (fp.style.formalityScore || 0.5));
-    const emojiMatch = (signals.style.emojiUsage > 0) === (fp.style.emojiUsage > 0) ? 1 : 0.5;
-    scores.style = Math.max(0, 1 - formalityDiff) * 0.7 + emojiMatch * 0.3;
-  } else {
-    scores.style = 0.5;
-  }
+  // ============================================
+  // WEIGHTED AVERAGE
+  // Weights based on authorship attribution research:
+  // Character n-grams and function words are most discriminative
+  // ============================================
+  const weights = {
+    charNgrams: 0.25,      // Most discriminative (proven by research)
+    functionWords: 0.20,   // Classical stylometry gold standard
+    vocabulary: 0.15,      // Lexical richness features
+    syntax: 0.15,          // Syntactic complexity
+    style: 0.10,           // Writing style indicators
+    timing: 0.10,          // Behavioral timing patterns
+    topics: 0.05,          // Topic preferences (less stable)
+  };
 
-  // Weighted average
-  const weights = { vocabulary: 0.25, syntax: 0.25, timing: 0.15, topics: 0.20, style: 0.15 };
   const confidence = Object.entries(scores).reduce(
     (sum, [key, value]) => sum + value * (weights[key as keyof typeof weights] || 0),
     0
@@ -1816,12 +2193,15 @@ function createServer(): Server {
           }
 
           // Signal strength breakdown (from recent predictions)
+          // Includes proven stylometry signals: charNgrams, functionWords
           const signalStrength: Record<string, number> = {
-            vocabulary: 0,
-            syntax: 0,
-            timing: 0,
-            topics: 0,
-            style: 0,
+            charNgrams: 0,      // Character 3-grams (most discriminative)
+            functionWords: 0,   // Function word frequencies
+            vocabulary: 0,      // Lexical richness
+            syntax: 0,          // Syntactic patterns
+            style: 0,           // Writing style
+            timing: 0,          // Behavioral timing
+            topics: 0,          // Topic preferences
           };
           let signalCount = 0;
           for (const p of allPredictions.slice(-100)) {
@@ -1844,46 +2224,49 @@ function createServer(): Server {
           let dashboard = '';
           if (includeGraph) {
             dashboard = `
-╔══════════════════════════════════════════════════════════════════╗
-║                 BEHAVIORAL IDENTITY METRICS                       ║
-║                 Time Range: ${timeRange.padEnd(37)}║
-╠══════════════════════════════════════════════════════════════════╣
-║  LEARNING PROGRESS                                                ║
-║  ┌────────────────────────────────────────────────────────────┐  ║
-║  │ Users with fingerprints: ${String(allFingerprints.length).padStart(4)}                              │  ║
-║  │ Ready for identification: ${String(readyUsers).padStart(4)} (≥50 samples)               │  ║
-║  │ Avg samples per user:    ${String(Math.round(avgSamples)).padStart(4)}                              │  ║
-║  │                                                            │  ║
-║  │ Progress: ${generateProgressBar(avgSamples, 50, 30)}  ${Math.min(100, Math.round(avgSamples / 50 * 100))}%  │  ║
-║  └────────────────────────────────────────────────────────────┘  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  IDENTIFICATION ACCURACY                                          ║
-║  ┌────────────────────────────────────────────────────────────┐  ║
-║  │ Total predictions: ${String(totalPredictions).padStart(6)}                                  │  ║
-║  │ With feedback:     ${String(feedbackCount).padStart(6)}                                  │  ║
-║  │                                                            │  ║
-║  │ Hit Rate:  ${generateProgressBar(hitRate, 100, 20)} ${hitRate.toFixed(1).padStart(5)}%        │  ║
-║  │ Miss Rate: ${generateProgressBar(missRate, 100, 20)} ${missRate.toFixed(1).padStart(5)}%        │  ║
-║  └────────────────────────────────────────────────────────────┘  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  CONFIDENCE DISTRIBUTION                                          ║
-║  ┌────────────────────────────────────────────────────────────┐  ║
-║  │  0-20%  ${generateHistogramBar(confBuckets[0], Math.max(...confBuckets), 25)} ${String(confBuckets[0]).padStart(4)} │  ║
-║  │ 20-40%  ${generateHistogramBar(confBuckets[1], Math.max(...confBuckets), 25)} ${String(confBuckets[1]).padStart(4)} │  ║
-║  │ 40-60%  ${generateHistogramBar(confBuckets[2], Math.max(...confBuckets), 25)} ${String(confBuckets[2]).padStart(4)} │  ║
-║  │ 60-80%  ${generateHistogramBar(confBuckets[3], Math.max(...confBuckets), 25)} ${String(confBuckets[3]).padStart(4)} │  ║
-║  │ 80-100% ${generateHistogramBar(confBuckets[4], Math.max(...confBuckets), 25)} ${String(confBuckets[4]).padStart(4)} │  ║
-║  └────────────────────────────────────────────────────────────┘  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  SIGNAL STRENGTH (contribution to identification)                 ║
-║  ┌────────────────────────────────────────────────────────────┐  ║
-║  │ Vocabulary ${generateProgressBar(signalStrength.vocabulary * 100, 100, 25)} ${(signalStrength.vocabulary * 100).toFixed(0).padStart(3)}%   │  ║
-║  │ Syntax     ${generateProgressBar(signalStrength.syntax * 100, 100, 25)} ${(signalStrength.syntax * 100).toFixed(0).padStart(3)}%   │  ║
-║  │ Timing     ${generateProgressBar(signalStrength.timing * 100, 100, 25)} ${(signalStrength.timing * 100).toFixed(0).padStart(3)}%   │  ║
-║  │ Topics     ${generateProgressBar(signalStrength.topics * 100, 100, 25)} ${(signalStrength.topics * 100).toFixed(0).padStart(3)}%   │  ║
-║  │ Style      ${generateProgressBar(signalStrength.style * 100, 100, 25)} ${(signalStrength.style * 100).toFixed(0).padStart(3)}%   │  ║
-║  └────────────────────────────────────────────────────────────┘  ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════╗
+║           BEHAVIORAL IDENTITY METRICS (Stylometry Engine)            ║
+║                     Time Range: ${timeRange.padEnd(33)}║
+╠══════════════════════════════════════════════════════════════════════╣
+║  LEARNING PROGRESS                                                    ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Users with fingerprints: ${String(allFingerprints.length).padStart(4)}                                  │  ║
+║  │ Ready for identification: ${String(readyUsers).padStart(4)} (≥50 samples)                   │  ║
+║  │ Avg samples per user:    ${String(Math.round(avgSamples)).padStart(4)}                                  │  ║
+║  │                                                                │  ║
+║  │ Progress: ${generateProgressBar(avgSamples, 50, 30)}  ${String(Math.min(100, Math.round(avgSamples / 50 * 100))).padStart(3)}%  │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  IDENTIFICATION ACCURACY                                              ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Total predictions: ${String(totalPredictions).padStart(6)}                                      │  ║
+║  │ With feedback:     ${String(feedbackCount).padStart(6)}                                      │  ║
+║  │                                                                │  ║
+║  │ Hit Rate:  ${generateProgressBar(hitRate, 100, 22)} ${hitRate.toFixed(1).padStart(5)}%        │  ║
+║  │ Miss Rate: ${generateProgressBar(missRate, 100, 22)} ${missRate.toFixed(1).padStart(5)}%        │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  CONFIDENCE DISTRIBUTION                                              ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │  0-20%  ${generateHistogramBar(confBuckets[0], Math.max(...confBuckets), 27)} ${String(confBuckets[0]).padStart(4)} │  ║
+║  │ 20-40%  ${generateHistogramBar(confBuckets[1], Math.max(...confBuckets), 27)} ${String(confBuckets[1]).padStart(4)} │  ║
+║  │ 40-60%  ${generateHistogramBar(confBuckets[2], Math.max(...confBuckets), 27)} ${String(confBuckets[2]).padStart(4)} │  ║
+║  │ 60-80%  ${generateHistogramBar(confBuckets[3], Math.max(...confBuckets), 27)} ${String(confBuckets[3]).padStart(4)} │  ║
+║  │ 80-100% ${generateHistogramBar(confBuckets[4], Math.max(...confBuckets), 27)} ${String(confBuckets[4]).padStart(4)} │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  STYLOMETRY SIGNAL STRENGTH (proven authorship attribution)          ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Char N-grams   ${generateProgressBar(signalStrength.charNgrams * 100, 100, 22)} ${(signalStrength.charNgrams * 100).toFixed(0).padStart(3)}% ★  │  ║
+║  │ Function Words ${generateProgressBar(signalStrength.functionWords * 100, 100, 22)} ${(signalStrength.functionWords * 100).toFixed(0).padStart(3)}% ★  │  ║
+║  │ Vocabulary     ${generateProgressBar(signalStrength.vocabulary * 100, 100, 22)} ${(signalStrength.vocabulary * 100).toFixed(0).padStart(3)}%    │  ║
+║  │ Syntax         ${generateProgressBar(signalStrength.syntax * 100, 100, 22)} ${(signalStrength.syntax * 100).toFixed(0).padStart(3)}%    │  ║
+║  │ Style          ${generateProgressBar(signalStrength.style * 100, 100, 22)} ${(signalStrength.style * 100).toFixed(0).padStart(3)}%    │  ║
+║  │ Timing         ${generateProgressBar(signalStrength.timing * 100, 100, 22)} ${(signalStrength.timing * 100).toFixed(0).padStart(3)}%    │  ║
+║  │ Topics         ${generateProgressBar(signalStrength.topics * 100, 100, 22)} ${(signalStrength.topics * 100).toFixed(0).padStart(3)}%    │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+║  ★ = Research-proven most discriminative features                     ║
+╚══════════════════════════════════════════════════════════════════════╝
 `;
           }
 
