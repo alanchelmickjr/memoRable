@@ -11,22 +11,94 @@
 
 ---
 
-**Memory that understands context.** MemoRable is a memory layer for AI agents that knows what matters based on where you are, who you're with, and what you're doing.
+**Extend your Mem0 deployment with context intelligence.** MemoRable adds salience scoring, commitment tracking, relationship awareness, and predictive memory to your existing memory infrastructure.
+
+> **Already using Mem0 on AWS?** MemoRable integrates seamlessly - keep your vector storage, add context intelligence. [See integration guide →](#mem0-integration)
 
 ```
 You: "I'm at the park meeting Judy"
-MemoRable: Here's what you need to know:
+MemoRable + Mem0: Here's what you need to know:
   - You owe her feedback on the proposal (3 days overdue)
   - Her daughter's recital is Thursday
   - Last time you discussed: Series B funding concerns
   - Sensitivity: Don't bring up the merger
 ```
 
-**Predictive Memory**: After 21 days of learning your patterns, MemoRable surfaces what you need *before you ask*.
+### What MemoRable Adds to Mem0
+
+| Capability | Mem0 | + MemoRable |
+|------------|------|-------------|
+| Vector storage & search | ✅ | ✅ (uses Mem0) |
+| Salience scoring (0-100) | ❌ | ✅ |
+| Commitment tracking (open loops) | ❌ | ✅ |
+| Relationship intelligence | ❌ | ✅ |
+| Pre-meeting briefings | ❌ | ✅ |
+| Multi-device context sync | ❌ | ✅ |
+| Predictive memory (21-day learning) | ❌ | ✅ |
+| MCP protocol support | ❌ | ✅ |
 
 ---
 
-## Get Started in 2 Minutes
+## Quick Start: Add to Existing Mem0
+
+If you're already running Mem0 on AWS, add MemoRable as a sidecar:
+
+```bash
+# In your existing Mem0 deployment directory
+git clone https://github.com/alanchelmickjr/memoRable.git memorable-extension
+
+# Configure to use your existing MongoDB/DocumentDB
+export MONGODB_URI="your-existing-documentdb-uri"
+
+# Start MemoRable alongside Mem0
+cd memorable-extension
+docker-compose up -d memorable_mcp_server
+```
+
+Then use the hybrid client in your code:
+
+```python
+from memorable import MemorableClient
+from mem0 import Memory
+
+# Your existing Mem0 setup
+mem0 = Memory()
+
+# Add MemoRable for salience + context
+memorable = MemorableClient(mongo_uri=os.environ["MONGODB_URI"])
+
+# Store through both (Mem0 for vectors, MemoRable for salience)
+def remember(text, user_id, metadata=None):
+    # MemoRable enriches with salience, commitments, relationships
+    result = memorable.store(user_id, text, metadata)
+
+    # Mem0 stores embeddings for semantic search
+    mem0.add(text, user_id=user_id, metadata={
+        **metadata,
+        'salience_score': result.salience.score,
+        'memory_id': result.memory_id
+    })
+    return result
+
+# Search with salience-boosted ranking
+def search(query, user_id):
+    # Semantic search via Mem0
+    results = mem0.search(query, user_id=user_id)
+
+    # Boost by MemoRable salience
+    for r in results:
+        salience = memorable.get_salience(r['metadata']['memory_id'])
+        r['boosted_score'] = r['score'] * 0.6 + (salience / 100) * 0.4
+
+    return sorted(results, key=lambda x: x['boosted_score'], reverse=True)
+
+# Get pre-meeting briefing (MemoRable exclusive)
+briefing = memorable.get_briefing(user_id, "Sarah Chen")
+```
+
+---
+
+## Fresh Install Options
 
 ### Option A: Deploy to AWS (Production)
 
@@ -501,75 +573,130 @@ async function getRelatedDecisions(topic: string) {
 
 ## Mem0 Integration
 
-MemoRable can work alongside or replace Mem0 for enhanced memory capabilities:
+MemoRable is designed to **extend** your existing Mem0 deployment, not replace it. Keep Mem0 for what it does best (vector storage and semantic search), and add MemoRable for context intelligence.
+
+### Architecture: Mem0 + MemoRable
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Your AI Application                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
+│  │       Mem0          │      │        MemoRable            │  │
+│  │  (Vector Layer)     │◄────►│   (Context Layer)           │  │
+│  │                     │      │                             │  │
+│  │  • Embeddings       │      │  • Salience scoring         │  │
+│  │  • Semantic search  │      │  • Commitment tracking      │  │
+│  │  • Vector storage   │      │  • Relationship graphs      │  │
+│  │                     │      │  • Pre-meeting briefings    │  │
+│  │                     │      │  • Predictive memory        │  │
+│  │                     │      │  • MCP protocol             │  │
+│  └─────────────────────┘      └─────────────────────────────┘  │
+│           │                              │                       │
+│           ▼                              ▼                       │
+│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
+│  │   Vector DB         │      │    MongoDB/DocumentDB       │  │
+│  │   (Pinecone/etc)    │      │    (shared or separate)     │  │
+│  └─────────────────────┘      └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### HybridMemory Class
 
 ```python
 from memorable import MemorableClient
 from mem0 import Memory as Mem0Memory
 
-# Use MemoRable for salience + Mem0 for vectors
 class HybridMemory:
-    def __init__(self):
-        self.memorable = MemorableClient()
+    """
+    Combines Mem0's vector search with MemoRable's context intelligence.
+    Drop-in enhancement for existing Mem0 deployments.
+    """
+
+    def __init__(self, mongo_uri: str = None):
+        self.memorable = MemorableClient(mongo_uri=mongo_uri)
         self.mem0 = Mem0Memory()
 
     def add(self, text: str, user_id: str, metadata: dict = None):
-        # MemoRable handles: salience, commitments, relationships
+        # MemoRable: salience, commitments, relationships, timeline
         result = self.memorable.store(user_id, text, metadata)
 
-        # Mem0 handles: vector embeddings, semantic search
+        # Mem0: vector embeddings for semantic search
         self.mem0.add(text, user_id=user_id, metadata={
-            **metadata,
+            **(metadata or {}),
             'salience_score': result.salience.score,
-            'memory_id': result.memory_id
+            'memory_id': result.memory_id,
+            'has_commitments': len(result.open_loops_created) > 0
         })
 
         return result
 
     def search(self, query: str, user_id: str, **kwargs):
         # Semantic search via Mem0
-        mem0_results = self.mem0.search(query, user_id=user_id, **kwargs)
+        results = self.mem0.search(query, user_id=user_id, **kwargs)
 
-        # Boost by MemoRable salience scores
-        for result in mem0_results:
-            memorable_data = self.memorable.get(result['metadata']['memory_id'])
-            result['boosted_score'] = (
-                result['score'] * 0.6 +
-                (memorable_data.salience_score / 100) * 0.4
-            )
+        # Boost by MemoRable salience (important memories rank higher)
+        for r in results:
+            salience = self.memorable.get_salience(r['metadata']['memory_id'])
+            r['boosted_score'] = r['score'] * 0.6 + (salience / 100) * 0.4
 
-        return sorted(mem0_results, key=lambda x: x['boosted_score'], reverse=True)
+        return sorted(results, key=lambda x: x['boosted_score'], reverse=True)
 
     def get_briefing(self, user_id: str, person: str):
-        # MemoRable-specific: pre-conversation intelligence
+        """MemoRable exclusive: pre-conversation intelligence"""
         return self.memorable.get_briefing(user_id, person)
+
+    def get_open_loops(self, user_id: str):
+        """MemoRable exclusive: commitment tracking"""
+        return self.memorable.list_loops(user_id)
+
+    def set_context(self, user_id: str, **context):
+        """MemoRable exclusive: context-aware memory surfacing"""
+        return self.memorable.set_context(user_id, **context)
 ```
 
-### Migration from Mem0
+### AWS Deployment: Side-by-Side
+
+If you have Mem0 running on AWS, add MemoRable to the same VPC:
+
+```yaml
+# Add to your existing docker-compose.yml or ECS task definition
+memorable:
+  image: ghcr.io/alanchelmickjr/memorable:latest
+  environment:
+    - MONGODB_URI=${DOCUMENTDB_URI}  # Share with existing DocumentDB
+    - LLM_PROVIDER=bedrock           # Use same Bedrock as Mem0
+  depends_on:
+    - mem0  # Your existing Mem0 service
+```
+
+### Sync Existing Mem0 Memories
+
+Enrich your existing Mem0 memories with salience scores:
 
 ```python
 from memorable import MemorableClient
 from mem0 import Memory
 
-# Export from Mem0
 mem0 = Memory()
-all_memories = mem0.get_all(user_id="user-123")
-
-# Import to MemoRable with salience enrichment
 memorable = MemorableClient()
 
-for mem in all_memories:
+# Sync existing memories (non-destructive)
+for mem in mem0.get_all(user_id="user-123"):
     memorable.store(
         user_id="user-123",
         text=mem['memory'],
         context={
-            'imported_from': 'mem0',
+            'synced_from': 'mem0',
             'original_id': mem['id'],
             'created_at': mem['created_at']
         }
     )
+    # Update Mem0 with salience score
+    mem0.update(mem['id'], metadata={'salience_synced': True})
 
-print(f"Migrated {len(all_memories)} memories with salience enrichment")
+print("Memories synced with salience enrichment")
 ```
 
 ---
