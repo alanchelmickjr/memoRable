@@ -41,55 +41,76 @@ MemoRable + Mem0: Here's what you need to know:
 
 ## Quick Start: Add to Existing Mem0
 
-**See the value immediately.** MemoRable reads your existing Mem0 memories and creates context intelligence on top of them - salience scores, relationship graphs, commitment tracking. All enrichments are stored in separate collections, so you can turn it off anytime and your Mem0 data stays exactly as it was.
+**Instant value from your existing data.** On first run, MemoRable scans your Mem0 memories and generates enrichments - salience scores, relationship graphs, open commitments - in minutes, not weeks. See the difference immediately.
 
 ```bash
 # In your existing Mem0 deployment directory
 git clone https://github.com/alanchelmickjr/memoRable.git memorable-extension
+cd memorable-extension
 
 # Point to your existing DocumentDB
 export MONGODB_URI="your-existing-documentdb-uri"
+export MEM0_COLLECTION="memories"  # Your Mem0 collection name
 
-# Start MemoRable alongside Mem0
-cd memorable-extension
+# Start MemoRable - it auto-syncs your existing memories on first run
 docker-compose up -d memorable_mcp_server
 
-# MemoRable reads your Mem0 data → creates enrichments → stores them separately
-# Turn it off anytime: docker-compose down (Mem0 unchanged, enrichments removed)
+# Watch the sync happen:
+docker logs -f memorable_mcp_server
+# [SYNC] Found 1,247 memories in Mem0
+# [SYNC] Generating salience scores... 100/1247
+# [SYNC] Extracting relationships... found 23 people
+# [SYNC] Identifying commitments... found 8 open loops
+# [SYNC] Complete! Your memories are now context-aware.
 ```
 
-### How It Works
+### What Happens on First Run
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Your Existing Mem0                       │
-│                    (unchanged, read-only)                   │
+│              Your Existing Mem0 Memories                    │
+│                    (1,247 memories)                         │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ reads
+                          │ scans on startup
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      MemoRable                              │
-│   Analyzes memories → extracts context → stores enrichments │
+│                   MemoRable Sync                            │
+│                                                             │
+│  ✓ Salience scoring    - Which memories matter most?       │
+│  ✓ People extraction   - Who's mentioned? Relationships?   │
+│  ✓ Commitment detection - What's owed? By whom? When?      │
+│  ✓ Topic clustering    - What themes emerge?               │
+│  ✓ Timeline events     - Birthdays, meetings, deadlines    │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ writes (separate collections)
+                          │ writes to separate collections
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              MemoRable Collections (reversible)             │
+│              MemoRable Collections (yours to keep or delete)│
 │  memories │ open_loops │ relationships │ patterns           │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Instant Results
+
+After sync completes, try these immediately:
+
+```
+"What do I owe people?"           → Lists commitments from your history
+"I'm meeting with Sarah"          → Briefing from past interactions
+"What's important about Project X?" → High-salience memories surfaced
 ```
 
 ### What Gets Created
 
 | Collection | What MemoRable Extracts | Reversible? |
 |------------|-------------------------|-------------|
-| `memories` | Salience scores from your Mem0 data | ✅ Just delete |
-| `open_loops` | Commitments found in memories | ✅ Just delete |
-| `relationships` | People & relationship graphs | ✅ Just delete |
-| `context_frames` | Real-time context (Redis) | ✅ Clears on stop |
-| `patterns` | Learned behaviors (21+ days) | ✅ Just delete |
+| `memorable_memories` | Salience scores for each Mem0 memory | ✅ Just delete |
+| `memorable_open_loops` | Commitments found in your history | ✅ Just delete |
+| `memorable_relationships` | People & relationship graphs | ✅ Just delete |
+| `memorable_context_frames` | Real-time context (Redis) | ✅ Clears on stop |
+| `memorable_patterns` | Learned behaviors (grows over time) | ✅ Just delete |
 
-**Try it → See the improvement → Keep it or remove it.** Your Mem0 data is never modified.
+**Try it → See the difference → Keep it or remove it.** Your Mem0 data is never modified. Don't like it? `docker-compose down` and delete the `memorable_*` collections.
 
 ### Try the Hybrid Client
 
