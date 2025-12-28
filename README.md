@@ -41,21 +41,36 @@ MemoRable + Mem0: Here's what you need to know:
 
 ## Quick Start: Add to Existing Mem0
 
-If you're already running Mem0 on AWS, add MemoRable as a sidecar:
+**Zero-risk trial.** MemoRable uses its own collections - it never touches your Mem0 data. Try it out, and if you don't like it, just turn it off. Your Mem0 setup stays exactly as it was.
 
 ```bash
 # In your existing Mem0 deployment directory
 git clone https://github.com/alanchelmickjr/memoRable.git memorable-extension
 
-# Configure to use your existing MongoDB/DocumentDB
+# Point to your existing DocumentDB (uses separate collections, won't modify Mem0 data)
 export MONGODB_URI="your-existing-documentdb-uri"
 
 # Start MemoRable alongside Mem0
 cd memorable-extension
 docker-compose up -d memorable_mcp_server
+
+# Don't like it? Just stop it. Your Mem0 data is untouched.
+# docker-compose down
 ```
 
-Then use the hybrid client in your code:
+### What Gets Created (Separate from Mem0)
+
+| Collection | Purpose | Mem0 Impact |
+|------------|---------|-------------|
+| `memories` | Salience-enriched memories | None - separate collection |
+| `open_loops` | Commitment tracking | None - MemoRable only |
+| `relationships` | Relationship graphs | None - MemoRable only |
+| `context_frames` | Multi-device context | None - uses Redis |
+| `patterns` | Learned behaviors | None - MemoRable only |
+
+**Your Mem0 collections stay untouched.** MemoRable reads from Mem0 via API, writes to its own collections.
+
+### Try the Hybrid Client
 
 ```python
 from memorable import MemorableClient
