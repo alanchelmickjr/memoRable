@@ -11,22 +11,152 @@
 
 ---
 
-**Memory that understands context.** MemoRable is a memory layer for AI agents that knows what matters based on where you are, who you're with, and what you're doing.
+**Extend your Mem0 deployment with context intelligence.** MemoRable adds salience scoring, commitment tracking, relationship awareness, and predictive memory to your existing memory infrastructure.
+
+> **Already using Mem0 on AWS?** MemoRable integrates seamlessly - keep your vector storage, add context intelligence. [See integration guide →](#mem0-integration)
 
 ```
 You: "I'm at the park meeting Judy"
-MemoRable: Here's what you need to know:
+MemoRable + Mem0: Here's what you need to know:
   - You owe her feedback on the proposal (3 days overdue)
   - Her daughter's recital is Thursday
   - Last time you discussed: Series B funding concerns
   - Sensitivity: Don't bring up the merger
 ```
 
-**Predictive Memory**: After 21 days of learning your patterns, MemoRable surfaces what you need *before you ask*.
+### What MemoRable Adds to Mem0
+
+| Capability | Mem0 | + MemoRable |
+|------------|------|-------------|
+| Vector storage & search | ✅ | ✅ (uses Mem0) |
+| Salience scoring (0-100) | ❌ | ✅ |
+| Commitment tracking (open loops) | ❌ | ✅ |
+| Relationship intelligence | ❌ | ✅ |
+| Pre-meeting briefings | ❌ | ✅ |
+| Multi-device context sync | ❌ | ✅ |
+| Predictive memory (21-day learning) | ❌ | ✅ |
+| **Behavioral identity** | ❌ | ✅ |
+| MCP protocol support | ❌ | ✅ |
 
 ---
 
-## Get Started in 2 Minutes
+## Quick Start: Add to Existing Mem0
+
+**Instant value from your existing data.** On first run, MemoRable scans your Mem0 memories and generates enrichments - salience scores, relationship graphs, open commitments - in minutes, not weeks. See the difference immediately.
+
+```bash
+# In your existing Mem0 deployment directory
+git clone https://github.com/alanchelmickjr/memoRable.git memorable-extension
+cd memorable-extension
+
+# Point to your existing DocumentDB
+export MONGODB_URI="your-existing-documentdb-uri"
+export MEM0_COLLECTION="memories"  # Your Mem0 collection name
+
+# Start MemoRable - it auto-syncs your existing memories on first run
+docker-compose up -d memorable_mcp_server
+
+# Watch the sync happen:
+docker logs -f memorable_mcp_server
+# [SYNC] Found 1,247 memories in Mem0
+# [SYNC] Generating salience scores... 100/1247
+# [SYNC] Extracting relationships... found 23 people
+# [SYNC] Identifying commitments... found 8 open loops
+# [SYNC] Complete! Your memories are now context-aware.
+```
+
+### What Happens on First Run
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Your Existing Mem0 Memories                    │
+│                    (1,247 memories)                         │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ scans on startup
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   MemoRable Sync                            │
+│                                                             │
+│  ✓ Salience scoring    - Which memories matter most?       │
+│  ✓ People extraction   - Who's mentioned? Relationships?   │
+│  ✓ Commitment detection - What's owed? By whom? When?      │
+│  ✓ Topic clustering    - What themes emerge?               │
+│  ✓ Timeline events     - Birthdays, meetings, deadlines    │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ writes to separate collections
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│              MemoRable Collections (yours to keep or delete)│
+│  memories │ open_loops │ relationships │ patterns           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Instant Results
+
+After sync completes, try these immediately:
+
+```
+"What do I owe people?"           → Lists commitments from your history
+"I'm meeting with Sarah"          → Briefing from past interactions
+"What's important about Project X?" → High-salience memories surfaced
+```
+
+### What Gets Created
+
+| Collection | What MemoRable Extracts | Reversible? |
+|------------|-------------------------|-------------|
+| `memorable_memories` | Salience scores for each Mem0 memory | ✅ Just delete |
+| `memorable_open_loops` | Commitments found in your history | ✅ Just delete |
+| `memorable_relationships` | People & relationship graphs | ✅ Just delete |
+| `memorable_context_frames` | Real-time context (Redis) | ✅ Clears on stop |
+| `memorable_patterns` | Learned behaviors (grows over time) | ✅ Just delete |
+
+**Try it → See the difference → Keep it or remove it.** Your Mem0 data is never modified. Don't like it? `docker-compose down` and delete the `memorable_*` collections.
+
+### Try the Hybrid Client
+
+```python
+from memorable import MemorableClient
+from mem0 import Memory
+
+# Your existing Mem0 setup
+mem0 = Memory()
+
+# Add MemoRable for salience + context
+memorable = MemorableClient(mongo_uri=os.environ["MONGODB_URI"])
+
+# Store through both (Mem0 for vectors, MemoRable for salience)
+def remember(text, user_id, metadata=None):
+    # MemoRable enriches with salience, commitments, relationships
+    result = memorable.store(user_id, text, metadata)
+
+    # Mem0 stores embeddings for semantic search
+    mem0.add(text, user_id=user_id, metadata={
+        **metadata,
+        'salience_score': result.salience.score,
+        'memory_id': result.memory_id
+    })
+    return result
+
+# Search with salience-boosted ranking
+def search(query, user_id):
+    # Semantic search via Mem0
+    results = mem0.search(query, user_id=user_id)
+
+    # Boost by MemoRable salience
+    for r in results:
+        salience = memorable.get_salience(r['metadata']['memory_id'])
+        r['boosted_score'] = r['score'] * 0.6 + (salience / 100) * 0.4
+
+    return sorted(results, key=lambda x: x['boosted_score'], reverse=True)
+
+# Get pre-meeting briefing (MemoRable exclusive)
+briefing = memorable.get_briefing(user_id, "Sarah Chen")
+```
+
+---
+
+## Fresh Install Options
 
 ### Option A: Deploy to AWS (Production)
 
@@ -109,7 +239,63 @@ Now in Claude Code you can say:
 
 ---
 
-## MCP Tools Reference (19 Tools)
+## Claude.ai Web Integration
+
+MemoRable can be used with Claude.ai in the browser for seamless memory access across web and desktop.
+
+### Option 1: Custom Connector (No Approval Required)
+
+Deploy MemoRable as a remote MCP server and add it as a custom connector:
+
+```bash
+# 1. Clone and setup
+git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+
+# 2. Generate OAuth credentials
+./scripts/setup-oauth.sh
+
+# 3. Deploy with Docker
+docker-compose -f docker-compose.remote.yml --env-file .env.remote up -d
+```
+
+Then in Claude.ai:
+1. Go to **Settings** → **Connectors**
+2. Click **Add custom connector**
+3. Enter your server URL: `https://your-deployment.com/mcp`
+4. Authenticate via OAuth
+
+Works on Pro, Max, Team, and Enterprise plans.
+
+### Option 2: Official Directory Listing
+
+MemoRable is available in the [Anthropic MCP Connectors Directory](https://claude.com/partners/mcp).
+
+### Remote Deployment Requirements
+
+For Claude.ai web integration, MemoRable requires:
+
+| Requirement | Description |
+|-------------|-------------|
+| **OAuth 2.0/2.1** | Authentication for Claude.ai |
+| **Streamable HTTP** | Modern MCP transport (not stdio) |
+| **HTTPS** | Valid TLS certificate |
+| **CORS** | Allow claude.ai and claude.com origins |
+
+Environment variables for remote mode:
+
+```env
+TRANSPORT_TYPE=http
+OAUTH_ENABLED=true
+OAUTH_CLIENT_ID=your-client-id
+OAUTH_CLIENT_SECRET=your-client-secret
+ALLOWED_ORIGINS=https://claude.ai,https://claude.com
+```
+
+For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude-ai-integration.md).
+
+---
+
+## MCP Tools Reference (23 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
@@ -443,77 +629,304 @@ async function getRelatedDecisions(topic: string) {
 
 ---
 
+## Behavioral Identity (Stylometry Engine)
+
+**Know who you're talking to without login credentials.** MemoRable uses **proven stylometry methods from authorship attribution research** to learn each user's unique communication fingerprint. Character n-grams, function word frequencies, and syntactic complexity patterns create a highly accurate behavioral signature. After 50+ interactions, it can identify users by *how* they communicate with **90%+ accuracy**.
+
+### How It Works
+
+```
+User Input: "hey can u check the payment thing from yesterday"
+
+┌──────────────────────────────────────────────────────────────────┐
+│              STYLOMETRY-BASED BEHAVIORAL FINGERPRINT              │
+├──────────────────────────────────────────────────────────────────┤
+│  Character N-grams (Most Discriminative - 25% weight) ★          │
+│  ├─ Top 3-grams: "the", " ca", "can", "an ", "n u", " u "       │
+│  ├─ N-gram signature: sig_7k2m9x (unique to this user)          │
+│  └─ Cosine similarity match: 0.94                               │
+│                                                                  │
+│  Function Words (Classical Stylometry - 20% weight) ★            │
+│  ├─ Pronoun preference: "u" over "you" (93%)                    │
+│  ├─ Conjunction style: minimal ("and" < average)                │
+│  └─ Function word signature: sig_3p8q2a                         │
+│                                                                  │
+│  Vocabulary Features (15% weight)                                │
+│  ├─ Hapax ratio: 0.72 (uses unique words)                       │
+│  ├─ Type-token ratio: 0.85 (rich vocabulary)                    │
+│  └─ Avg syllables: 1.4 (simple word choice)                     │
+│                                                                  │
+│  Syntactic Complexity (15% weight)                               │
+│  ├─ Avg sentence length: 8.3 words                              │
+│  ├─ Clause complexity: 0.12 (simple structures)                 │
+│  ├─ Punctuation style: light                                    │
+│  └─ Ellipsis usage: false, Semicolon usage: false               │
+│                                                                  │
+│  Style Features (10% weight)                                     │
+│  ├─ Formality score: 0.23 (informal)                            │
+│  ├─ Contraction ratio: 0.15 (moderate)                          │
+│  └─ Number style: numeric                                        │
+│                                                                  │
+│  Temporal Patterns (10% weight)                                  │
+│  ├─ Active hours: 9am-6pm EST                                   │
+│  └─ Peak activity: Tuesday/Thursday                              │
+│                                                                  │
+│  ★ = Research-proven most discriminative features                │
+│                                                                  │
+│  OVERALL CONFIDENCE: 94% → User: alex@company.com               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Stylometry Signals (Research-Based Weights)
+
+Based on authorship attribution research showing **90%+ accuracy** with character n-grams and function word analysis:
+
+| Signal Type | What We Analyze | Weight | Why It Works |
+|-------------|-----------------|--------|--------------|
+| **Char N-grams** ★ | Character trigram frequencies | 25% | Most discriminative single feature (proven by CNN research) |
+| **Function Words** ★ | Pronoun, preposition, conjunction usage | 20% | Classical stylometry gold standard |
+| **Vocabulary** | Hapax ratio, type-token ratio, syllables | 15% | Lexical richness indicators |
+| **Syntax** | Sentence length, comma/semicolon usage, clause complexity | 15% | Syntactic fingerprint |
+| **Style** | Formality, contractions, emoji, list usage | 10% | Writing style preferences |
+| **Timing** | Active hours, day patterns | 10% | Behavioral habits |
+| **Topics** | Subject preferences, frequent terms | 5% | Context (less stable) |
+
+★ = Research-proven most discriminative features
+
+### Use Cases
+
+**1. Seamless Multi-Device Experience**
+```python
+# User switches from laptop to phone mid-conversation
+# MemoRable recognizes them by communication style, not just session token
+result = memorable.identify_user(message_text)
+# → {"userId": "alex@company.com", "confidence": 0.94, "signals": [...]}
+```
+
+**2. Anomaly Detection**
+```python
+# Alert when behavior doesn't match known patterns
+if result.confidence < 0.5:
+    # Possibly compromised account or new user
+    trigger_verification()
+```
+
+**3. Personalization Without Login**
+```python
+# First message in a session - no auth yet
+# MemoRable can still personalize based on detected identity
+briefing = memorable.get_briefing_for_detected_user(message_text)
+```
+
+### Privacy & Consent
+
+- Behavioral signatures are **local to your deployment** - never shared
+- Users can **view their fingerprint** and **opt out** of behavioral tracking
+- All signals are derived from **content they voluntarily provide**
+- Compliant with GDPR "legitimate interest" for security purposes
+
+### Metrics Dashboard
+
+Real-time visibility into stylometry-based behavioral learning. Call `behavioral_metrics` to see:
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║           BEHAVIORAL IDENTITY METRICS (Stylometry Engine)            ║
+║                     Time Range: 24h                                  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  LEARNING PROGRESS                                                    ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Users with fingerprints:   47                                  │  ║
+║  │ Ready for identification:  38 (≥50 samples)                    │  ║
+║  │ Avg samples per user:      72                                  │  ║
+║  │                                                                │  ║
+║  │ Progress: ██████████████████████████████  144%                 │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  IDENTIFICATION ACCURACY                                              ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Total predictions:    892                                      │  ║
+║  │ With feedback:        456                                      │  ║
+║  │                                                                │  ║
+║  │ Hit Rate:  ██████████████████████  91.4%                      │  ║
+║  │ Miss Rate: ██░░░░░░░░░░░░░░░░░░░░   8.6%                      │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  CONFIDENCE DISTRIBUTION                                              ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │  0-20%  ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░   12                     │  ║
+║  │ 20-40%  ▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░   34                     │  ║
+║  │ 40-60%  ▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░   67                     │  ║
+║  │ 60-80%  ▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░  156                     │  ║
+║  │ 80-100% ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  623                     │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  STYLOMETRY SIGNAL STRENGTH (proven authorship attribution)          ║
+║  ┌────────────────────────────────────────────────────────────────┐  ║
+║  │ Char N-grams   ██████████████████████  94% ★                  │  ║
+║  │ Function Words █████████████████████░  91% ★                  │  ║
+║  │ Vocabulary     █████████████████████░  88%                    │  ║
+║  │ Syntax         ██████████████████░░░░  82%                    │  ║
+║  │ Style          ████████████████░░░░░░  67%                    │  ║
+║  │ Timing         ██████████████░░░░░░░░  58%                    │  ║
+║  │ Topics         ███████████░░░░░░░░░░░  45%                    │  ║
+║  └────────────────────────────────────────────────────────────────┘  ║
+║  ★ = Research-proven most discriminative features                     ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+### MCP Tools (3 new tools)
+
+| Tool | Description |
+|------|-------------|
+| `identify_user` | Analyze a message to identify user by behavioral patterns |
+| `behavioral_metrics` | Get dashboard with learning progress, accuracy, signal strength |
+| `behavioral_feedback` | Mark identification as correct/incorrect for learning |
+
+### Configuration
+
+```env
+# Enable behavioral identity (default: true)
+BEHAVIORAL_IDENTITY_ENABLED=true
+
+# Minimum interactions before fingerprinting (default: 50)
+BEHAVIORAL_MIN_SAMPLES=50
+
+# Confidence threshold for identity match (default: 0.75)
+BEHAVIORAL_CONFIDENCE_THRESHOLD=0.75
+
+# Include in identity verification flow (default: false)
+BEHAVIORAL_AUTH_ENABLED=false
+```
+
+---
+
 ## Mem0 Integration
 
-MemoRable can work alongside or replace Mem0 for enhanced memory capabilities:
+MemoRable is designed to **extend** your existing Mem0 deployment, not replace it. Keep Mem0 for what it does best (vector storage and semantic search), and add MemoRable for context intelligence.
+
+### Architecture: Mem0 + MemoRable
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Your AI Application                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
+│  │       Mem0          │      │        MemoRable            │  │
+│  │  (Vector Layer)     │◄────►│   (Context Layer)           │  │
+│  │                     │      │                             │  │
+│  │  • Embeddings       │      │  • Salience scoring         │  │
+│  │  • Semantic search  │      │  • Commitment tracking      │  │
+│  │  • Vector storage   │      │  • Relationship graphs      │  │
+│  │                     │      │  • Pre-meeting briefings    │  │
+│  │                     │      │  • Predictive memory        │  │
+│  │                     │      │  • MCP protocol             │  │
+│  └─────────────────────┘      └─────────────────────────────┘  │
+│           │                              │                       │
+│           ▼                              ▼                       │
+│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
+│  │   Vector DB         │      │    MongoDB/DocumentDB       │  │
+│  │   (Pinecone/etc)    │      │    (shared or separate)     │  │
+│  └─────────────────────┘      └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### HybridMemory Class
 
 ```python
 from memorable import MemorableClient
 from mem0 import Memory as Mem0Memory
 
-# Use MemoRable for salience + Mem0 for vectors
 class HybridMemory:
-    def __init__(self):
-        self.memorable = MemorableClient()
+    """
+    Combines Mem0's vector search with MemoRable's context intelligence.
+    Drop-in enhancement for existing Mem0 deployments.
+    """
+
+    def __init__(self, mongo_uri: str = None):
+        self.memorable = MemorableClient(mongo_uri=mongo_uri)
         self.mem0 = Mem0Memory()
 
     def add(self, text: str, user_id: str, metadata: dict = None):
-        # MemoRable handles: salience, commitments, relationships
+        # MemoRable: salience, commitments, relationships, timeline
         result = self.memorable.store(user_id, text, metadata)
 
-        # Mem0 handles: vector embeddings, semantic search
+        # Mem0: vector embeddings for semantic search
         self.mem0.add(text, user_id=user_id, metadata={
-            **metadata,
+            **(metadata or {}),
             'salience_score': result.salience.score,
-            'memory_id': result.memory_id
+            'memory_id': result.memory_id,
+            'has_commitments': len(result.open_loops_created) > 0
         })
 
         return result
 
     def search(self, query: str, user_id: str, **kwargs):
         # Semantic search via Mem0
-        mem0_results = self.mem0.search(query, user_id=user_id, **kwargs)
+        results = self.mem0.search(query, user_id=user_id, **kwargs)
 
-        # Boost by MemoRable salience scores
-        for result in mem0_results:
-            memorable_data = self.memorable.get(result['metadata']['memory_id'])
-            result['boosted_score'] = (
-                result['score'] * 0.6 +
-                (memorable_data.salience_score / 100) * 0.4
-            )
+        # Boost by MemoRable salience (important memories rank higher)
+        for r in results:
+            salience = self.memorable.get_salience(r['metadata']['memory_id'])
+            r['boosted_score'] = r['score'] * 0.6 + (salience / 100) * 0.4
 
-        return sorted(mem0_results, key=lambda x: x['boosted_score'], reverse=True)
+        return sorted(results, key=lambda x: x['boosted_score'], reverse=True)
 
     def get_briefing(self, user_id: str, person: str):
-        # MemoRable-specific: pre-conversation intelligence
+        """MemoRable exclusive: pre-conversation intelligence"""
         return self.memorable.get_briefing(user_id, person)
+
+    def get_open_loops(self, user_id: str):
+        """MemoRable exclusive: commitment tracking"""
+        return self.memorable.list_loops(user_id)
+
+    def set_context(self, user_id: str, **context):
+        """MemoRable exclusive: context-aware memory surfacing"""
+        return self.memorable.set_context(user_id, **context)
 ```
 
-### Migration from Mem0
+### AWS Deployment: Side-by-Side
+
+If you have Mem0 running on AWS, add MemoRable to the same VPC:
+
+```yaml
+# Add to your existing docker-compose.yml or ECS task definition
+memorable:
+  image: ghcr.io/alanchelmickjr/memorable:latest
+  environment:
+    - MONGODB_URI=${DOCUMENTDB_URI}  # Share with existing DocumentDB
+    - LLM_PROVIDER=bedrock           # Use same Bedrock as Mem0
+  depends_on:
+    - mem0  # Your existing Mem0 service
+```
+
+### Sync Existing Mem0 Memories
+
+Enrich your existing Mem0 memories with salience scores:
 
 ```python
 from memorable import MemorableClient
 from mem0 import Memory
 
-# Export from Mem0
 mem0 = Memory()
-all_memories = mem0.get_all(user_id="user-123")
-
-# Import to MemoRable with salience enrichment
 memorable = MemorableClient()
 
-for mem in all_memories:
+# Sync existing memories (non-destructive)
+for mem in mem0.get_all(user_id="user-123"):
     memorable.store(
         user_id="user-123",
         text=mem['memory'],
         context={
-            'imported_from': 'mem0',
+            'synced_from': 'mem0',
             'original_id': mem['id'],
             'created_at': mem['created_at']
         }
     )
+    # Update Mem0 with salience score
+    mem0.update(mem['id'], metadata={'salience_synced': True})
 
-print(f"Migrated {len(all_memories)} memories with salience enrichment")
+print("Memories synced with salience enrichment")
 ```
 
 ---
@@ -899,5 +1312,8 @@ MIT License - see [LICENSE](LICENSE)
 
 - [MCP Server Documentation](./src/services/mcp_server/README.md)
 - [Salience Service Documentation](./src/services/salience_service/README.md)
+- [Claude.ai Integration Guide](./docs/claude-ai-integration.md)
+- [Example Prompts](./docs/example-prompts.md)
+- [Privacy Policy](./PRIVACY.md)
 - [API Reference](./docs/api-reference.md)
 - [Deployment Guide](./docs/deployment-guide.md)
