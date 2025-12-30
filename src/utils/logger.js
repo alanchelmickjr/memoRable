@@ -14,10 +14,19 @@ const logColors = {
   debug: 'blue',
 };
 
-let logger = null;
+// Default console logger for when setupLogger hasn't been called yet
+let logger = {
+  info: (...args) => console.log('[INFO]', ...args),
+  warn: (...args) => console.warn('[WARN]', ...args),
+  error: (...args) => console.error('[ERROR]', ...args),
+  debug: (...args) => console.debug('[DEBUG]', ...args),
+  stream: { write: (msg) => console.log(msg.trim()) }
+};
+
+let isWinstonSetup = false;
 
 export async function setupLogger() {
-  if (logger) {
+  if (isWinstonSetup) {
     return logger;
   }
   
@@ -80,6 +89,7 @@ export async function setupLogger() {
     },
   };
 
+  isWinstonSetup = true;
   return logger;
 }
 
