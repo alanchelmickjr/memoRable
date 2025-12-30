@@ -1,26 +1,42 @@
-import { EmotionProcessor } from '../../src/core/emotionProcessor.js';
 import { jest } from '@jest/globals';
 
-// Mock dependencies
-jest.mock('../../src/config/redis.js', () => ({
+// Create mock functions first, before jest.mock calls
+const mockHSet = jest.fn();
+const mockHGetAll = jest.fn(() => ({
+  vector: '[]',
+  confidence: '0.8',
+  timestamp: Date.now().toString(),
+  type: 'text'
+}));
+const mockDo = jest.fn();
+const mockGraphqlDo = jest.fn(() => ({
+  data: {
+    Get: {
+      EmotionalVector: [
+        {
+          vector: [0, 0, 0],
+          timestamp: new Date().toISOString()
+        }
+      ]
+    }
+  }
+}));
+
+// Mock dependencies using pre-created mock functions
+jest.unstable_mockModule('../../src/config/redis.js', () => ({
   getRedisClient: jest.fn(() => ({
-    hSet: jest.fn(),
-    hGetAll: jest.fn(() => ({
-      vector: '[]',
-      confidence: '0.8',
-      timestamp: Date.now().toString(),
-      type: 'text'
-    }))
+    hSet: mockHSet,
+    hGetAll: mockHGetAll
   }))
 }));
 
-jest.mock('../../src/config/weaviate.js', () => ({
+jest.unstable_mockModule('../../src/config/weaviate.js', () => ({
   getWeaviateClient: jest.fn(() => ({
     data: {
       creator: jest.fn(() => ({
         withClassName: jest.fn(() => ({
           withProperties: jest.fn(() => ({
-            do: jest.fn()
+            do: mockDo
           }))
         }))
       }))
@@ -31,18 +47,7 @@ jest.mock('../../src/config/weaviate.js', () => ({
           withFields: jest.fn(() => ({
             withSort: jest.fn(() => ({
               withLimit: jest.fn(() => ({
-                do: jest.fn(() => ({
-                  data: {
-                    Get: {
-                      EmotionalVector: [
-                        {
-                          vector: [0, 0, 0],
-                          timestamp: new Date().toISOString()
-                        }
-                      ]
-                    }
-                  }
-                }))
+                do: mockGraphqlDo
               }))
             }))
           }))
@@ -52,14 +57,14 @@ jest.mock('../../src/config/weaviate.js', () => ({
   }))
 }));
 
+// Import the module after mocks are set up
+const { EmotionProcessor } = await import('../../src/core/emotionProcessor.js');
+
 describe('EmotionProcessor', () => {
   let emotionProcessor;
 
   beforeEach(() => {
     emotionProcessor = new EmotionProcessor();
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
   });
 
@@ -73,7 +78,7 @@ describe('EmotionProcessor', () => {
     it('should process text emotions', async () => {
       const input = 'I am happy';
       await emotionProcessor.initialize();
-      
+
       const result = await emotionProcessor.processEmotion(input, 'text');
       expect(result).toBeDefined();
       expect(Array.isArray(result.vector)).toBe(true);
@@ -82,7 +87,7 @@ describe('EmotionProcessor', () => {
     it('should process visual emotions', async () => {
       const input = Buffer.from('fake-image-data');
       await emotionProcessor.initialize();
-      
+
       const result = await emotionProcessor.processEmotion(input, 'vision');
       expect(result).toBeDefined();
       expect(Array.isArray(result.vector)).toBe(true);
@@ -91,7 +96,7 @@ describe('EmotionProcessor', () => {
     it('should process audio emotions', async () => {
       const input = Buffer.from('fake-audio-data');
       await emotionProcessor.initialize();
-      
+
       const result = await emotionProcessor.processEmotion(input, 'audio');
       expect(result).toBeDefined();
       expect(Array.isArray(result.vector)).toBe(true);
@@ -99,7 +104,7 @@ describe('EmotionProcessor', () => {
 
     it('should handle invalid input type', async () => {
       await emotionProcessor.initialize();
-      
+
       await expect(emotionProcessor.processEmotion('test', 'invalid'))
         .rejects
         .toThrow('Unsupported emotion input type: invalid');
@@ -109,9 +114,9 @@ describe('EmotionProcessor', () => {
   describe('extractEmotionalFeatures', () => {
     it('should extract features for different input types', async () => {
       await emotionProcessor.initialize();
-      
+
       const types = ['text', 'vision', 'audio', 'multimodal'];
-      
+
       for (const type of types) {
         const features = await emotionProcessor.extractEmotionalFeatures('test', type);
         expect(features).toHaveProperty('timestamp');
@@ -132,7 +137,7 @@ describe('EmotionProcessor', () => {
       };
 
       const result = await emotionProcessor.generateEmotionalVector(features);
-      
+
       expect(result.vector).toHaveLength(emotionProcessor.emotionDimensions);
       expect(result.confidence).toBe(features.confidence);
       expect(result.timestamp).toBe(features.timestamp);
@@ -143,9 +148,9 @@ describe('EmotionProcessor', () => {
   describe('getCurrentEmotionalState', () => {
     it('should return current emotional state', async () => {
       await emotionProcessor.initialize();
-      
+
       const state = await emotionProcessor.getCurrentEmotionalState();
-      
+
       expect(state).toHaveProperty('vector');
       expect(state).toHaveProperty('confidence');
       expect(state).toHaveProperty('timestamp');
