@@ -38,7 +38,26 @@ permissions:
   contents: read    # Required for actions/checkout
 
 jobs:
+  # Check if AWS credentials are configured
+  check-aws-config:
+    runs-on: ubuntu-latest
+    outputs:
+      aws_configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Check AWS configuration
+        id: check
+        run: |
+          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "AWS_ACCOUNT_ID secret not configured - skipping deployment"
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "AWS credentials configured"
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
   build-images:
+    needs: check-aws-config
+    if: needs.check-aws-config.outputs.aws_configured == 'true'
     runs-on: ubuntu-latest
     outputs:
       app_image: ${{ steps.build.outputs.app_image }}
@@ -100,7 +119,8 @@ jobs:
           echo "mcp_image=$ECR_REGISTRY/memorable-mcp:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   terraform:
-    needs: build-images
+    needs: [check-aws-config, build-images]
+    if: needs.check-aws-config.outputs.aws_configured == 'true'
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'staging' }}
 
@@ -171,26 +191,30 @@ jobs:
           fi
 
   notify:
-    needs: [build-images, terraform]
+    needs: [check-aws-config, build-images, terraform]
     runs-on: ubuntu-latest
     if: always()
 
     steps:
       - name: Deployment Summary
         run: |
-          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.terraform.result }}" == "success" ]; then
-            echo "✅ **Status:** Deployment successful!" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.check-aws-config.outputs.aws_configured }}" != "true" ]; then
+            echo "**Status:** Deployment skipped (AWS_ACCOUNT_ID not configured)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To enable deployment, add the AWS_ACCOUNT_ID secret to this repository." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.terraform.result }}" == "success" ]; then
+            echo "**Status:** Deployment successful!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
             echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🔐 Authentication" >> $GITHUB_STEP_SUMMARY
+            echo "### Authentication" >> $GITHUB_STEP_SUMMARY
             echo "Used OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ **Status:** Deployment failed!" >> $GITHUB_STEP_SUMMARY
+            echo "**Status:** Deployment failed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Check the workflow logs for details." >> $GITHUB_STEP_SUMMARY
           fi
