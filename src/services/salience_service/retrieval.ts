@@ -369,11 +369,8 @@ export async function getMemoriesForPerson(
   const limit = options.limit ?? 10;
 
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
     // Find memories mentioning this person
-    const memories = await memoriesCollection
+    const memories = await collections.memories()
       .find({
         userId,
         'extractedFeatures.peopleMentioned': { $exists: true },
@@ -423,10 +420,7 @@ export async function getMemoriesWithUpcomingDeadlines(
   future.setDate(future.getDate() + daysAhead);
 
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
-    const memories = await memoriesCollection
+    const memories = await collections.memories()
       .find({
         userId,
         hasOpenLoops: true,
