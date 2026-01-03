@@ -17,7 +17,7 @@ RUN pnpm install --frozen-lockfile
 
 # Copy configuration files required for the build process
 COPY rollup.config.js ./
-COPY babel.config.js ./
+COPY babel.config.cjs ./
 # COPY tsconfig.json ./ # Uncomment if you have a tsconfig.json at the root and it's needed for the build
 
 # Copy all source code
