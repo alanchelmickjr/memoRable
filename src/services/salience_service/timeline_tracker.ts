@@ -557,7 +557,7 @@ export async function processRecurringEvents(userId: string): Promise<number> {
       {
         $set: {
           eventDate: nextDate.toISOString(),
-          lastMentionedAt: null, // Reset so it can be mentioned again
+          lastMentionedAt: undefined, // Reset so it can be mentioned again
           updatedAt: new Date().toISOString(),
         },
       }

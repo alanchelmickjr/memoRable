@@ -161,15 +161,15 @@ async function verifyCollections(): Promise<boolean> {
   try {
     // Try to access each collection - this will throw if DB not initialized
     const checks = await Promise.all([
-      collections.openLoops().stats().catch(() => null),
-      collections.personTimelineEvents().stats().catch(() => null),
-      collections.relationshipPatterns().stats().catch(() => null),
-      collections.retrievalLogs().stats().catch(() => null),
-      collections.learnedWeights().stats().catch(() => null),
+      collections.openLoops().countDocuments().catch(() => -1),
+      collections.personTimelineEvents().countDocuments().catch(() => -1),
+      collections.relationshipPatterns().countDocuments().catch(() => -1),
+      collections.retrievalLogs().countDocuments().catch(() => -1),
+      collections.learnedWeights().countDocuments().catch(() => -1),
     ]);
 
-    // All collections should return something (even if empty)
-    return checks.every((c) => c !== null);
+    // All collections should return a count >= 0
+    return checks.every((c: number) => c >= 0);
   } catch (error) {
     console.error('[SalienceStartup] Collection verification failed:', error);
     return false;
