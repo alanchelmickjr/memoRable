@@ -541,6 +541,22 @@ export interface EnrichedMemoryData {
   salienceVersion: string;     // Version of salience algorithm used
 }
 
+/**
+ * Memory document stored in the memories collection.
+ */
+export interface MemoryDocument {
+  _id?: string;
+  memoryId: string;
+  userId: string;
+  text: string;
+  createdAt: string;
+  updatedAt?: string;
+  state?: 'active' | 'archived' | 'suppressed' | 'deleted';
+  salienceScore?: number;
+  extractedFeatures?: ExtractedFeatures;
+  [key: string]: unknown;
+}
+
 // ============================================================================
 // LLM EXTRACTION PROMPT RESPONSE
 // ============================================================================
