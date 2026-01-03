@@ -82,6 +82,7 @@ export type ContextType =
   | 'default';
 
 export interface ContextWeightModifiers {
+  [key: string]: number | undefined;
   emotional?: number;
   novelty?: number;
   relevance?: number;

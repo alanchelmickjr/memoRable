@@ -34,11 +34,11 @@ export async function recordInteraction(
     const patternsCollection = collections.relationshipPatterns();
 
     // Get or create pattern
-    let pattern = await patternsCollection.findOne({ userId, contactId });
+    const existingPattern = await patternsCollection.findOne({ userId, contactId });
 
-    if (!pattern) {
+    if (!existingPattern) {
       // Create new pattern
-      pattern = {
+      const newPattern: RelationshipPattern = {
         id: uuidv4(),
         userId,
         contactId,
@@ -50,9 +50,11 @@ export async function recordInteraction(
         updatedAt: new Date().toISOString(),
       };
 
-      await patternsCollection.insertOne(pattern);
-      return pattern;
+      await patternsCollection.insertOne(newPattern);
+      return newPattern;
     }
+
+    const pattern = existingPattern;
 
     // Calculate gap since last interaction
     const lastInteraction = pattern.lastInteraction ? new Date(pattern.lastInteraction) : null;
