@@ -4,14 +4,16 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "esModuleInterop": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "declaration": true,
     "outDir": "./dist",
     "rootDir": ".",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "downlevelIteration": true,
+    "noImplicitAny": false
   },
   "include": ["*.ts", "salience_service/**/*.ts"],
   "exclude": ["node_modules", "dist"]

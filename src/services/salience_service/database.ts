@@ -165,6 +165,18 @@ export function getCollection<T>(name: string): Collection<T> {
   return db.collection<T>(name);
 }
 
+// State change document for audit/history
+export interface StateChangeDocument {
+  _id?: string;
+  memoryId: string;
+  userId: string;
+  previousState: string;
+  newState: string;
+  reason?: string;
+  changedAt: string;
+  changedBy?: string;
+}
+
 // Typed collection getters for convenience
 export const collections = {
   memories: () => getCollection<MemoryDocument>('memories'),
@@ -174,6 +186,8 @@ export const collections = {
   relationshipSnapshots: () => getCollection<RelationshipSnapshot>('relationship_snapshots'),
   retrievalLogs: () => getCollection<RetrievalLog>('retrieval_logs'),
   learnedWeights: () => getCollection<LearnedWeights>('learned_weights'),
+  contacts: () => getCollection<ContactDocument>('contacts'),
+  stateChanges: () => getCollection<StateChangeDocument>('state_changes'),
 };
 
 /**
