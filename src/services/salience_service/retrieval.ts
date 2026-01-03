@@ -65,6 +65,8 @@ const DEFAULT_RETRIEVAL_OPTIONS: Required<SalienceRetrievalOptions> = {
   query: '',
   userId: '',
   temporalFocus: 'default',
+  contactId: '',
+  minSalience: 0,
   limit: 10,
   semanticWeight: 0.6,
   salienceWeight: 0.4,
@@ -302,10 +304,7 @@ export async function boostOnRetrieval(
   // This would update the memory in the memories collection
   // The actual update depends on the memory storage implementation
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
-    await memoriesCollection.updateOne(
+    await collections.memories().updateOne(
       { $or: [{ _id: memoryId }, { mementoId: memoryId }] },
       {
         $set: {

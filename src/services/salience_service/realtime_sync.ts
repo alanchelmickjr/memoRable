@@ -786,11 +786,13 @@ export class ContextHub {
     let context = userDevices.get(deviceId);
 
     if (!context) {
+      const now = new Date();
       context = {
         userId,
         deviceId,
         deviceType,
-        timestamp: new Date().toISOString(),
+        timestamp: now.toISOString(),
+        expiresAt: new Date(now.getTime() + STALENESS_CONFIG.deviceContextTTL[deviceType]).toISOString(),
       };
     }
 
