@@ -325,10 +325,10 @@ function calculateConsequentialScore(features: ExtractedFeatures): number {
  */
 function applyContextModifiers(
   baseWeights: SalienceWeights,
-  modifiers: Record<string, number> = {}
+  modifiers: Record<string, number | undefined> = {}
 ): SalienceWeights {
   const adjusted: SalienceWeights = {
-    emotional: baseWeights.emotional * (modifiers.emotional || 1.0),
+    emotional: baseWeights.emotional * (modifiers.emotional ?? 1.0),
     novelty: baseWeights.novelty * (modifiers.novelty || 1.0),
     relevance: baseWeights.relevance * (modifiers.relevance || 1.0),
     social: baseWeights.social * (modifiers.social || 1.0),
