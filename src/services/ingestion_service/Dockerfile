@@ -8,23 +8,22 @@ RUN npm install -g pnpm
 
 WORKDIR /usr/src/app
 
-# Copy package manager files and .npmrc if it exists for pnpm config
+# Copy package manager files
 COPY package.json pnpm-lock.yaml ./
-# COPY .npmrc .npmrc # Uncomment if you have a .npmrc file
 
-# Install all dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile
-
-# Copy configuration files required for the build process
+# Copy configuration files required for the build process BEFORE install
+# (needed because prepare script runs during install)
 COPY rollup.config.js ./
 COPY babel.config.cjs ./
-# COPY tsconfig.json ./ # Uncomment if you have a tsconfig.json at the root and it's needed for the build
+
+# Install all dependencies (including devDependencies for build)
+# Use --ignore-scripts to skip prepare hook, we'll build manually
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy all source code
 COPY src ./src
 
 # Build the project
-# This command should generate the 'dist' directory
 RUN pnpm build
 
 # ---- Production Stage ----
@@ -43,8 +42,8 @@ ENV NODE_ENV=production
 COPY --from=builder /usr/src/app/package.json /usr/src/app/pnpm-lock.yaml ./
 # COPY .npmrc .npmrc # Uncomment if you have a .npmrc file and it's needed for prod install
 
-# Install only production dependencies
-RUN pnpm install --frozen-lockfile --prod
+# Install only production dependencies (skip scripts, already built)
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy built artifacts from the builder stage
 COPY --from=builder /usr/src/app/dist ./dist
