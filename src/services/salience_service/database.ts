@@ -11,6 +11,7 @@ import type {
   RelationshipSnapshot,
   RetrievalLog,
   LearnedWeights,
+  MemoryDocument,
 } from './models';
 
 let db: Db | null = null;
@@ -166,6 +167,7 @@ export function getCollection<T>(name: string): Collection<T> {
 
 // Typed collection getters for convenience
 export const collections = {
+  memories: () => getCollection<MemoryDocument>('memories'),
   openLoops: () => getCollection<OpenLoop>('open_loops'),
   personTimelineEvents: () => getCollection<PersonTimelineEvent>('person_timeline_events'),
   relationshipPatterns: () => getCollection<RelationshipPattern>('relationship_patterns'),
