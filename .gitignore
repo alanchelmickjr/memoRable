@@ -3,3 +3,32 @@ node_modules
 /.roo
 /node_modules
 .roomodes
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Test coverage
+coverage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
