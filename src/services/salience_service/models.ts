@@ -540,6 +540,30 @@ export interface EnrichedMemoryData {
   salienceVersion: string;     // Version of salience algorithm used
 }
 
+/**
+ * Memory document stored in the memories collection.
+ */
+export interface MemoryDocument {
+  _id?: string;
+  mementoId?: string;
+  memoryId: string;
+  userId: string;
+  text: string;
+  content?: string | Record<string, unknown>;
+  createdAt: string;
+  eventTimestamp?: string;
+  updatedAt?: string;
+  state?: 'active' | 'archived' | 'suppressed' | 'deleted';
+  salienceScore?: number;
+  salienceComponents?: SalienceComponents;
+  extractedFeatures?: ExtractedFeatures;
+  retrievalCount?: number;
+  lastRetrievedAt?: string;
+  hasOpenLoops?: boolean;
+  earliestDueDate?: string;
+  [key: string]: unknown;
+}
+
 // ============================================================================
 // LLM EXTRACTION PROMPT RESPONSE
 // ============================================================================

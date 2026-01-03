@@ -65,6 +65,8 @@ const DEFAULT_RETRIEVAL_OPTIONS: Required<SalienceRetrievalOptions> = {
   query: '',
   userId: '',
   temporalFocus: 'default',
+  contactId: '',
+  minSalience: 0,
   limit: 10,
   semanticWeight: 0.6,
   salienceWeight: 0.4,
@@ -302,18 +304,15 @@ export async function boostOnRetrieval(
   // This would update the memory in the memories collection
   // The actual update depends on the memory storage implementation
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
-    await memoriesCollection.updateOne(
-      { $or: [{ _id: memoryId }, { mementoId: memoryId }] },
+    await collections.memories().updateOne(
+      { $or: [{ _id: memoryId }, { mementoId: memoryId }] } as any,
       {
         $set: {
           salienceScore: newScore,
           lastRetrievedAt: new Date().toISOString(),
         },
         $inc: { retrievalCount: 1 },
-      }
+      } as any
     );
   } catch (error) {
     console.error('[Retrieval] Error boosting memory on retrieval:', error);
@@ -369,16 +368,13 @@ export async function getMemoriesForPerson(
   const limit = options.limit ?? 10;
 
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
     // Find memories mentioning this person
-    const memories = await memoriesCollection
+    const memories = await collections.memories()
       .find({
         userId,
         'extractedFeatures.peopleMentioned': { $exists: true },
         salienceScore: { $gte: minSalience },
-      })
+      } as any)
       .sort({ salienceScore: -1, createdAt: -1 })
       .limit(limit * 5) // Get more for filtering
       .toArray();
@@ -423,10 +419,7 @@ export async function getMemoriesWithUpcomingDeadlines(
   future.setDate(future.getDate() + daysAhead);
 
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
-
-    const memories = await memoriesCollection
+    const memories = await collections.memories()
       .find({
         userId,
         hasOpenLoops: true,
@@ -434,7 +427,7 @@ export async function getMemoriesWithUpcomingDeadlines(
           $gte: new Date().toISOString(),
           $lte: future.toISOString(),
         },
-      })
+      } as any)
       .sort({ earliestDueDate: 1 })
       .toArray();
 
