@@ -811,6 +811,7 @@ export class ContextHub {
       context.people = {
         names: delta.people.names,
         confidence: delta.people.confidence,
+        source: 'detected',
       };
     }
 
@@ -835,12 +836,16 @@ export class ContextHub {
     let context = userDevices.get(deviceId);
 
     if (!context) {
+      const now = new Date();
+      const deviceType = 'unknown' as const;
       context = {
         userId,
         deviceId,
-        deviceType: 'unknown',
-        timestamp: new Date().toISOString(),
+        deviceType,
+        timestamp: now.toISOString(),
+        expiresAt: new Date(now.getTime() + STALENESS_CONFIG.deviceContextTTL[deviceType]).toISOString(),
       };
+      userDevices.set(deviceId, context);
     }
 
     // Store sensor reading (simplified - would have proper sensor storage)

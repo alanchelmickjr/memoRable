@@ -378,6 +378,10 @@ export class DeviceRegistry {
         hasCamera: capabilities?.hasCamera ?? (deviceType === 'mobile'),
         hasCalendar: capabilities?.hasCalendar ?? true,
         hasMicrophone: capabilities?.hasMicrophone ?? (deviceType !== 'api'),
+        hasLidar: capabilities?.hasLidar ?? false,
+        hasTranscription: capabilities?.hasTranscription ?? (deviceType !== 'api'),
+        hasBiometrics: capabilities?.hasBiometrics ?? (deviceType === 'wearable'),
+        hasAmbient: capabilities?.hasAmbient ?? (deviceType === 'mobile' || deviceType === 'wearable'),
         isAlwaysOn: capabilities?.isAlwaysOn ?? (deviceType === 'api'),
       },
     };
