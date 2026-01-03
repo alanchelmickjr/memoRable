@@ -12,9 +12,9 @@ COPY package*.json ./
 # If using pnpm, uncomment and adjust:
 # COPY pnpm-lock.yaml ./
 
-# Install app dependencies
+# Install app dependencies (skip prepare/husky hooks)
 # If using pnpm, replace npm ci with pnpm install --frozen-lockfile
-RUN npm ci --only=production
+RUN npm ci --only=production --ignore-scripts
 
 # Copy the rest of the application code
 COPY . .

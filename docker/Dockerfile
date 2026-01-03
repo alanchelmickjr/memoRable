@@ -20,8 +20,8 @@ WORKDIR /usr/src/app
 # Copy package files
 COPY package*.json ./
 
-# Install app dependencies
-RUN npm install
+# Install app dependencies (skip prepare/husky hooks)
+RUN npm install --ignore-scripts
 
 # Copy app source
 COPY . .
