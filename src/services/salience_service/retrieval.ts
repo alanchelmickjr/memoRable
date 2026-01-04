@@ -455,3 +455,62 @@ export async function getMemoriesWithUpcomingDeadlines(
     return [];
   }
 }
+
+/**
+ * Simple retrieval by query - wrapper for index.ts usage.
+ * Searches memories by text matching and applies salience ranking.
+ */
+export async function retrieveMemoriesByQuery(
+  userId: string,
+  query: string,
+  options: {
+    limit?: number;
+    minSalience?: number;
+  } = {}
+): Promise<ScoredMemory[]> {
+  const limit = options.limit ?? 10;
+  const minSalience = options.minSalience ?? 0;
+
+  try {
+    // Simple text search - in production would use vector search
+    const searchRegex = new RegExp(query.split(/\s+/).join('|'), 'i');
+
+    const memories = await collections.memories()
+      .find({
+        userId,
+        $or: [
+          { text: { $regex: searchRegex } },
+          { content: { $regex: searchRegex } },
+          { 'extractedFeatures.topics': { $regex: searchRegex } },
+          { 'extractedFeatures.peopleMentioned': { $regex: searchRegex } },
+        ],
+        ...(minSalience > 0 ? { salienceScore: { $gte: minSalience } } : {}),
+      } as any)
+      .sort({ salienceScore: -1, createdAt: -1 })
+      .limit(limit * 3)
+      .toArray();
+
+    const candidates = memories.map((m: any) => ({
+      memoryId: m.memoryId || m._id?.toString() || m.mementoId,
+      text: m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)),
+      createdAt: m.createdAt || m.eventTimestamp || new Date().toISOString(),
+      semanticSimilarity: 0.8, // Placeholder since no vector search
+      salienceScore: m.salienceScore,
+      salienceComponents: m.salienceComponents,
+      peopleMentioned: m.extractedFeatures?.peopleMentioned,
+      topics: m.extractedFeatures?.topics,
+      hasOpenLoops: m.hasOpenLoops,
+      earliestDueDate: m.earliestDueDate,
+    }));
+
+    return retrieveWithSalience(candidates, {
+      query,
+      userId,
+      limit,
+      minSalience,
+    });
+  } catch (error) {
+    console.error('[Retrieval] Error retrieving memories by query:', error);
+    return [];
+  }
+}

@@ -173,8 +173,7 @@ async function getHighSalienceMemories(
   // For now, return empty - this connects to the main memory storage
   try {
     // Assuming memories collection has salience data
-    const db = collections.openLoops().s.db; // Get db reference
-    const memoriesCollection = db.collection('memories');
+    const memoriesCollection = collections.memories();
 
     const memories = await memoriesCollection
       .find({
@@ -208,14 +207,13 @@ async function getRecentMemories(
   limit: number
 ): Promise<BriefingMemory[]> {
   try {
-    const db = collections.openLoops().s.db;
-    const memoriesCollection = db.collection('memories');
+    const memoriesCollection = collections.memories();
 
     const memories = await memoriesCollection
       .find({
         userId,
         'extractedFeatures.peopleMentioned': { $regex: new RegExp(contactId, 'i') },
-      })
+      } as any)
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();

@@ -48,7 +48,7 @@ import { randomUUID } from 'crypto';
 import {
   enrichMemoryWithSalience,
   enrichMemoryWithSalienceHeuristic,
-  retrieveWithSalience,
+  retrieveMemoriesByQuery,
   generateBriefing,
   generateQuickBriefing,
   getOpenLoops,
@@ -84,6 +84,7 @@ import {
   type LLMClient,
   type CalendarEvent,
   type FeedbackSignal,
+  type ScoredMemory,
 } from '../salience_service/index.js';
 
 // Device types for multi-device support
@@ -1504,7 +1505,7 @@ function createServer(): Server {
 
           // For now, use a simple implementation
           // In production, this would use vector search + salience ranking
-          const memories = await retrieveWithSalience(
+          const memories = await retrieveMemoriesByQuery(
             CONFIG.defaultUserId,
             query,
             { limit, minSalience }
@@ -1512,8 +1513,8 @@ function createServer(): Server {
 
           // Filter by person if specified
           const filtered = person
-            ? memories.filter((m) =>
-                m.memory.extractedFeatures?.peopleMentioned?.some(
+            ? memories.filter((m: ScoredMemory) =>
+                m.peopleMentioned?.some(
                   (p: string) => p.toLowerCase().includes(person.toLowerCase())
                 )
               )
@@ -1524,13 +1525,13 @@ function createServer(): Server {
               {
                 type: 'text',
                 text: JSON.stringify(
-                  filtered.map((m) => ({
-                    id: m.memory.memoryId,
-                    text: m.memory.text?.slice(0, 500),
-                    salience: m.memory.salienceScore,
+                  filtered.map((m: ScoredMemory) => ({
+                    id: m.memoryId,
+                    text: m.text?.slice(0, 500),
+                    salience: m.salienceScore,
                     relevance: m.retrievalScore,
-                    people: m.memory.extractedFeatures?.peopleMentioned,
-                    createdAt: m.memory.createdAt,
+                    people: m.peopleMentioned,
+                    createdAt: m.createdAt,
                   })),
                   null,
                   2
@@ -1575,8 +1576,8 @@ function createServer(): Server {
               {
                 type: 'text',
                 text: JSON.stringify(
-                  loops.map((loop) => ({
-                    id: loop._id?.toString(),
+                  loops.map((loop: any) => ({
+                    id: loop.id || loop._id?.toString(),
                     description: loop.description,
                     owner: loop.owner,
                     otherParty: loop.otherParty,
@@ -2413,7 +2414,7 @@ function createServer(): Server {
 
     switch (uri) {
       case 'memory://recent': {
-        const memories = await retrieveWithSalience(
+        const memories = await retrieveMemoriesByQuery(
           CONFIG.defaultUserId,
           '', // Empty query = recent
           { limit: 20, minSalience: 30 }
@@ -2425,12 +2426,12 @@ function createServer(): Server {
               uri,
               mimeType: 'application/json',
               text: JSON.stringify(
-                memories.map((m) => ({
-                  id: m.memory.memoryId,
-                  text: m.memory.text?.slice(0, 300),
-                  salience: m.memory.salienceScore,
-                  people: m.memory.extractedFeatures?.peopleMentioned,
-                  createdAt: m.memory.createdAt,
+                memories.map((m: ScoredMemory) => ({
+                  id: m.memoryId,
+                  text: m.text?.slice(0, 300),
+                  salience: m.salienceScore,
+                  people: m.peopleMentioned,
+                  createdAt: m.createdAt,
                 })),
                 null,
                 2
@@ -2449,8 +2450,8 @@ function createServer(): Server {
               uri,
               mimeType: 'application/json',
               text: JSON.stringify(
-                loops.map((loop) => ({
-                  id: loop._id?.toString(),
+                loops.map((loop: any) => ({
+                  id: loop.id || loop._id?.toString(),
                   description: loop.description,
                   owner: loop.owner,
                   otherParty: loop.otherParty,
@@ -2478,15 +2479,15 @@ function createServer(): Server {
               mimeType: 'application/json',
               text: JSON.stringify(
                 {
-                  active: active.map((r) => ({
+                  active: active.map((r: any) => ({
                     name: r.contactName,
-                    lastInteraction: r.lastInteractionAt,
+                    lastInteraction: r.lastInteraction || r.lastInteractionAt,
                     interactionCount: r.totalInteractions,
-                    trend: r.engagementTrend,
+                    trend: r.interactionTrend || r.engagementTrend,
                   })),
-                  cold: cold.map((r) => ({
+                  cold: cold.map((r: any) => ({
                     name: r.contactName,
-                    lastInteraction: r.lastInteractionAt,
+                    lastInteraction: r.lastInteraction || r.lastInteractionAt,
                     daysSinceContact: r.daysSinceLastInteraction,
                   })),
                 },
@@ -2578,7 +2579,11 @@ What would you like to focus on?`,
           throw new McpError(ErrorCode.InvalidParams, 'person argument is required');
         }
 
-        const briefing = await generateBriefing(CONFIG.defaultUserId, person);
+        const briefing = await generateBriefing(CONFIG.defaultUserId, person) as any;
+
+        // Extract loops from openLoops property
+        const youOweThem = briefing.openLoops?.youOweThem || [];
+        const theyOweYou = briefing.openLoops?.theyOweYou || [];
 
         return {
           messages: [
@@ -2589,23 +2594,23 @@ What would you like to focus on?`,
                 text: `Here's what you should know before talking to ${person}:
 
 ## What You Owe Them
-${briefing.youOweThem?.length ? briefing.youOweThem.map((l: any) => `- ${l.description}`).join('\n') : 'Nothing pending'}
+${youOweThem.length ? youOweThem.map((l: any) => `- ${l.description}`).join('\n') : 'Nothing pending'}
 
 ## What They Owe You
-${briefing.theyOweYou?.length ? briefing.theyOweYou.map((l: any) => `- ${l.description}`).join('\n') : 'Nothing pending'}
+${theyOweYou.length ? theyOweYou.map((l: any) => `- ${l.description}`).join('\n') : 'Nothing pending'}
 
 ## Their Upcoming Events
-${briefing.upcomingEvents?.length ? briefing.upcomingEvents.map((e: any) => `- ${e.description} (${e.eventDate})`).join('\n') : 'None known'}
+${briefing.theirTimeline?.length ? briefing.theirTimeline.map((e: any) => `- ${e.description} (${e.eventDate || 'TBD'})`).join('\n') : 'None known'}
 
 ## Recent Context
-${briefing.recentContext || 'No recent interactions'}
+${briefing.recentMemories?.length ? briefing.recentMemories.map((m: any) => m.text?.slice(0, 100)).join('\n') : 'No recent interactions'}
 
 ## Sensitivities
 ${briefing.sensitivities?.length ? briefing.sensitivities.join('\n') : 'None flagged'}
 
 ## Relationship Status
-- Last interaction: ${briefing.lastInteraction || 'Unknown'}
-- Engagement trend: ${briefing.engagementTrend || 'Unknown'}`,
+- Last interaction: ${briefing.relationship?.lastInteraction || 'Unknown'}
+- Engagement trend: ${briefing.relationship?.trend || 'Unknown'}`,
               },
             },
           ],
@@ -2712,7 +2717,7 @@ function createExpressApp() {
       const accessToken = jwt.sign(
         { userId: authCode.userId, scope: authCode.scope },
         CONFIG.oauth.jwtSecret,
-        { expiresIn: CONFIG.oauth.tokenExpiry }
+        { expiresIn: CONFIG.oauth.tokenExpiry } as jwt.SignOptions
       );
 
       const newRefreshToken = randomUUID();
@@ -2744,7 +2749,7 @@ function createExpressApp() {
       const accessToken = jwt.sign(
         { userId: token.userId, scope: token.scope },
         CONFIG.oauth.jwtSecret,
-        { expiresIn: CONFIG.oauth.tokenExpiry }
+        { expiresIn: CONFIG.oauth.tokenExpiry } as jwt.SignOptions
       );
 
       return res.json({
