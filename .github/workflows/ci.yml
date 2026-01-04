@@ -71,7 +71,7 @@ jobs:
       run: |
         docker compose -f docker-compose.yml build
         docker compose -f docker-compose.yml up -d
-        sleep 30
+        sleep 60
         curl -f http://localhost:3000/health || exit 1
         docker compose -f docker-compose.yml down
 
@@ -107,6 +107,6 @@ jobs:
     - name: Run smoke tests
       run: |
         docker compose -f docker-compose.yml up -d
-        sleep 30
+        sleep 60
         ./scripts/smoke-test.sh
         docker compose -f docker-compose.yml down
