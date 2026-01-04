@@ -430,8 +430,8 @@ export async function mergeMemories(
     }
 
     // Merge extracted features
-    const primaryFeatures = primary.extractedFeatures || {};
-    const secondaryFeatures = secondary.extractedFeatures || {};
+    const primaryFeatures = (primary.extractedFeatures || {}) as Partial<ExtractedFeatures>;
+    const secondaryFeatures = (secondary.extractedFeatures || {}) as Partial<ExtractedFeatures>;
 
     const mergedFeatures = {
       peopleMentioned: [...new Set([
@@ -467,7 +467,7 @@ export async function mergeMemories(
           text: mergedText,
           extractedFeatures: { ...primaryFeatures, ...mergedFeatures },
           salienceScore: mergedSalience,
-          mergedFrom: [...(primary.mergedFrom || []), secondaryMemoryId],
+          mergedFrom: [...((primary as any).mergedFrom || []), secondaryMemoryId],
           lastModifiedAt: new Date().toISOString(),
           lastModifiedReason: 'merge',
         },

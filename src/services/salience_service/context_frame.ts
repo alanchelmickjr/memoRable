@@ -22,9 +22,21 @@
  * queries relevant memories when components change.
  */
 
-import type { RedisClientType } from 'redis';
+// Redis client type - using generic interface to avoid direct redis dependency
+interface RedisClientType {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, options?: { EX?: number }): Promise<unknown>;
+  setEx?(key: string, seconds: number, value: string): Promise<unknown>;
+  del(key: string): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
+  hGetAll?(key: string): Promise<Record<string, string>>;
+  hSet?(key: string, field: string, value: string): Promise<number>;
+  sAdd?(key: string, ...members: string[]): Promise<number>;
+  sRem?(key: string, ...members: string[]): Promise<number>;
+  sMembers?(key: string): Promise<string[]>;
+}
 import { collections } from './database';
-import { retrieveWithSalience, getMemoriesForPerson } from './retrieval';
+import { retrieveMemoriesByQuery, getMemoriesForPerson } from './retrieval';
 import { generateQuickBriefing } from './briefing_generator';
 import { getOpenLoops } from './open_loop_tracker';
 import { getUpcomingEventsForContact } from './timeline_tracker';
@@ -610,18 +622,18 @@ async function getPersonContext(
   // Get memories involving this person
   const memoriesRaw = await getMemoriesForPerson(userId, person, { limit: 10 });
   const memories: SurfacedMemory[] = memoriesRaw.map(m => ({
-    memoryId: m.memory.memoryId,
-    text: m.memory.text?.slice(0, 200) || '',
+    memoryId: m.memoryId,
+    text: m.text?.slice(0, 200) || '',
     relevanceScore: m.retrievalScore,
-    salienceScore: m.memory.salienceScore || 0,
+    salienceScore: m.salienceScore || 0,
     matchedOn: ['person'],
-    createdAt: m.memory.createdAt || '',
+    createdAt: m.createdAt || '',
   }));
 
   // Get open loops with this person
   const loopsRaw = await getOpenLoops(userId, { contactName: person });
-  const loops: LoopSummary[] = loopsRaw.map(l => ({
-    id: l._id?.toString() || l.id,
+  const loops: LoopSummary[] = loopsRaw.map((l: any) => ({
+    id: l.id || l._id?.toString(),
     description: l.description,
     owner: l.owner,
     isOverdue: l.isOverdue,
@@ -669,15 +681,15 @@ async function getLocationMemories(
   location: string
 ): Promise<SurfacedMemory[]> {
   // Search for memories mentioning this location
-  const memories = await retrieveWithSalience(userId, location, { limit: 5 });
+  const memories = await retrieveMemoriesByQuery(userId, location, { limit: 5 });
 
   return memories.map(m => ({
-    memoryId: m.memory.memoryId,
-    text: m.memory.text?.slice(0, 200) || '',
+    memoryId: m.memoryId,
+    text: m.text?.slice(0, 200) || '',
     relevanceScore: m.retrievalScore,
-    salienceScore: m.memory.salienceScore || 0,
+    salienceScore: m.salienceScore || 0,
     matchedOn: ['location'] as const,
-    createdAt: m.memory.createdAt || '',
+    createdAt: m.createdAt || '',
   }));
 }
 
@@ -688,15 +700,15 @@ async function getActivityMemories(
   userId: string,
   activity: string
 ): Promise<SurfacedMemory[]> {
-  const memories = await retrieveWithSalience(userId, activity, { limit: 5 });
+  const memories = await retrieveMemoriesByQuery(userId, activity, { limit: 5 });
 
   return memories.map(m => ({
-    memoryId: m.memory.memoryId,
-    text: m.memory.text?.slice(0, 200) || '',
+    memoryId: m.memoryId,
+    text: m.text?.slice(0, 200) || '',
     relevanceScore: m.retrievalScore,
-    salienceScore: m.memory.salienceScore || 0,
+    salienceScore: m.salienceScore || 0,
     matchedOn: ['activity'] as const,
-    createdAt: m.memory.createdAt || '',
+    createdAt: m.createdAt || '',
   }));
 }
 
@@ -713,31 +725,31 @@ async function getRecentRelevant(frame: ContextFrame): Promise<SurfacedMemory[]>
 
   if (queryParts.length === 0) {
     // No specific context, just get recent high-salience
-    const memories = await retrieveWithSalience(frame.userId, '', {
+    const memories = await retrieveMemoriesByQuery(frame.userId, '', {
       limit: 10,
       minSalience: 50,
     });
 
     return memories.map(m => ({
-      memoryId: m.memory.memoryId,
-      text: m.memory.text?.slice(0, 200) || '',
+      memoryId: m.memoryId,
+      text: m.text?.slice(0, 200) || '',
       relevanceScore: m.retrievalScore,
-      salienceScore: m.memory.salienceScore || 0,
+      salienceScore: m.salienceScore || 0,
       matchedOn: ['time'] as const,
-      createdAt: m.memory.createdAt || '',
+      createdAt: m.createdAt || '',
     }));
   }
 
   const query = queryParts.join(' ');
-  const memories = await retrieveWithSalience(frame.userId, query, { limit: 10 });
+  const memories = await retrieveMemoriesByQuery(frame.userId, query, { limit: 10 });
 
   return memories.map(m => ({
-    memoryId: m.memory.memoryId,
-    text: m.memory.text?.slice(0, 200) || '',
+    memoryId: m.memoryId,
+    text: m.text?.slice(0, 200) || '',
     relevanceScore: m.retrievalScore,
-    salienceScore: m.memory.salienceScore || 0,
+    salienceScore: m.salienceScore || 0,
     matchedOn: determineMatchReasons(m, frame),
-    createdAt: m.memory.createdAt || '',
+    createdAt: m.createdAt || '',
   }));
 }
 

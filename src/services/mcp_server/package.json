@@ -40,6 +40,9 @@
     "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   },
+  "optionalDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.0.0"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

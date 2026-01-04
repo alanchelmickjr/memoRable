@@ -136,6 +136,7 @@ export {
 } from './briefing_generator';
 export {
   retrieveWithSalience,
+  retrieveMemoriesByQuery,
   logRetrieval,
   boostOnRetrieval,
   timeAwareRetrieve,
@@ -371,10 +372,11 @@ export async function enrichMemoryWithSalience(
 
     // Track created artifacts
     for (const loop of openLoops) {
-      incOpenLoopsCreated(loop.owner);
+      const owner = loop.owner === 'unknown' ? 'mutual' : loop.owner;
+      incOpenLoopsCreated(owner);
     }
     for (const event of timelineEvents) {
-      incTimelineEvents(event.type || 'unknown');
+      incTimelineEvents(event.eventType || 'unknown');
     }
     if (closedLoopIds.length > 0) {
       for (let i = 0; i < closedLoopIds.length; i++) {
@@ -538,7 +540,7 @@ export async function getSalienceStatus(userId: string): Promise<{
   const { collections } = await import('./database');
   const { getEffectiveWeights } = await import('./adaptive_learning');
   const { getActiveRelationships, getColdRelationships } = await import('./relationship_tracker');
-  const { getUpcomingEvents, getOverdueLoops } = await import('./open_loop_tracker');
+  const { getUpcomingDueLoops, getOverdueLoops } = await import('./open_loop_tracker');
 
   const [
     youOweLops,
@@ -554,7 +556,7 @@ export async function getSalienceStatus(userId: string): Promise<{
     collections.openLoops().countDocuments({ userId, owner: 'them', status: 'open' }),
     collections.openLoops().countDocuments({ userId, owner: 'mutual', status: 'open' }),
     getOverdueLoops(userId),
-    getUpcomingEvents(userId, 14),
+    getUpcomingDueLoops(userId, 14),
     getActiveRelationships(userId),
     getColdRelationships(userId),
     getEffectiveWeights(userId),

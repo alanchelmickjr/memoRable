@@ -163,7 +163,7 @@ export class AnthropicLLMClient implements LLMClient {
       throw new Error(`Anthropic API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { content: Array<{ text: string }> };
     return data.content[0].text;
   }
 }
@@ -213,7 +213,7 @@ export class OpenAILLMClient implements LLMClient {
       throw new Error(`OpenAI API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { choices: Array<{ message: { content: string } }> };
     return data.choices[0].message.content;
   }
 }
