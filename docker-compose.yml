@@ -358,7 +358,7 @@ services:
     restart: unless-stopped
 
   memorable_mongodb_exporter: # Renamed from 'mongodb-exporter'
-    image: percona/mongodb_exporter:latest
+    image: percona/mongodb_exporter:0.40
     container_name: memorable_mongo_exporter
     command:
       - '--mongodb.uri=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin'
