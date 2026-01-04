@@ -8,12 +8,12 @@
     "skipLibCheck": true,
     "declaration": true,
     "outDir": "./dist",
-    "rootDir": ".",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "downlevelIteration": true,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "lib": ["ES2020"]
   },
   "include": ["*.ts", "salience_service/**/*.ts"],
   "exclude": ["node_modules", "dist"]

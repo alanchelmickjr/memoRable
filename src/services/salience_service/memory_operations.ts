@@ -12,9 +12,15 @@
  * - Users control their data
  */
 
-import { ObjectId } from 'mongodb';
 import { collections } from './database';
-import type { ExtractedFeatures, OpenLoop, PersonTimelineEvent } from './models';
+import type { ExtractedFeatures, MemoryDocument } from './models';
+
+// Declare console for Node.js environment
+declare const console: {
+  log: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+};
 
 // ============================================================================
 // MEMORY LIFECYCLE STATES
@@ -139,7 +145,7 @@ export async function forgetMemory(
       reason: options.reason,
       changedAt: new Date().toISOString(),
       changedBy: 'user',
-    });
+    }, userId);
 
     return {
       success: true,
@@ -260,7 +266,7 @@ export async function restoreMemory(
       reason: 'User restored',
       changedAt: new Date().toISOString(),
       changedBy: 'user',
-    });
+    }, userId);
 
     return { success: true, previousState };
   } catch (error) {
@@ -320,7 +326,7 @@ export async function reassociateMemory(
     if (options.addPeople?.length) {
       const currentPeople = features.peopleMentioned || [];
       const newPeople = options.addPeople.filter(
-        p => !currentPeople.some(cp => cp.toLowerCase() === p.toLowerCase())
+        (p: string) => !currentPeople.some((cp: string) => cp.toLowerCase() === p.toLowerCase())
       );
       if (newPeople.length > 0) {
         updateOps.$addToSet['extractedFeatures.peopleMentioned'] = { $each: newPeople };
@@ -572,7 +578,7 @@ export async function exportMemories(
   }
 
   const memories = await collections.memories().find(query).toArray();
-  const memoryIds = memories.map(m => m.memoryId);
+  const memoryIds = memories.map((m: { memoryId: string }) => m.memoryId);
 
   // Get related loops
   let loopsMap = new Map<string, any[]>();
@@ -613,8 +619,8 @@ export async function exportMemories(
     salienceScore: m.salienceScore,
     people: m.extractedFeatures?.peopleMentioned || [],
     topics: m.extractedFeatures?.topics || [],
-    tags: m.tags,
-    project: m.project,
+    tags: Array.isArray(m.tags) ? m.tags : undefined,
+    project: typeof m.project === 'string' ? m.project : undefined,
     loops: (loopsMap.get(m.memoryId) || []).map(l => ({
       description: l.description,
       owner: l.owner,
@@ -680,13 +686,12 @@ export async function importMemories(
         extractedFeatures: {
           peopleMentioned: memory.people,
           topics: memory.topics,
-        },
+        } as Partial<ExtractedFeatures> as ExtractedFeatures,
         tags: memory.tags,
         project: options.targetProject || memory.project,
         state: 'active',
-        importedAt: new Date().toISOString(),
         importedFrom: memory.id,
-      });
+      } as any);
 
       // Import loops
       for (const loop of memory.loops || []) {
@@ -699,8 +704,12 @@ export async function importMemories(
           status: loop.status as any,
           dueDate: loop.dueDate,
           createdAt: new Date().toISOString(),
-          importedAt: new Date().toISOString(),
-        });
+          loopType: 'follow_up_needed',
+          category: 'other',
+          urgency: 'normal',
+          remindedCount: 0,
+          escalateAfterDays: 7,
+        } as any);
       }
 
       // Import timeline events
@@ -713,8 +722,12 @@ export async function importMemories(
           eventDate: event.eventDate,
           contactName: event.contactName,
           createdAt: new Date().toISOString(),
-          importedAt: new Date().toISOString(),
-        });
+          updatedAt: new Date().toISOString(),
+          eventType: 'personal',
+          isRecurring: false,
+          goodToMention: true,
+          sensitivity: 'neutral',
+        } as any);
       }
 
       imported++;
@@ -730,11 +743,20 @@ export async function importMemories(
 // HELPERS
 // ============================================================================
 
-async function logStateChange(change: MemoryStateChange): Promise<void> {
+async function logStateChange(change: MemoryStateChange, userId?: string): Promise<void> {
   try {
-    await collections.stateChanges?.().insertOne(change);
+    await collections.stateChanges?.().insertOne({
+      memoryId: change.memoryId,
+      userId: userId || 'unknown',
+      previousState: change.fromState,
+      newState: change.toState,
+      reason: change.reason,
+      changedAt: change.changedAt,
+      changedBy: change.changedBy,
+    });
   } catch {
     // State change logging is non-critical
+    // eslint-disable-next-line no-console
     console.warn('[MemoryOps] Could not log state change');
   }
 }
