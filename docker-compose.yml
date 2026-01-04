@@ -34,10 +34,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8'
+          cpus: ${MEMORABLE_APP_CPU_LIMIT:-4}
           memory: ${MEMORABLE_APP_MEMORY_LIMIT:-4G} # Adjusted for clarity, default to 4G, can be overridden
         reservations:
-          cpus: '4'
+          cpus: ${MEMORABLE_APP_CPU_RESERVATION:-2}
           memory: ${MEMORABLE_APP_MEMORY_RESERVATION:-2G} # Adjusted for clarity, default to 2G
     healthcheck:
       test: /usr/local/bin/health.sh # Assuming this script exists and is relevant
@@ -251,7 +251,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8'
+          cpus: ${OLLAMA_CPU_LIMIT:-4}
           memory: ${OLLAMA_MEMORY_LIMIT:-8G} # Default to 8G, can be overridden
         reservations:
           memory: ${OLLAMA_MEMORY_RESERVATION:-4G} # Default to 4G
