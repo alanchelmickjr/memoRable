@@ -16,5 +16,5 @@
     "lib": ["ES2020"]
   },
   "include": ["*.ts", "../salience_service/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/ingestion_integration.ts"]
+  "exclude": ["node_modules", "dist", "**/ingestion_integration.ts", "../salience_service/ingestion_integration.ts"]
 }
