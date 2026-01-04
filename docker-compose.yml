@@ -148,7 +148,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   # memorable_t2v_transformer: # Removed as DEFAULT_VECTORIZER_MODULE for Weaviate is 'none'
 
