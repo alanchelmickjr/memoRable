@@ -129,12 +129,10 @@ services:
       - "8080:8080" # Default Weaviate port
     environment:
       - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED='true' # As requested
-      - PERSISTENCE_DATA_PATH=/var/lib/weaviate # As requested
-      - DEFAULT_VECTORIZER_MODULE=none # Corrected: Removed single quotes
-      # ENABLE_MODULES and TRANSFORMERS_INFERENCE_API removed as vectorizer is 'none'
-      - CLUSTER_HOSTNAME=memorable_weaviate_node1 # Example for potential clustering
-      - LIMIT_MEMORY=${WEAVIATE_MEMORY:-4Gi}
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - DEFAULT_VECTORIZER_MODULE=none
+      - CLUSTER_HOSTNAME=memorable_weaviate_node1
     volumes:
       - memorable_weaviate_data:/var/lib/weaviate # Persistent data
     networks:
