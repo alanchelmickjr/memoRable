@@ -23,7 +23,15 @@
  * - Offline resilience with catch-up sync
  */
 
-import type { RedisClientType } from 'redis';
+// Redis client type - using generic interface to avoid direct redis dependency
+// The actual redis client is passed in during initialization
+interface RedisClientType {
+  publish(channel: string, message: string): Promise<number>;
+  subscribe(channels: string[], callback: (message: string, channel: string) => void): Promise<void>;
+  unsubscribe(): Promise<void>;
+  pSubscribe(pattern: string, callback: (message: string, channel: string) => void): Promise<void>;
+  pUnsubscribe(): Promise<void>;
+}
 import { EventEmitter } from 'events';
 import {
   DeviceType,
