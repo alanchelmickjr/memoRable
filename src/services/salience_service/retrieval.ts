@@ -14,6 +14,7 @@ import type {
   RetrievalOptions,
   TemporalFocus,
   SalienceComponents,
+  SecurityTier,
 } from './models';
 import { collections, getOrCreateContact } from './database';
 import { calculateDecayModifier, calculateRetrievalBoost } from './salience_calculator';
@@ -43,6 +44,10 @@ export interface ScoredMemory {
   topics?: string[];
   hasOpenLoops?: boolean;
   earliestDueDate?: string;
+
+  // Security tier (for encryption handling on retrieval)
+  securityTier?: SecurityTier;
+  encrypted?: boolean;
 }
 
 /**
@@ -184,6 +189,9 @@ export async function retrieveWithSalience(
       topics: candidate.topics,
       hasOpenLoops: candidate.hasOpenLoops,
       earliestDueDate: candidate.earliestDueDate,
+      // Security tier for encryption handling on retrieval
+      securityTier: (candidate as any).securityTier,
+      encrypted: (candidate as any).encrypted,
     });
   }
 
@@ -501,6 +509,9 @@ export async function retrieveMemoriesByQuery(
       topics: m.extractedFeatures?.topics,
       hasOpenLoops: m.hasOpenLoops,
       earliestDueDate: m.earliestDueDate,
+      // Security tier metadata for encryption handling
+      securityTier: m.securityTier,
+      encrypted: m.encrypted,
     }));
 
     return retrieveWithSalience(candidates, {

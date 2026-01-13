@@ -50,6 +50,16 @@ export type CausalRelationshipType =
 export type GoalStatus = "Active" | "Completed" | "Paused" | "Abandoned";
 
 /**
+ * Security tier for memory classification.
+ * Determines encryption level, LLM routing, and storage behavior.
+ *
+ * - Tier1_General: Standard encryption, external LLM OK, vectors in Weaviate
+ * - Tier2_Personal: Enhanced encryption, local LLM only (Ollama), vectors in Weaviate
+ * - Tier3_Vault: Maximum security, no LLM processing, no vectors, hardware key required
+ */
+export type SecurityTier = "Tier1_General" | "Tier2_Personal" | "Tier3_Vault";
+
+/**
  * Represents a temporal marker.
  */
 export interface TemporalMarker {
@@ -181,6 +191,9 @@ export interface MemoryMemento {
   deviceId?: string; // Unique device identifier
   deviceType?: DeviceType; // Type of device that created this memory
 
+  // Security classification (determines encryption, LLM routing, storage)
+  securityTier?: SecurityTier; // Defaults to Tier2_Personal (safe default)
+
   sourceSystem: string;
   sourceIdentifier?: string;
   contentType: ContentType;
@@ -295,6 +308,9 @@ export interface IngestionRequest {
   // Multi-device support
   deviceId?: string; // Unique device identifier for tracking which device created the memory
   deviceType?: DeviceType; // Type of device (mobile, desktop, web, api, mcp)
+
+  // Security classification
+  securityTier?: SecurityTier; // Defaults to Tier2_Personal if not specified (safe default)
 }
 
 /**

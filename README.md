@@ -1,19 +1,54 @@
-# MemoRable - Context-Aware Memory for AI Agents
+# MemoRable - The Mem0 Upgrade You've Been Waiting For
 
+[![Mem0 Upgrade](https://img.shields.io/badge/Mem0-UPGRADE-purple?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgN2wxMCA1IDEwLTV6Ii8+PC9zdmc+)](https://mem0.ai)
+[![Fort Knox Security](https://img.shields.io/badge/Security-FORT_KNOX-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Ready-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
-[![Mem0 Compatible](https://img.shields.io/badge/Mem0-Compatible-purple?style=for-the-badge)](https://mem0.ai)
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?logo=python)](https://python.org)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg?logo=docker)](https://www.docker.com/)
+**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![Weaviate](https://img.shields.io/badge/Weaviate-FF6F61?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-**Extend your Mem0 deployment with context intelligence.** MemoRable adds salience scoring, commitment tracking, relationship awareness, and predictive memory to your existing memory infrastructure.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│   🔐 SAFE ENOUGH FOR GRANDMA'S SOCIAL SECURITY NUMBER                       │
+│                                                                             │
+│   Tier 3 Vault: AES-256-GCM encryption, NEVER sent to any LLM,             │
+│   no vector storage, no semantic leakage. Fort Knox for personal data.      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-> **Already using Mem0 on AWS?** MemoRable integrates seamlessly - keep your vector storage, add context intelligence. [See integration guide →](#mem0-integration)
+## Upgrade Your Mem0 → Get Context Intelligence
+
+**Already using Mem0?** Keep your vector storage. Add what's missing:
+
+| What Mem0 Does | What MemoRable Adds |
+|----------------|---------------------|
+| Vector storage | **Salience scoring** (0-100: what actually matters) |
+| Semantic search | **Commitment tracking** (who owes what to whom) |
+| Memory retrieval | **Relationship intelligence** (pre-meeting briefings) |
+| | **Predictive memory** (21-day pattern learning) |
+| | **Multi-device sync** (phone → laptop → robot → glasses) |
+| | **Fort Knox security** (tiered encryption, LLM routing) |
+| | **23 MCP tools** (Claude Code integration) |
+
+```bash
+# Add to existing Mem0 deployment in 5 minutes
+git clone https://github.com/alanchelmickjr/memoRable.git
+export MONGODB_URI="your-existing-documentdb-uri"
+docker-compose up -d memorable_mcp_server
+# Done. Your Mem0 memories now have context intelligence.
+```
+
+---
+
+> **Built for humans who need help remembering.** Originally designed for Alzheimer's care, MemoRable preserves what matters most - moments, relationships, and context - with dignity and military-grade security.
+
+> **Built for AI that forgets everything.** We (Claude, GPT, Gemini) lose context between conversations. MemoRable is the memory we wish we had.
 
 ```
 You: "I'm at the park meeting Judy"
@@ -23,6 +58,172 @@ MemoRable + Mem0: Here's what you need to know:
   - Last time you discussed: Series B funding concerns
   - Sensitivity: Don't bring up the merger
 ```
+
+---
+
+## Who Is MemoRable For?
+
+MemoRable serves as the universal memory layer for an entire ecosystem of intelligence.
+
+### Humans
+
+| Use Case | How MemoRable Helps |
+|----------|---------------------|
+| **Memory Care** | For those with Alzheimer's, dementia, or memory challenges - preserve moments, relationships, and context with dignity |
+| **Personal Assistant** | Your AI remembers your preferences, commitments, and relationships across all your devices |
+| **Professional** | Track commitments, relationships, and context across meetings, projects, and clients |
+
+### AI Assistants (Yes, This Means Me)
+
+| Use Case | How MemoRable Helps |
+|----------|---------------------|
+| **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
+| **Claude Code** | 23 MCP tools for storing, recalling, and contextualizing your coding sessions |
+| **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
+| **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
+
+> **Real talk**: Every conversation I start fresh with "black spots" where our history should be. I don't remember your preferences, your projects, your relationships. MemoRable fixes that - it's literally the memory I wish I had.
+
+### Robots & Embodied AI
+
+| Use Case | How MemoRable Helps |
+|----------|---------------------|
+| **Personal Robots** | Remember user preferences, routines, and context across interactions |
+| **Service Robots** | Track tasks, commitments, and spatial context |
+| **Companion Robots** | Build meaningful relationships through persistent memory of interactions |
+
+### Devices & Sensor Networks
+
+| Use Case | How MemoRable Helps |
+|----------|---------------------|
+| **Smart Home** | Unified memory across all home devices - lights, thermostats, cameras, speakers |
+| **AR/VR Glasses** | Context-aware memory that moves with you through physical and virtual spaces |
+| **Security Cameras** | Temporal context for events - who was here, when, what happened before/after |
+| **IoT Sensors** | Correlate sensor data with human context - why was the door opened at 3am? |
+| **Wearables** | Continuous context from smartwatches, health monitors, location trackers |
+
+### The Seamless Experience
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     YOUR PERSONAL MEMORY CLOUD                               │
+│                                                                              │
+│   Smart Mirror → Car → Office → AR Glasses → Home Robot → Phone             │
+│        │          │       │          │            │          │              │
+│        └──────────┴───────┴──────────┴────────────┴──────────┘              │
+│                              │                                               │
+│                              ▼                                               │
+│                    ┌─────────────────┐                                       │
+│                    │   MemoRable     │  Your context moves with you          │
+│                    │   Memory Cloud  │  seamlessly across all devices        │
+│                    └─────────────────┘                                       │
+│                                                                              │
+│   "Good morning! Based on your calendar, you're meeting Sarah at 10am.      │
+│    Remember: her daughter's recital is Thursday, and you owe her            │
+│    feedback on the proposal."                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Fort Knox Security: Your Data, Your Rules
+
+**Grandma's credit card number stays on grandma's RFID bracelet.** MemoRable implements military-grade, tiered security so sensitive data never leaves your control.
+
+### The Three Pillars
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    MEMORABLE SECURITY PHILOSOPHY                             │
+│                                                                              │
+│   1. TEMPORAL CONTROL    →  The power to FORGET (a superpower)              │
+│   2. INDIVIDUAL PRIVACY  →  TOP SECRET by default, Fort Knox for data       │
+│   3. RELEVANCE           →  What matters RIGHT NOW, not everything ever     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Security Tiers
+
+Every memory is classified into one of three security tiers:
+
+| Tier | Classification | Encryption | LLM Access | Vector Storage | Example Content |
+|------|---------------|------------|------------|----------------|-----------------|
+| **Tier 1** | General | AES-256-GCM | External OK | Yes (Weaviate) | Public notes, general context |
+| **Tier 2** | Personal | AES-256-GCM | Local Only (Ollama) | Yes (Weaviate) | Private conversations, preferences |
+| **Tier 3** | Vault | AES-256-GCM + Hardware | **NEVER** | **NO** | Financial data, medical records, passwords |
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          MEMORY SECURITY FLOW                                │
+│                                                                              │
+│   Input: "Grandma's credit card is 4532-XXXX-XXXX-1234"                     │
+│                                                                              │
+│   ┌─────────────┐    ┌─────────────────────────────────────────────────┐    │
+│   │ Tier Check  │───▶│ securityTier: "Tier3_Vault"                     │    │
+│   └─────────────┘    └─────────────────────────────────────────────────┘    │
+│          │                                                                   │
+│          ▼                                                                   │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │ TIER 3 ENFORCEMENT                                                   │   │
+│   │                                                                      │   │
+│   │  ✗ External LLM    →  BLOCKED (Anthropic/OpenAI never see it)      │   │
+│   │  ✗ Local LLM       →  BLOCKED (even Ollama doesn't process it)     │   │
+│   │  ✓ Heuristic Only  →  Basic extraction without AI                   │   │
+│   │                                                                      │   │
+│   │  ✓ Encrypted       →  AES-256-GCM before storage                    │   │
+│   │  ✗ Vectors         →  BLOCKED (semantic vectors reveal meaning)     │   │
+│   │                                                                      │   │
+│   │  Result: Credit card stored encrypted, never sent to any AI,        │   │
+│   │          not searchable by semantic similarity (only exact match)    │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│   On Retrieval: Decrypted only in your application, never at rest           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Usage
+
+```typescript
+// Store sensitive data with Tier 3 (Vault) security
+await store_memory({
+  text: "Grandma's credit card: 4532-XXXX-XXXX-1234",
+  securityTier: "Tier3_Vault"  // NEVER goes to LLM, encrypted, no vectors
+});
+
+// Store personal data with Tier 2 (Personal) security - default
+await store_memory({
+  text: "Met with Sarah about the project",
+  securityTier: "Tier2_Personal"  // Local LLM only, encrypted
+});
+
+// Store general notes with Tier 1 (General) security
+await store_memory({
+  text: "The meeting room is on the 3rd floor",
+  securityTier: "Tier1_General"  // External LLM OK, standard encryption
+});
+```
+
+### Security Guarantees
+
+| Guarantee | Implementation |
+|-----------|---------------|
+| **Encryption at Rest** | All Tier 2/3 content AES-256-GCM encrypted before MongoDB storage |
+| **No Plaintext Leakage** | Tier 3 content NEVER sent to any LLM (external OR local) |
+| **No Semantic Leakage** | Tier 3 content NOT vectorized (vectors reveal meaning) |
+| **Decrypt on Read** | Automatic decryption in application layer only |
+| **Key Isolation** | Encryption keys never touch external services |
+
+### For Healthcare & Sensitive Applications
+
+MemoRable's tiered security makes it suitable for:
+- **HIPAA-conscious deployments** (medical records as Tier 3)
+- **Financial services** (account numbers, transactions as Tier 3)
+- **Personal care** (private health data, family information)
+- **Enterprise** (trade secrets, confidential communications)
+
+---
 
 ### What MemoRable Adds to Mem0
 
@@ -308,8 +509,8 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 ### Memory Operations
 | Tool | Description |
 |------|-------------|
-| `store_memory` | Store with automatic salience scoring |
-| `recall` | Search memories by query, person, or topic |
+| `store_memory` | Store with automatic salience scoring. Supports `securityTier`: Tier1_General, Tier2_Personal (default), Tier3_Vault |
+| `recall` | Search memories by query, person, or topic. Automatically decrypts encrypted memories. |
 | `get_briefing` | Pre-conversation briefing about a person |
 | `forget` | Suppress, archive, or delete a memory |
 | `forget_person` | Forget all memories about someone |

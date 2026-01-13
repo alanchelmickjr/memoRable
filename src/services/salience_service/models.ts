@@ -544,6 +544,16 @@ export interface EnrichedMemoryData {
 /**
  * Memory document stored in the memories collection.
  */
+/**
+ * Security tier for memory classification.
+ * Determines encryption level, LLM routing, and storage behavior.
+ *
+ * - Tier1_General: Standard encryption, external LLM OK, vectors in Weaviate
+ * - Tier2_Personal: Enhanced encryption, local LLM only (Ollama), vectors in Weaviate
+ * - Tier3_Vault: Maximum security, no LLM processing, no vectors, heuristic only
+ */
+export type SecurityTier = 'Tier1_General' | 'Tier2_Personal' | 'Tier3_Vault';
+
 export interface MemoryDocument {
   _id?: string;
   mementoId?: string;
@@ -562,6 +572,11 @@ export interface MemoryDocument {
   lastRetrievedAt?: string;
   hasOpenLoops?: boolean;
   earliestDueDate?: string;
+  // Security tier classification
+  securityTier?: SecurityTier;
+  // Encryption metadata (for Tier2/3)
+  encrypted?: boolean;
+  encryptionVersion?: string;
   [key: string]: unknown;
 }
 

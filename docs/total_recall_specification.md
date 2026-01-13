@@ -1,5 +1,16 @@
 # MemoRable - Total Recall: Embedding and Data Ingestion Specification
 
+> **HISTORICAL DOCUMENT (v1.0 Design)**
+>
+> This specification represents the original architectural vision. Key changes since this was written:
+> - **NNNA (Nocturnal batch processing) has been deprecated** - replaced by Real-Time Relevance Engine
+> - **Security Tiers added** - Tier1_General, Tier2_Personal, Tier3_Vault for data classification
+> - **Encryption at rest** - Tier2/3 content now AES-256-GCM encrypted
+>
+> For current architecture, see: [SECURITY_ARCHITECTURE.md](./SECURITY_ARCHITECTURE.md), [DATA_FLOW_DIAGRAM.md](./DATA_FLOW_DIAGRAM.md)
+
+---
+
 ## 0. Introduction
 
 This document details the specification for the "MemoRable - Total Recall" embedding and data ingestion system. It builds upon the foundational concepts outlined in the project's [`README.md`](../README.md), [`memoRable_implementation_plan.md`](../memoRable_implementation_plan.md), and [`docs/technical-architecture.md`](./technical-architecture.md). The primary goal is to define how multifaceted memory items are structured, embedded, ingested, and retrieved to provide AI agents with comprehensive and contextually rich recall capabilities.

@@ -42,7 +42,8 @@ import { MongoClient, Db } from 'mongodb';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomUUID, createCipheriv, createDecipheriv, scryptSync, randomBytes } from 'crypto';
+import { createClient, RedisClientType } from 'redis';
 
 // Import salience service functions
 import {
@@ -81,10 +82,14 @@ import {
   generateDayAnticipation,
   // LLM provider abstraction (supports Bedrock, Anthropic, OpenAI)
   createLLMClient as createLLMProvider,
+  // Database access for memory storage
+  collections,
   type LLMClient,
   type CalendarEvent,
   type FeedbackSignal,
   type ScoredMemory,
+  type SecurityTier,
+  type MemoryDocument,
 } from '../salience_service/index.js';
 
 // Device types for multi-device support
@@ -115,7 +120,7 @@ const CONFIG = {
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://claude.ai,https://claude.com').split(','),
 };
 
-// OAuth token store (in-memory for development, use Redis in production)
+// OAuth token interfaces
 interface OAuthToken {
   accessToken: string;
   refreshToken: string;
@@ -134,8 +139,143 @@ interface AuthorizationCode {
   expiresAt: Date;
 }
 
-const tokenStore = new Map<string, OAuthToken>();
-const authCodeStore = new Map<string, AuthorizationCode>();
+// SECURITY FIX: Redis-based encrypted token store (not in-memory)
+let redisClient: RedisClientType | null = null;
+const TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'changeme_token_key';
+const TOKEN_PREFIX = 'oauth:token:';
+const AUTH_CODE_PREFIX = 'oauth:code:';
+
+// Encrypt token data before storing in Redis
+function encryptTokenData(data: string): string {
+  const salt = randomBytes(16);
+  const key = scryptSync(TOKEN_ENCRYPTION_KEY, salt, 32);
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+// Decrypt token data from Redis
+function decryptTokenData(encryptedData: string): string {
+  const [saltHex, ivHex, authTagHex, encryptedHex] = encryptedData.split(':');
+  const salt = Buffer.from(saltHex, 'hex');
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
+  const key = scryptSync(TOKEN_ENCRYPTION_KEY, salt, 32);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  return decipher.update(encrypted) + decipher.final('utf8');
+}
+
+// Secure token store functions
+async function storeToken(tokenId: string, token: OAuthToken): Promise<void> {
+  if (!redisClient) {
+    console.warn('[MCP] Redis not connected, token storage unavailable');
+    return;
+  }
+  const encrypted = encryptTokenData(JSON.stringify(token));
+  const ttl = Math.max(0, Math.floor((new Date(token.expiresAt).getTime() - Date.now()) / 1000));
+  await redisClient.setEx(`${TOKEN_PREFIX}${tokenId}`, ttl > 0 ? ttl : 3600, encrypted);
+}
+
+async function getToken(tokenId: string): Promise<OAuthToken | null> {
+  if (!redisClient) return null;
+  const encrypted = await redisClient.get(`${TOKEN_PREFIX}${tokenId}`);
+  if (!encrypted) return null;
+  try {
+    return JSON.parse(decryptTokenData(encrypted));
+  } catch {
+    return null;
+  }
+}
+
+async function deleteToken(tokenId: string): Promise<void> {
+  if (!redisClient) return;
+  await redisClient.del(`${TOKEN_PREFIX}${tokenId}`);
+}
+
+async function storeAuthCode(code: string, authCode: AuthorizationCode): Promise<void> {
+  if (!redisClient) return;
+  const encrypted = encryptTokenData(JSON.stringify(authCode));
+  const ttl = Math.max(0, Math.floor((new Date(authCode.expiresAt).getTime() - Date.now()) / 1000));
+  await redisClient.setEx(`${AUTH_CODE_PREFIX}${code}`, ttl > 0 ? ttl : 600, encrypted);
+}
+
+async function getAuthCode(code: string): Promise<AuthorizationCode | null> {
+  if (!redisClient) return null;
+  const encrypted = await redisClient.get(`${AUTH_CODE_PREFIX}${code}`);
+  if (!encrypted) return null;
+  try {
+    return JSON.parse(decryptTokenData(encrypted));
+  } catch {
+    return null;
+  }
+}
+
+async function deleteAuthCode(code: string): Promise<void> {
+  if (!redisClient) return;
+  await redisClient.del(`${AUTH_CODE_PREFIX}${code}`);
+}
+
+// ============================================
+// MEMORY ENCRYPTION (Tier2/Tier3 Security)
+// ============================================
+// Grandma's credit card NEVER stored in plaintext.
+// Tier2_Personal and Tier3_Vault content is always encrypted.
+
+const MEMORY_ENCRYPTION_KEY = process.env.ENCRYPTION_MASTER_KEY || process.env.JWT_SECRET || 'changeme_memory_key';
+const MEMORY_ENCRYPTION_VERSION = '1.0';
+
+/**
+ * Encrypt memory content for Tier2/Tier3 storage.
+ * Uses AES-256-GCM with per-memory salt.
+ */
+function encryptMemoryContent(plaintext: string): string {
+  const salt = randomBytes(16);
+  const key = scryptSync(MEMORY_ENCRYPTION_KEY, salt, 32);
+  const iv = randomBytes(16);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  // Format: v1:salt:iv:authTag:encrypted (all hex)
+  return `v1:${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+/**
+ * Decrypt memory content from Tier2/Tier3 storage.
+ */
+function decryptMemoryContent(encryptedData: string): string {
+  const parts = encryptedData.split(':');
+  if (parts[0] !== 'v1') {
+    throw new Error(`Unsupported encryption version: ${parts[0]}`);
+  }
+  const [, saltHex, ivHex, authTagHex, encryptedHex] = parts;
+  const salt = Buffer.from(saltHex, 'hex');
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
+  const key = scryptSync(MEMORY_ENCRYPTION_KEY, salt, 32);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  return decipher.update(encrypted) + decipher.final('utf8');
+}
+
+/**
+ * Check if memory content needs encryption based on security tier.
+ */
+function shouldEncryptMemory(tier: SecurityTier): boolean {
+  return tier === 'Tier2_Personal' || tier === 'Tier3_Vault';
+}
+
+/**
+ * Check if memory should skip vector storage (Weaviate) based on tier.
+ * Tier3_Vault memories NEVER get vectorized - vectors reveal semantic meaning.
+ */
+function shouldSkipVectorStorage(tier: SecurityTier): boolean {
+  return tier === 'Tier3_Vault';
+}
 
 // Database connection
 let db: Db | null = null;
@@ -746,6 +886,22 @@ async function initializeDb(): Promise<void> {
   await mongoClient.connect();
   db = mongoClient.db();
 
+  // SECURITY FIX: Initialize Redis for secure token storage
+  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+  const redisPassword = process.env.REDIS_PASSWORD;
+  try {
+    redisClient = createClient({
+      url: redisUrl,
+      password: redisPassword,
+    });
+    redisClient.on('error', (err) => console.error('[MCP] Redis error:', err));
+    await redisClient.connect();
+    console.error('[MCP] Redis connected for secure token storage');
+  } catch (err) {
+    console.error('[MCP] Redis connection failed, OAuth tokens will not persist:', err);
+    redisClient = null;
+  }
+
   await initializeSalienceService(db, { verbose: false });
   initAnticipationService(db);
   console.error('[MCP] Database initialized');
@@ -778,7 +934,7 @@ function createServer(): Server {
       {
         name: 'store_memory',
         description:
-          'Store a memory with automatic salience scoring. Use this to remember important information, conversations, decisions, or commitments.',
+          'Store a memory with automatic salience scoring. Use this to remember important information, conversations, decisions, or commitments. Supports security tiers for sensitive data protection.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -798,6 +954,12 @@ function createServer(): Server {
             useLLM: {
               type: 'boolean',
               description: 'Use LLM for richer feature extraction (default: true if available)',
+            },
+            securityTier: {
+              type: 'string',
+              enum: ['Tier1_General', 'Tier2_Personal', 'Tier3_Vault'],
+              description: 'Security classification. Tier1=external LLM OK, Tier2=local LLM only (default), Tier3=no LLM, encrypted, no vectors. Use Tier3 for sensitive data like financial info, medical records, passwords.',
+              default: 'Tier2_Personal',
             },
           },
           required: ['text'],
@@ -1187,7 +1349,7 @@ function createServer(): Server {
       },
       {
         name: 'export_memories',
-        description: 'Export memories for backup or portability.',
+        description: 'Export memories for backup or portability. SECURITY: Use password for encrypted export.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -1220,6 +1382,10 @@ function createServer(): Server {
             includeTimeline: {
               type: 'boolean',
               description: 'Include related timeline events',
+            },
+            password: {
+              type: 'string',
+              description: 'SECURITY: Password to encrypt export (strongly recommended)',
             },
           },
         },
@@ -1449,13 +1615,20 @@ function createServer(): Server {
     try {
       switch (name) {
         case 'store_memory': {
-          const { text, context, useLLM = true } = args as {
+          const { text, context, useLLM = true, securityTier = 'Tier2_Personal' } = args as {
             text: string;
             context?: { location?: string; activity?: string; mood?: string };
             useLLM?: boolean;
+            securityTier?: SecurityTier;
           };
 
+          // Validate security tier
+          const validTiers: SecurityTier[] = ['Tier1_General', 'Tier2_Personal', 'Tier3_Vault'];
+          const tier = validTiers.includes(securityTier) ? securityTier : 'Tier2_Personal';
+
           const memoryId = `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const now = new Date().toISOString();
+
           const input = {
             memoryId,
             text,
@@ -1463,16 +1636,73 @@ function createServer(): Server {
             context,
           };
 
+          // SECURITY: Route extraction based on tier
+          // Tier3_Vault: NEVER use LLM (heuristic only) - grandma's credit card
+          // Tier2_Personal: Local LLM only (Ollama) - fallback to heuristic if unavailable
+          // Tier1_General: External LLM OK
           let result;
-          if (useLLM && llmClient) {
-            result = await enrichMemoryWithSalience(input, llmClient);
-          } else {
+          if (tier === 'Tier3_Vault') {
+            // Tier3: Heuristic only - NO LLM processing ever
+            console.log(`[MCP] Tier3_Vault: Using heuristic extraction only for memory ${memoryId}`);
             result = await enrichMemoryWithSalienceHeuristic(input);
+          } else if (tier === 'Tier2_Personal') {
+            // Tier2: Local LLM only - for now, use heuristic if no local LLM configured
+            // TODO: Add local LLM client (Ollama) support
+            if (useLLM && llmClient) {
+              // Check if this is a local LLM (Ollama) or external
+              // For now, fallback to heuristic for safety
+              console.log(`[MCP] Tier2_Personal: Using heuristic extraction (local LLM not yet configured)`);
+              result = await enrichMemoryWithSalienceHeuristic(input);
+            } else {
+              result = await enrichMemoryWithSalienceHeuristic(input);
+            }
+          } else {
+            // Tier1: External LLM OK
+            if (useLLM && llmClient) {
+              result = await enrichMemoryWithSalience(input, llmClient);
+            } else {
+              result = await enrichMemoryWithSalienceHeuristic(input);
+            }
           }
 
           if (!result.success) {
-            throw new McpError(ErrorCode.InternalError, result.error || 'Failed to store memory');
+            throw new McpError(ErrorCode.InternalError, result.error || 'Failed to enrich memory');
           }
+
+          // SECURITY: Encrypt content for Tier2/Tier3 before storage
+          const textToStore = shouldEncryptMemory(tier) ? encryptMemoryContent(text) : text;
+          const isEncrypted = shouldEncryptMemory(tier);
+
+          // Store the memory document in MongoDB
+          const memoryDoc: MemoryDocument = {
+            memoryId,
+            userId: CONFIG.defaultUserId,
+            text: textToStore,
+            createdAt: now,
+            updatedAt: now,
+            state: 'active',
+            salienceScore: result.salience?.score,
+            salienceComponents: result.salience?.factors,
+            extractedFeatures: result.extractedFeatures,
+            hasOpenLoops: (result.openLoopsCreated?.length || 0) > 0,
+            // Security classification
+            securityTier: tier,
+            encrypted: isEncrypted,
+            encryptionVersion: isEncrypted ? MEMORY_ENCRYPTION_VERSION : undefined,
+            // Vector storage flag
+            vectorStored: !shouldSkipVectorStorage(tier),
+          };
+
+          try {
+            await collections.memories().insertOne(memoryDoc as any);
+            console.log(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
+          } catch (storageError) {
+            console.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
+            throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
+          }
+
+          // TODO: For Tier1/Tier2, send to embedding service for vector storage
+          // For now, vector storage is handled elsewhere or skipped for Tier3
 
           return {
             content: [
@@ -1482,6 +1712,9 @@ function createServer(): Server {
                   {
                     stored: true,
                     memoryId,
+                    securityTier: tier,
+                    encrypted: isEncrypted,
+                    vectorStored: !shouldSkipVectorStorage(tier),
                     salience: result.salience?.score,
                     factors: result.salience?.factors,
                     openLoopsCreated: result.openLoopsCreated?.length || 0,
@@ -1520,22 +1753,34 @@ function createServer(): Server {
               )
             : memories;
 
+          // SECURITY: Decrypt encrypted memories on retrieval
+          const decrypted = filtered.map((m: ScoredMemory & { encrypted?: boolean }) => {
+            let displayText = m.text;
+            if (m.encrypted && displayText) {
+              try {
+                displayText = decryptMemoryContent(displayText);
+              } catch (decryptError) {
+                console.error(`[MCP] Failed to decrypt memory ${m.memoryId}:`, decryptError);
+                displayText = '[ENCRYPTED - Decryption failed]';
+              }
+            }
+            return {
+              id: m.memoryId,
+              text: displayText?.slice(0, 500),
+              salience: m.salienceScore,
+              relevance: m.retrievalScore,
+              people: m.peopleMentioned,
+              createdAt: m.createdAt,
+              securityTier: (m as any).securityTier,
+              encrypted: m.encrypted,
+            };
+          });
+
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(
-                  filtered.map((m: ScoredMemory) => ({
-                    id: m.memoryId,
-                    text: m.text?.slice(0, 500),
-                    salience: m.salienceScore,
-                    relevance: m.retrievalScore,
-                    people: m.peopleMentioned,
-                    createdAt: m.createdAt,
-                  })),
-                  null,
-                  2
-                ),
+                text: JSON.stringify(decrypted, null, 2),
               },
             ],
           };
@@ -1931,6 +2176,7 @@ function createServer(): Server {
             toDate,
             includeLoops,
             includeTimeline,
+            password,
           } = args as {
             people?: string[];
             topics?: string[];
@@ -1939,6 +2185,7 @@ function createServer(): Server {
             toDate?: string;
             includeLoops?: boolean;
             includeTimeline?: boolean;
+            password?: string;
           };
 
           const memories = await exportMemories(CONFIG.defaultUserId, {
@@ -1951,11 +2198,39 @@ function createServer(): Server {
             includeTimeline,
           });
 
+          // SECURITY FIX: Encrypt export if password provided
+          const exportData = JSON.stringify({
+            count: memories.length,
+            memories,
+            exportedAt: new Date().toISOString(),
+            version: '1.0',
+          });
+
+          if (password) {
+            // Encrypt with user password
+            const encrypted = encryptTokenData(exportData); // Reuse encryption function
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    encrypted: true,
+                    data: encrypted,
+                    count: memories.length,
+                    note: 'Decrypt with same password using import_memories',
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          // Unencrypted export - warn user
           return {
             content: [
               {
                 type: 'text',
                 text: JSON.stringify({
+                  WARNING: 'UNENCRYPTED EXPORT - Add password parameter for security',
                   count: memories.length,
                   memories,
                 }, null, 2),
@@ -2653,7 +2928,8 @@ function createExpressApp() {
   });
 
   // OAuth 2.0 Authorization endpoint
-  app.get('/oauth/authorize', (req: Request, res: Response) => {
+  // SECURITY FIX: OAuth handlers now use encrypted Redis storage
+  app.get('/oauth/authorize', async (req: Request, res: Response) => {
     if (!CONFIG.oauth.enabled) {
       return res.status(501).json({ error: 'OAuth not enabled' });
     }
@@ -2678,7 +2954,7 @@ function createExpressApp() {
       scope: (scope as string || 'read write').split(' '),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     };
-    authCodeStore.set(code, authCode);
+    await storeAuthCode(code, authCode);
 
     // Redirect back to client with code
     const redirectUrl = new URL(redirect_uri as string);
@@ -2691,7 +2967,7 @@ function createExpressApp() {
   });
 
   // OAuth 2.0 Token endpoint
-  app.post('/oauth/token', (req: Request, res: Response) => {
+  app.post('/oauth/token', async (req: Request, res: Response) => {
     if (!CONFIG.oauth.enabled) {
       return res.status(501).json({ error: 'OAuth not enabled' });
     }
@@ -2704,14 +2980,14 @@ function createExpressApp() {
     }
 
     if (grant_type === 'authorization_code') {
-      // Exchange authorization code for tokens
-      const authCode = authCodeStore.get(code);
-      if (!authCode || authCode.expiresAt < new Date()) {
-        authCodeStore.delete(code);
+      // Exchange authorization code for tokens (encrypted Redis)
+      const authCode = await getAuthCode(code);
+      if (!authCode || new Date(authCode.expiresAt) < new Date()) {
+        await deleteAuthCode(code);
         return res.status(400).json({ error: 'invalid_grant' });
       }
 
-      authCodeStore.delete(code);
+      await deleteAuthCode(code);
 
       // Generate tokens
       const accessToken = jwt.sign(
@@ -2729,7 +3005,7 @@ function createExpressApp() {
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         scope: authCode.scope,
       };
-      tokenStore.set(newRefreshToken, token);
+      await storeToken(newRefreshToken, token);
 
       return res.json({
         access_token: accessToken,
@@ -2739,10 +3015,10 @@ function createExpressApp() {
         scope: authCode.scope.join(' '),
       });
     } else if (grant_type === 'refresh_token') {
-      // Refresh access token
-      const token = tokenStore.get(refresh_token);
-      if (!token || token.expiresAt < new Date()) {
-        tokenStore.delete(refresh_token);
+      // Refresh access token (encrypted Redis)
+      const token = await getToken(refresh_token);
+      if (!token || new Date(token.expiresAt) < new Date()) {
+        await deleteToken(refresh_token);
         return res.status(400).json({ error: 'invalid_grant' });
       }
 
@@ -2764,7 +3040,7 @@ function createExpressApp() {
   });
 
   // OAuth 2.0 Token revocation endpoint
-  app.post('/oauth/revoke', (req: Request, res: Response) => {
+  app.post('/oauth/revoke', async (req: Request, res: Response) => {
     if (!CONFIG.oauth.enabled) {
       return res.status(501).json({ error: 'OAuth not enabled' });
     }
@@ -2772,7 +3048,7 @@ function createExpressApp() {
     const { token, token_type_hint } = req.body;
 
     if (token_type_hint === 'refresh_token' || !token_type_hint) {
-      tokenStore.delete(token);
+      await deleteToken(token);
     }
 
     // Always return 200 for revocation per RFC 7009

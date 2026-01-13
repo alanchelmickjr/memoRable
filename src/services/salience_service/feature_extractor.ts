@@ -2,13 +2,12 @@
  * @file Feature Extractor Service
  * Extracts salience-relevant features from memory content using a single LLM call.
  *
- * Cost: ~$0.002-0.003 per memory (Claude Haiku)
+ * SECURITY: Respects SecurityTier for privacy protection.
+ * - Tier3_Vault: NEVER uses external LLM, heuristic only (grandma's credit card)
+ * - Tier2_Personal: Local LLM (Ollama) only, fallback to heuristic
+ * - Tier1_General: External LLM allowed (Anthropic/OpenAI)
  *
- * This is where the "observable signals" get extracted:
- * - Emotional keywords and sentiment
- * - People mentioned and relationship events
- * - Topics, action items, decisions
- * - Commitments, dates, open loops
+ * Cost: ~$0.002-0.003 per memory (Claude Haiku) - Tier1 only
  */
 
 import type {
@@ -21,6 +20,9 @@ import type {
   ActionItem,
   RelationshipEventType,
 } from './models';
+
+// Import SecurityTier type
+import type { SecurityTier } from '../ingestion_service/models';
 
 /**
  * LLM client interface - can be implemented with any LLM provider.
@@ -85,12 +87,63 @@ Field specifications:
 - mutual_agreements: [{what, parties: [], timeframe, specificity: "specific"|"vague"|"none"}]`;
 
 /**
- * Extract features from memory text using LLM.
+ * Extract features from memory text.
+ *
+ * SECURITY: Routes based on SecurityTier to protect sensitive data.
+ * - Tier3_Vault: NEVER sends to external LLM (uses heuristic only)
+ * - Tier2_Personal: Uses local LLM only (Ollama), falls back to heuristic
+ * - Tier1_General: External LLM allowed
+ *
+ * @param text - The memory text to extract features from
+ * @param llmClient - The LLM client (external)
+ * @param currentDate - Current date for resolving relative dates
+ * @param securityTier - Security tier determining LLM routing
+ * @param localLLMClient - Optional local LLM client (Ollama) for Tier2
  */
 export async function extractFeatures(
   text: string,
   llmClient: LLMClient,
-  currentDate: Date = new Date()
+  currentDate: Date = new Date(),
+  securityTier: SecurityTier = 'Tier2_Personal',
+  localLLMClient?: LLMClient
+): Promise<ExtractedFeatures> {
+
+  // SECURITY: Tier3_Vault data NEVER goes to any LLM
+  // This is grandma's credit card - heuristic extraction only
+  if (securityTier === 'Tier3_Vault') {
+    console.log('[FeatureExtractor] Tier3_Vault: Using heuristic extraction only (no LLM)');
+    return extractFeaturesHeuristic(text);
+  }
+
+  // SECURITY: Tier2_Personal uses local LLM only (Ollama)
+  // Falls back to heuristic if local LLM unavailable
+  if (securityTier === 'Tier2_Personal') {
+    if (localLLMClient) {
+      console.log('[FeatureExtractor] Tier2_Personal: Using local LLM (Ollama)');
+      try {
+        return await extractFeaturesWithLLM(text, localLLMClient, currentDate);
+      } catch (error) {
+        console.error('[FeatureExtractor] Local LLM failed, using heuristic:', error);
+        return extractFeaturesHeuristic(text);
+      }
+    } else {
+      console.log('[FeatureExtractor] Tier2_Personal: No local LLM, using heuristic');
+      return extractFeaturesHeuristic(text);
+    }
+  }
+
+  // Tier1_General: External LLM allowed
+  console.log('[FeatureExtractor] Tier1_General: Using external LLM');
+  return extractFeaturesWithLLM(text, llmClient, currentDate);
+}
+
+/**
+ * Internal function to extract features using an LLM client.
+ */
+async function extractFeaturesWithLLM(
+  text: string,
+  llmClient: LLMClient,
+  currentDate: Date
 ): Promise<ExtractedFeatures> {
   const prompt = EXTRACTION_PROMPT
     .replace('{TEXT}', escapeForPrompt(text))

@@ -1,5 +1,17 @@
 # MemoRable - Total Recall: Technical Architecture
 
+> **NOTE: Partially Updated**
+>
+> Core architecture (MongoDB, Weaviate, Redis, microservices) remains accurate. Key updates:
+> - **NNNA → Real-Time Relevance Engine**: Batch processing deprecated; all processing at ingest time
+> - **Dual-Model → Single Engine**: Gemini scanner concept simplified
+> - **Security Tiers added**: Tier1_General, Tier2_Personal, Tier3_Vault
+> - **Encryption at rest**: AES-256-GCM for Tier2/3 content
+>
+> See also: [SECURITY_ARCHITECTURE.md](./SECURITY_ARCHITECTURE.md), [SCALABILITY_ANALYSIS.md](./SCALABILITY_ANALYSIS.md)
+
+---
+
 ## 1. Introduction
 
 MemoRable - Total Recall is an advanced AI memory system designed to provide agents with comprehensive, contextually rich, and adaptive recall capabilities. This document outlines the system architecture, detailing its components, data flows, service boundaries, and operational considerations. It builds upon the foundational concepts in the project's [`README.md`](../README.md), [`memoRable_implementation_plan.md`](../memoRable_implementation_plan.md), and is primarily derived from the detailed specifications in [`docs/total_recall_specification.md`](./total_recall_specification.md).

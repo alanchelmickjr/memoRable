@@ -1,5 +1,17 @@
 # MemoRable - Total Recall: Implementation Plan
 
+> **HISTORICAL DOCUMENT (v1.0 Design)**
+>
+> This implementation plan represents the original vision. The project has evolved:
+> - **Dual-Model architecture** (Gemini scanner) was simplified to single Real-Time Relevance Engine
+> - **NNNA batch processing** deprecated - all processing now happens at ingest time
+> - **Security Tiers** (Tier1/2/3) added for data classification and encryption
+> - **23 MCP tools** implemented (see README.md)
+>
+> For current status, see: [LAUNCH_READINESS.md](./docs/LAUNCH_READINESS.md), [SCALABILITY_ANALYSIS.md](./docs/SCALABILITY_ANALYSIS.md)
+
+---
+
 ## Overview
 
 This document outlines the implementation plan for MemoRable - Total Recall, an advanced AI memory system. The goal is to provide AI agents with human-like memory capabilities, enabling "total recall" through a sophisticated, context-aware architecture.
