@@ -77,16 +77,21 @@ jobs:
           echo "Waiting for Weaviate... (${i}0s)"
           sleep 10
         done
-        # Wait for app health endpoint
+        # Wait for ingestion service health endpoint
         for i in {1..20}; do
-          if curl -sf http://localhost:3000/health; then
-            echo "App is healthy after ${i}0 seconds"
+          if curl -sf http://localhost:8001/api/ingest/health; then
+            echo "Ingestion service is healthy after ${i}0 seconds"
             break
           fi
-          echo "Waiting for app... (${i}0s)"
+          echo "Waiting for ingestion service... (${i}0s)"
           sleep 10
         done
-        curl -f http://localhost:3000/health || (docker compose logs && exit 1)
+        # Verify core services are healthy
+        curl -f http://localhost:8001/api/ingest/health || (docker compose logs && exit 1)
+        curl -f http://localhost:3003/health || (docker compose logs && exit 1)
+        curl -f http://localhost:3004/health || (docker compose logs && exit 1)
+        curl -f http://localhost:3005/health || (docker compose logs && exit 1)
+        echo "All core services healthy!"
         docker compose -f docker-compose.yml down
 
   load-test:
@@ -135,11 +140,11 @@ jobs:
           sleep 10
         done
         for i in {1..20}; do
-          if curl -sf http://localhost:3000/health; then
-            echo "App is healthy"
+          if curl -sf http://localhost:8001/api/ingest/health; then
+            echo "Ingestion service is healthy"
             break
           fi
-          echo "Waiting for app... (${i}0s)"
+          echo "Waiting for ingestion service... (${i}0s)"
           sleep 10
         done
         ./scripts/smoke-test.sh || (docker compose logs && exit 1)

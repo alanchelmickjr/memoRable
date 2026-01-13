@@ -67,6 +67,7 @@
     "jsonwebtoken": "^9.0.3",
     "moment": "^2.29.4",
     "mongodb": ">=6.0.0",
+    "mongoose": "^9.1.3",
     "node-microphone": "^0.1.5",
     "node-nlp": "^4.27.0",
     "node-webcam": "^0.8.1",
