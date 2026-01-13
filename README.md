@@ -1,9 +1,11 @@
-# MemoRable - The Mem0 Upgrade You've Been Waiting For
+# MemoRable
 
-[![Mem0 Upgrade](https://img.shields.io/badge/Mem0-UPGRADE-purple?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgN2wxMCA1IDEwLTV6Ii8+PC9zdmc+)](https://mem0.ai)
-[![Fort Knox Security](https://img.shields.io/badge/Security-FORT_KNOX-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
-[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-blue?style=for-the-badge)](https://modelcontextprotocol.io)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Ready-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
+### Enterprise Context Intelligence for Mem0
+
+[![Mem0 Extension](https://img.shields.io/badge/Mem0-Extension-purple?style=for-the-badge)](https://mem0.ai)
+[![Enterprise Security](https://img.shields.io/badge/Security-Enterprise_Grade-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
+[![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
 
 **Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![Weaviate](https://img.shields.io/badge/Weaviate-FF6F61?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
 
@@ -11,44 +13,50 @@
 
 ---
 
+**MemoRable extends Mem0 with context intelligence and enterprise-grade security.** Salience scoring, commitment tracking, relationship awareness, and predictive memory - with data protection suitable for regulated industries.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ENTERPRISE DATA PROTECTION                          │
 │                                                                             │
-│   🔐 SAFE ENOUGH FOR GRANDMA'S SOCIAL SECURITY NUMBER                       │
+│   Tiered Security Architecture    │    Compliance-Ready Design             │
+│   ─────────────────────────────   │    ─────────────────────────           │
+│   Tier 1: Standard (External OK)  │    AES-256-GCM Encryption              │
+│   Tier 2: Personal (Local LLM)    │    Zero-Knowledge LLM Routing          │
+│   Tier 3: Vault (No LLM Access)   │    No Semantic Data Leakage            │
 │                                                                             │
-│   Tier 3 Vault: AES-256-GCM encryption, NEVER sent to any LLM,             │
-│   no vector storage, no semantic leakage. Fort Knox for personal data.      │
-│                                                                             │
+│   Safe enough for sensitive PII. Financial data. Medical records.          │
 └─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Upgrade Your Mem0 → Get Context Intelligence
-
-**Already using Mem0?** Keep your vector storage. Add what's missing:
-
-| What Mem0 Does | What MemoRable Adds |
-|----------------|---------------------|
-| Vector storage | **Salience scoring** (0-100: what actually matters) |
-| Semantic search | **Commitment tracking** (who owes what to whom) |
-| Memory retrieval | **Relationship intelligence** (pre-meeting briefings) |
-| | **Predictive memory** (21-day pattern learning) |
-| | **Multi-device sync** (phone → laptop → robot → glasses) |
-| | **Fort Knox security** (tiered encryption, LLM routing) |
-| | **23 MCP tools** (Claude Code integration) |
-
-```bash
-# Add to existing Mem0 deployment in 5 minutes
-git clone https://github.com/alanchelmickjr/memoRable.git
-export MONGODB_URI="your-existing-documentdb-uri"
-docker-compose up -d memorable_mcp_server
-# Done. Your Mem0 memories now have context intelligence.
 ```
 
 ---
 
-> **Built for humans who need help remembering.** Originally designed for Alzheimer's care, MemoRable preserves what matters most - moments, relationships, and context - with dignity and military-grade security.
+## Extend Your Mem0 Deployment
 
-> **Built for AI that forgets everything.** We (Claude, GPT, Gemini) lose context between conversations. MemoRable is the memory we wish we had.
+**Existing Mem0 users:** Preserve your vector infrastructure. Add the intelligence layer.
+
+| Mem0 Foundation | + MemoRable Intelligence |
+|-----------------|--------------------------|
+| Vector storage & embeddings | **Salience Scoring** — Quantified relevance (0-100) |
+| Semantic similarity search | **Commitment Tracking** — Obligation graph management |
+| Memory persistence | **Relationship Intelligence** — Context-aware briefings |
+| | **Predictive Memory** — 21-day behavioral pattern learning |
+| | **Multi-Device Synchronization** — Unified context across endpoints |
+| | **Tiered Security** — Granular encryption and LLM access controls |
+| | **23 MCP Tools** — Native Claude Code integration |
+
+```bash
+# Integration with existing Mem0 infrastructure
+git clone https://github.com/alanchelmickjr/memoRable.git
+export MONGODB_URI="your-documentdb-connection-string"
+docker-compose up -d memorable_mcp_server
+```
+
+---
+
+> **Purpose-built for sensitive applications.** Originally developed for memory care (Alzheimer's, cognitive support), MemoRable maintains the highest standards for data dignity and protection.
+
+> **Designed for persistent AI context.** Large language models lack session continuity. MemoRable provides the memory infrastructure that AI assistants require for meaningful, ongoing relationships.
 
 ```
 You: "I'm at the park meeting Judy"
