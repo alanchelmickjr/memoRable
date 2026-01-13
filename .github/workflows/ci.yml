@@ -102,6 +102,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Create .env from example
+      run: cp .env.example .env
+
     - name: Setup k6
       run: |
         sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
@@ -109,8 +115,25 @@ jobs:
         sudo apt-get update
         sudo apt-get install k6
 
+    - name: Start services for load test
+      run: |
+        docker compose -f docker-compose.yml build
+        docker compose -f docker-compose.yml up -d
+        echo "Waiting for services..."
+        for i in {1..30}; do
+          if curl -sf http://localhost:8001/api/ingest/health; then
+            echo "Services ready"
+            break
+          fi
+          sleep 10
+        done
+
     - name: Run load tests
       run: k6 run tests/load/main.js
+
+    - name: Stop services
+      if: always()
+      run: docker compose -f docker-compose.yml down
 
   smoke-test:
     needs: integration
