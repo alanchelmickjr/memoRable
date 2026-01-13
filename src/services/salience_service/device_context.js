@@ -45,15 +45,25 @@ export class DeviceRegistry {
             firstSeen: existing?.firstSeen || now,
             lastSeen: now,
             capabilities: {
-                hasLocation: capabilities?.hasLocation ?? (deviceType === 'mobile'),
-                hasCamera: capabilities?.hasCamera ?? (deviceType === 'mobile'),
+                hasLocation: capabilities?.hasLocation ?? (deviceType === 'mobile' || deviceType === 'robot'),
+                hasCamera: capabilities?.hasCamera ?? (deviceType === 'mobile' || deviceType === 'robot'),
                 hasCalendar: capabilities?.hasCalendar ?? true,
                 hasMicrophone: capabilities?.hasMicrophone ?? (deviceType !== 'api'),
-                hasLidar: capabilities?.hasLidar ?? false,
+                // Robot sensors: Lidar, ultrasound, depth cameras
+                hasLidar: capabilities?.hasLidar ?? (deviceType === 'robot'),
+                hasUltrasound: capabilities?.hasUltrasound ?? (deviceType === 'robot'),
+                hasDepthCamera: capabilities?.hasDepthCamera ?? (deviceType === 'robot'),
+                hasIMU: capabilities?.hasIMU ?? (deviceType === 'robot' || deviceType === 'wearable'),
+                hasOdometry: capabilities?.hasOdometry ?? (deviceType === 'robot'),
                 hasTranscription: capabilities?.hasTranscription ?? (deviceType !== 'api'),
                 hasBiometrics: capabilities?.hasBiometrics ?? (deviceType === 'wearable'),
-                hasAmbient: capabilities?.hasAmbient ?? (deviceType === 'mobile' || deviceType === 'wearable'),
-                isAlwaysOn: capabilities?.isAlwaysOn ?? (deviceType === 'api'),
+                hasAmbient: capabilities?.hasAmbient ?? (deviceType === 'mobile' || deviceType === 'wearable' || deviceType === 'robot'),
+                // Robot is always-on like API
+                isAlwaysOn: capabilities?.isAlwaysOn ?? (deviceType === 'api' || deviceType === 'robot'),
+                // VLA (Vision-Language-Action) capability for reinforcement learning
+                hasVLA: capabilities?.hasVLA ?? (deviceType === 'robot'),
+                // Motor control capability
+                hasMotorControl: capabilities?.hasMotorControl ?? (deviceType === 'robot'),
             },
         };
         this.devices.set(`${userId}:${deviceId}`, device);
@@ -85,9 +95,18 @@ export class DeviceRegistry {
             return 'mcp';
         if (source === 'api')
             return 'api';
+        // Robot fleet detection (Pudu, Utilitron, ROS-based)
+        if (source === 'robot' || source === 'pudu' || source === 'utilitron' || source === 'ros')
+            return 'robot';
+        if (source === 'ar_glasses' || source === 'smartglasses')
+            return 'smartglasses';
         if (!userAgent)
             return 'unknown';
         const ua = userAgent.toLowerCase();
+        // Robot detection from user agent
+        if (ua.includes('robot') || ua.includes('pudu') || ua.includes('utilitron') || ua.includes('ros') || ua.includes('android-bot')) {
+            return 'robot';
+        }
         if (ua.includes('mobile') || ua.includes('android') || ua.includes('iphone')) {
             return 'mobile';
         }
@@ -114,6 +133,7 @@ export const STALENESS_CONFIG = {
         wearable: 2 * 60 * 1000, // 2 minutes - constant heartbeat
         smartglasses: 1 * 60 * 1000, // 1 minute - real-time visual
         smarthome: 30 * 60 * 1000, // 30 minutes - ambient sensors
+        robot: 30 * 1000, // 30 seconds - robots need real-time context for VLA
         unknown: 10 * 60 * 1000,
     },
     // How often to recompute unified context
