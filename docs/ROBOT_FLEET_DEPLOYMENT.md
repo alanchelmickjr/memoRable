@@ -132,6 +132,120 @@ Robot context has a **30-second TTL** for real-time VLA requirements:
 
 ---
 
+## Navigation Memory Types
+
+MemoRable now includes comprehensive spatial memory types for robot navigation. These are defined in `src/services/ingestion_service/models.ts`.
+
+### Robot Pose
+
+Track robot position and orientation with sensor fusion:
+
+```typescript
+interface RobotPose {
+  position: { x: number; y: number; z?: number };  // meters
+  orientation: { roll: number; pitch: number; yaw: number };  // radians
+  velocity?: {
+    linear: { x: number; y: number; z?: number };   // m/s
+    angular: { x: number; y: number; z: number };   // rad/s
+  };
+  confidence: number;  // 0-1
+  source: 'odometry' | 'slam' | 'gps' | 'visual' | 'fusion';
+  frameId?: string;    // "map", "odom", "base_link"
+}
+```
+
+### Waypoints
+
+Named locations for navigation with semantic context:
+
+```typescript
+interface Waypoint {
+  waypointId: string;
+  name: string;                    // "Kitchen", "Charging Station A"
+  pose: RobotPose;
+  placeType?: WaypointType;        // 'room', 'corridor', 'charging_station', etc.
+  floor?: number;
+  zone?: string;
+  isChargingStation?: boolean;
+  isDeliveryPoint?: boolean;
+  isRestricted?: boolean;
+  operatingHours?: { start: string; end: string };
+}
+```
+
+### Navigation Paths
+
+Track routes between waypoints:
+
+```typescript
+interface NavigationPath {
+  pathId: string;
+  startWaypoint: Waypoint;
+  endWaypoint: Waypoint;
+  viaWaypoints?: Waypoint[];
+  pathPoints?: Array<{ x: number; y: number; heading?: number }>;
+  totalDistance?: number;          // meters
+  estimatedDuration?: number;      // ms
+  status: 'planned' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  progress?: number;               // 0-1
+}
+```
+
+### Obstacle Detection
+
+Safety-critical obstacle tracking:
+
+```typescript
+interface ObstacleContext {
+  obstacleId: string;
+  position: { x: number; y: number; z?: number };
+  obstacleType: 'person' | 'robot' | 'furniture' | 'wall' | 'door' | ...;
+  isDynamic: boolean;
+  velocity?: { x: number; y: number };
+  safetyMargin: number;            // meters
+  threatLevel: 'low' | 'medium' | 'high' | 'critical';
+  detectedBy: 'lidar' | 'ultrasound' | 'camera' | 'depth_camera' | 'fusion';
+}
+```
+
+### Navigation Tasks
+
+Track navigation goals (like OpenLoop but for spatial objectives):
+
+```typescript
+interface NavigationTask {
+  taskId: string;
+  robotId: string;
+  goalType: 'goto' | 'patrol' | 'follow' | 'return_home' | 'charge' | 'deliver';
+  destination: Waypoint;
+  waypoints?: Waypoint[];          // Multi-stop tasks
+  status: NavigationStatus;
+  progress: number;                // 0-1
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  purpose?: string;                // "Deliver coffee to room 204"
+  deadline?: string;               // Must arrive by this time
+  blockedBy?: ObstacleContext;     // What's stopping us
+}
+```
+
+### Map References
+
+Link memories to specific maps/floors:
+
+```typescript
+interface MapReference {
+  mapId: string;
+  mapName: string;
+  mapType: 'occupancy_grid' | 'semantic' | 'topological' | 'floor_plan' | 'point_cloud';
+  version: string;
+  resolution?: number;             // meters per cell
+  buildingId?: string;
+  floor?: number;
+}
+```
+
+---
+
 ## API Integration
 
 ### Sensor Data Ingestion
@@ -172,6 +286,66 @@ Content-Type: application/json
     }
   },
   "eventTimestamp": "2026-01-13T10:00:00.000Z"
+}
+```
+
+### Navigation Event Ingestion
+
+Log waypoint arrivals, navigation starts, and obstacles:
+
+```bash
+# Waypoint reached
+POST http://memorable_ingestion_service:8001/api/ingest
+Content-Type: application/json
+
+{
+  "sourceSystem": "ROBOT_NAV",
+  "agentId": "pudu_robot_001",
+  "deviceType": "robot",
+  "contentType": "NavigationEvent",
+  "contentRaw": {
+    "eventType": "waypoint_reached",
+    "waypoint": {
+      "waypointId": "wp_kitchen_001",
+      "name": "Kitchen",
+      "placeType": "room",
+      "floor": 1
+    },
+    "pose": {
+      "position": { "x": 15.2, "y": 8.7, "z": 0.0 },
+      "orientation": { "roll": 0, "pitch": 0, "yaw": 1.57 },
+      "confidence": 0.95,
+      "source": "slam"
+    }
+  },
+  "spatialContext": {
+    "locationName": "Kitchen",
+    "robotPose": { ... },
+    "currentWaypoint": { ... }
+  }
+}
+```
+
+```bash
+# Obstacle detected
+POST http://memorable_ingestion_service:8001/api/ingest
+Content-Type: application/json
+
+{
+  "sourceSystem": "ROBOT_SAFETY",
+  "agentId": "pudu_robot_001",
+  "deviceType": "robot",
+  "contentType": "ObstacleDetection",
+  "contentRaw": {
+    "obstacleId": "obs_person_042",
+    "position": { "x": 2.1, "y": 0.3 },
+    "obstacleType": "person",
+    "isDynamic": true,
+    "velocity": { "x": 0.5, "y": 0.1 },
+    "threatLevel": "medium",
+    "detectedBy": "lidar",
+    "confidence": 0.87
+  }
 }
 ```
 
