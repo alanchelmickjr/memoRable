@@ -8,56 +8,94 @@ NC='\033[0m'
 
 echo "Running smoke tests..."
 
-# Test health endpoint
-echo "Testing health endpoint..."
-health_response=$(curl -s http://localhost:3000/health)
-if [[ $health_response == *"healthy"* ]]; then
-    echo -e "${GREEN}✓${NC} Health check passed"
+# Test Weaviate health
+echo "Testing Weaviate..."
+if curl -sf http://localhost:8080/v1/.well-known/ready > /dev/null; then
+    echo -e "${GREEN}✓${NC} Weaviate is healthy"
 else
-    echo -e "${RED}✗${NC} Health check failed"
+    echo -e "${RED}✗${NC} Weaviate health check failed"
     exit 1
 fi
 
-# Test MongoDB connection
-echo "Testing MongoDB connection..."
-mongo_status=$(curl -s http://localhost:3000/health | jq -r '.mongodb')
-if [[ $mongo_status == "connected" ]]; then
-    echo -e "${GREEN}✓${NC} MongoDB connection verified"
+# Test Ingestion service health
+echo "Testing Ingestion service..."
+ingestion_response=$(curl -sf http://localhost:8001/api/ingest/health)
+if [[ $ingestion_response == *"UP"* ]]; then
+    echo -e "${GREEN}✓${NC} Ingestion service is healthy"
 else
-    echo -e "${RED}✗${NC} MongoDB connection failed"
+    echo -e "${RED}✗${NC} Ingestion service health check failed"
     exit 1
 fi
 
-# Test Redis connection
-echo "Testing Redis connection..."
-redis_status=$(curl -s http://localhost:3000/health | jq -r '.redis')
-if [[ $redis_status == "connected" ]]; then
-    echo -e "${GREEN}✓${NC} Redis connection verified"
+# Test Embedding service health
+echo "Testing Embedding service..."
+embedding_response=$(curl -sf http://localhost:3003/health)
+if [[ $embedding_response == *"healthy"* ]]; then
+    echo -e "${GREEN}✓${NC} Embedding service is healthy"
 else
-    echo -e "${RED}✗${NC} Redis connection failed"
+    echo -e "${RED}✗${NC} Embedding service health check failed"
     exit 1
 fi
 
-# Test basic message processing
-echo "Testing message processing..."
-response=$(curl -s -X POST http://localhost:3000/api/process \
+# Test Retrieval service health
+echo "Testing Retrieval service..."
+retrieval_response=$(curl -sf http://localhost:3004/health)
+if [[ $retrieval_response == *"healthy"* ]]; then
+    echo -e "${GREEN}✓${NC} Retrieval service is healthy"
+else
+    echo -e "${RED}✗${NC} Retrieval service health check failed"
+    exit 1
+fi
+
+# Test NNNA service health
+echo "Testing NNNA service..."
+nnna_response=$(curl -sf http://localhost:3005/health)
+if [[ $nnna_response == *"healthy"* ]]; then
+    echo -e "${GREEN}✓${NC} NNNA service is healthy"
+else
+    echo -e "${RED}✗${NC} NNNA service health check failed"
+    exit 1
+fi
+
+# Test memory ingestion
+echo "Testing memory ingestion..."
+ingest_response=$(curl -sf -X POST http://localhost:8001/api/ingest \
     -H "Content-Type: application/json" \
-    -d '{"message": "test message", "context": {"type": "smoke-test"}}')
-
-if [[ $response == *"success"* ]]; then
-    echo -e "${GREEN}✓${NC} Message processing working"
+    -d '{
+        "sourceSystem": "MANUAL_INPUT",
+        "agentId": "smoke-test-user",
+        "contentType": "TEXT",
+        "contentRaw": "Smoke test memory entry",
+        "eventTimestamp": "2026-01-13T00:00:00.000Z"
+    }')
+if [[ $ingest_response == *"accepted"* ]]; then
+    echo -e "${GREEN}✓${NC} Memory ingestion working"
 else
-    echo -e "${RED}✗${NC} Message processing failed"
+    echo -e "${RED}✗${NC} Memory ingestion failed"
     exit 1
 fi
 
-# Test model availability
-echo "Testing model availability..."
-models_response=$(curl -s http://localhost:3000/api/models/status)
-if [[ $models_response == *"available"* ]]; then
-    echo -e "${GREEN}✓${NC} Models are available"
+# Test embedding generation
+echo "Testing embedding generation..."
+embed_response=$(curl -sf -X POST http://localhost:3003/embed \
+    -H "Content-Type: application/json" \
+    -d '{"text": "test embedding"}')
+if [[ $embed_response == *"embedding"* ]]; then
+    echo -e "${GREEN}✓${NC} Embedding generation working"
 else
-    echo -e "${RED}✗${NC} Models check failed"
+    echo -e "${RED}✗${NC} Embedding generation failed"
+    exit 1
+fi
+
+# Test retrieval
+echo "Testing memory retrieval..."
+retrieve_response=$(curl -sf -X POST http://localhost:3004/retrieve \
+    -H "Content-Type: application/json" \
+    -d '{"userId": "smoke-test-user", "query": "test"}')
+if [[ $retrieve_response == *"results"* ]]; then
+    echo -e "${GREEN}✓${NC} Memory retrieval working"
+else
+    echo -e "${RED}✗${NC} Memory retrieval failed"
     exit 1
 fi
 
