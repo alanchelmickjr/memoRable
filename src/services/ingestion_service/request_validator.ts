@@ -1,5 +1,5 @@
 import { ValidatorIngestionRequest, ValidationResult, Source, DataType } from './models';
-export { ValidationResult } from './models'; // Re-export for IngestionIntegrator
+export type { ValidationResult } from './models'; // Re-export for IngestionIntegrator
 
 /**
  * Validates ingestion requests.

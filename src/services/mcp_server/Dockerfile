@@ -1,23 +1,18 @@
-FROM node:20-alpine
+FROM node:18-alpine
 
-# Create structure matching development layout
-WORKDIR /app/services/mcp_server
+WORKDIR /usr/src/app
 
-# Install dependencies (including devDependencies for TypeScript build)
-COPY src/services/mcp_server/package.json ./
-RUN npm install
+# Copy root package files for dependency installation
+COPY package.json package-lock.json ./
 
-# Copy source files - maintain relative structure from development
-# mcp_server at /app/services/mcp_server/
-# salience_service at /app/services/salience_service/ (sibling)
-COPY src/services/mcp_server/ ./
-COPY src/services/salience_service/ ../salience_service/
+# Install all dependencies (for running TypeScript directly)
+RUN npm ci --ignore-scripts
 
-# Build TypeScript
-RUN npm run build
+# Install tsx for running TypeScript directly
+RUN npm install tsx
 
-# Remove devDependencies after build
-RUN npm prune --production
+# Copy source files maintaining relative structure
+COPY src ./src
 
-# Run MCP server
-CMD ["node", "dist/index.js"]
+# Run MCP server using tsx (no compilation needed)
+CMD ["./node_modules/.bin/tsx", "src/services/mcp_server/index.ts"]

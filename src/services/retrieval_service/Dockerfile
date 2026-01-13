@@ -1,27 +1,24 @@
-# Placeholder Dockerfile for memorable_retrieval_service
-# This service will be responsible for retrieving information from the vector database.
+# src/services/retrieval_service/Dockerfile
+# Retrieval Service - Retrieves and ranks memories from the vector database
 
-# Use an official Node.js runtime as a parent image
-FROM node:18-alpine AS base
+FROM node:18-alpine
 
-# Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json (or pnpm-lock.yaml)
-COPY package*.json ./
-# If using pnpm, uncomment and adjust:
-# COPY pnpm-lock.yaml ./
+# Copy package manager files
+COPY package.json package-lock.json ./
 
-# Install app dependencies (skip prepare/husky hooks)
-# If using pnpm, replace npm ci with pnpm install --frozen-lockfile
-RUN npm ci --only=production --ignore-scripts
+# Install dependencies
+RUN npm ci --ignore-scripts
 
-# Copy the rest of the application code
-COPY . .
+# Install tsx for running TypeScript directly
+RUN npm install tsx
 
-# Expose the port the app runs on (if any, adjust as needed)
-# EXPOSE 3004
+# Copy source code
+COPY src ./src
 
-# Define the command to run the application
-# CMD [ "node", "src/services/retrieval_service/index.js" ]
-CMD [ "node", "-e", "console.log('memorable_retrieval_service placeholder started'); setInterval(() => {}, 1 << 30);" ]
+# Expose the port the app runs on
+EXPOSE 3004
+
+# Run with tsx (TypeScript executor)
+CMD ["./node_modules/.bin/tsx", "src/services/retrieval_service/index.ts"]

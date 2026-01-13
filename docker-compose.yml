@@ -143,60 +143,82 @@ services:
           cpus: '2'
           memory: 4G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
 
   # memorable_t2v_transformer: # Removed as DEFAULT_VECTORIZER_MODULE for Weaviate is 'none'
 
   memorable_embedding_service: # New service: Embedding Essence
     build:
       context: .
-      dockerfile: src/services/embedding_service/Dockerfile # Assumed Dockerfile path
+      dockerfile: src/services/embedding_service/Dockerfile
     container_name: memorable_embedding_service_app
     ports:
-      - "3003:3003" # Placeholder port, adjust if needed
+      - "3003:3003"
     env_file:
-      - .env # Load environment variables (e.g., OPENAI_API_KEY)
+      - .env
+    environment:
+      - PORT=3003
     networks:
       - memorable_net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   memorable_retrieval_service: # New service: Conscious Current
     build:
       context: .
-      dockerfile: src/services/retrieval_service/Dockerfile # Assumed Dockerfile path
+      dockerfile: src/services/retrieval_service/Dockerfile
     container_name: memorable_retrieval_service_app
     ports:
-      - "3004:3004" # Placeholder port, adjust if needed
+      - "3004:3004"
     env_file:
       - .env
+    environment:
+      - PORT=3004
     depends_on:
       - memorable_weaviate
       - memorable_mongo
     networks:
       - memorable_net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   memorable_nnna_service: # New service: Nocturnal Nurturing & Network Attunement
     build:
       context: .
-      dockerfile: src/services/nnna_service/Dockerfile # Assumed Dockerfile path
+      dockerfile: src/services/nnna_service/Dockerfile
     container_name: memorable_nnna_service_app
+    ports:
+      - "3005:3005"
     env_file:
       - .env
+    environment:
+      - PORT=3005
     depends_on:
       - memorable_weaviate
       - memorable_mongo
     networks:
       - memorable_net
-    # This service might be triggered by an internal cron or an external scheduler.
-    # For Docker-based cron, you might use a command like:
-    # command: /bin/sh -c "crond -f -d 8 && echo 'Cron started'"
-    # And have a crontab file copied into the image.
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   memorable_ingestion_service:
     build:

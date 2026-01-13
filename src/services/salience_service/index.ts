@@ -179,15 +179,17 @@ export {
 // Re-export device context types for multi-device architecture
 export {
   DeviceRegistry,
+  DEVICE_REDIS_KEYS,
+  STALENESS_CONFIG,
+  createDefaultDeviceContext,
+} from './device_context';
+export type {
   DeviceType,
   DeviceInfo,
   DeviceCapabilities,
   DeviceContextFrame,
   SensorType,
   SensorReading,
-  DEVICE_REDIS_KEYS,
-  STALENESS_CONFIG,
-  createDefaultDeviceContext,
 } from './device_context';
 
 // Re-export context integration service (brain-inspired fusion)

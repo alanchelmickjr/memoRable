@@ -289,4 +289,4 @@ function detectProvider(config?: Partial<LLMProviderConfig>): LLMProvider {
 // EXPORTS
 // ============================================================================
 
-export { LLMClient, LLMOptions } from './feature_extractor';
+export type { LLMClient, LLMOptions } from './feature_extractor';
