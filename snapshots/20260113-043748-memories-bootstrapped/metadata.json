@@ -1,0 +1,7 @@
+{
+    "name": "20260113-043748-memories-bootstrapped",
+    "created": "2026-01-13T12:37:48Z",
+    "label": "memories-bootstrapped",
+    "mongodb_collections": ["memory_mementos"],
+    "weaviate_classes": ["MemoryMemento"]
+}

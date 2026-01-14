@@ -1,0 +1,7 @@
+{
+    "name": "20260113-044856-aws-infrastructure-ready",
+    "created": "2026-01-13T12:48:56Z",
+    "label": "aws-infrastructure-ready",
+    "mongodb_collections": ["memory_mementos"],
+    "weaviate_classes": ["MemoryMemento"]
+}

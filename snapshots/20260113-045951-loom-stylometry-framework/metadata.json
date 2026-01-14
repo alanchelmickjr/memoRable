@@ -1,0 +1,7 @@
+{
+    "name": "20260113-045951-loom-stylometry-framework",
+    "created": "2026-01-13T12:59:51Z",
+    "label": "loom-stylometry-framework",
+    "mongodb_collections": ["memory_mementos"],
+    "weaviate_classes": ["MemoryMemento"]
+}

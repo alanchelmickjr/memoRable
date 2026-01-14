@@ -371,7 +371,7 @@ briefing = memorable.get_briefing(user_id, "Sarah Chen")
 
 **Click. Configure. Done.**
 
-[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
 
 1. Click the button above
 2. Choose your LLM provider:
@@ -1159,7 +1159,7 @@ npm test
 
 **Click the button. Choose provider. Wait 15 minutes. Done.**
 
-[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/memorable-stack.yaml&stackName=memorable)
+[![Deploy to AWS](https://img.shields.io/badge/Deploy%20to-AWS-FF9900?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
 
 | LLM Provider | What you need | Best for |
 |--------------|---------------|----------|
@@ -1194,7 +1194,7 @@ Secure, keyless authentication from GitHub Actions to AWS. No stored credentials
 
 #### Step 1: Deploy OIDC Infrastructure (One-Time)
 
-[![Deploy OIDC](https://img.shields.io/badge/Deploy-GitHub_OIDC-232F3E?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/cloudformation/github-oidc.yaml&stackName=memorable-github-oidc)
+[![Deploy OIDC](https://img.shields.io/badge/Deploy-GitHub_OIDC-232F3E?style=for-the-badge&logo=amazon-aws)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/github-oidc.yaml&stackName=memorable-github-oidc)
 
 Or manually:
 ```bash
@@ -1257,6 +1257,39 @@ cd terraform
 terraform init -backend-config="bucket=memorable-terraform-state-staging"
 export TF_VAR_anthropic_api_key="sk-ant-xxx"
 terraform apply -var-file="environments/staging.tfvars"
+```
+
+</details>
+
+<details>
+<summary>Click to expand: Hosting your own one-click deploy templates (for forks)</summary>
+
+#### Template Hosting Setup
+
+The one-click deploy buttons require CloudFormation templates hosted in S3 (GitHub raw URLs don't work with CloudFormation quickcreate).
+
+**Option 1: Automatic (CI/CD)**
+
+1. Deploy the OIDC stack (see above)
+2. Add `AWS_ACCOUNT_ID` secret to your repo
+3. Push to `main` - the `publish-templates.yml` workflow auto-creates the bucket and uploads templates
+
+**Option 2: Manual**
+
+```bash
+# Create the template bucket
+aws cloudformation deploy \
+  --template-file cloudformation/template-bucket.yaml \
+  --stack-name memorable-template-bucket \
+  --parameter-overrides BucketName=YOUR-BUCKET-NAME
+
+# Upload templates
+./scripts/publish-templates.sh YOUR-BUCKET-NAME us-east-1
+```
+
+Then update the deploy button URLs in README.md:
+```
+https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://YOUR-BUCKET-NAME.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable
 ```
 
 </details>

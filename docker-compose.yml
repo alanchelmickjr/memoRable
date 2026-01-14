@@ -47,29 +47,6 @@ services:
     labels:
       - "autoheal=true"
 
-  memorable_night_processor: # Renamed from 'night-processor'
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    command: node src/services/nightProcessingService.js
-    environment:
-      - NODE_ENV=${NODE_ENV:-development}
-      - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 2G
-    restart: always
-    depends_on:
-      - memorable_app
-      - memorable_mongo
-    networks:
-      - memorable_net
-    labels:
-      - "com.docker.scheduling.cron=0 1 * * * America/Los_Angeles" # Example cron, adjust as needed
-      - "com.docker.scheduling.duration=3h"
-
   memorable_mongo: # Renamed from 'mongodb'
     image: mongo:latest
     container_name: memorable_mongo_db # Explicit container name
@@ -129,7 +106,13 @@ services:
       - "8080:8080" # Default Weaviate port
     environment:
       - QUERY_DEFAULTS_LIMIT=25
-      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      # SECURITY FIX: Disable anonymous access, require API key
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=false
+      - AUTHENTICATION_APIKEY_ENABLED=true
+      - AUTHENTICATION_APIKEY_ALLOWED_KEYS=${WEAVIATE_API_KEY:-changeme_weaviate_key}
+      - AUTHENTICATION_APIKEY_USERS=memorable_app
+      - AUTHORIZATION_ADMINLIST_ENABLED=true
+      - AUTHORIZATION_ADMINLIST_USERS=memorable_app
       - PERSISTENCE_DATA_PATH=/var/lib/weaviate
       - DEFAULT_VECTORIZER_MODULE=none
       - CLUSTER_HOSTNAME=memorable_weaviate_node1
@@ -196,30 +179,6 @@ services:
       retries: 3
       start_period: 30s
 
-  memorable_nnna_service: # New service: Nocturnal Nurturing & Network Attunement
-    build:
-      context: .
-      dockerfile: src/services/nnna_service/Dockerfile
-    container_name: memorable_nnna_service_app
-    ports:
-      - "3005:3005"
-    env_file:
-      - .env
-    environment:
-      - PORT=3005
-    depends_on:
-      - memorable_weaviate
-      - memorable_mongo
-    networks:
-      - memorable_net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3005/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   memorable_ingestion_service:
     build:
       context: .
@@ -231,8 +190,7 @@ services:
       - NODE_ENV=${NODE_ENV:-development}
       - MONGODB_URI=mongodb://${MONGO_USER:-memorable_dev}:${MONGO_PASSWORD:-memorable_dev_pass}@memorable_mongo:27017/memorable?authSource=admin
       - WEAVIATE_URL=http://memorable_weaviate:8080
-      - EMBEDDING_SERVICE_URL=http://memorable_embedding_service:3003 # Consistent with embedding_service definition
-      - NNNA_SERVICE_URL=http://memorable_nnna_service:3005 # Assuming NNNA service internal port
+      - EMBEDDING_SERVICE_URL=http://memorable_embedding_service:3003
       - INGESTION_SERVICE_PORT=8001
       - LOG_LEVEL=${LOG_LEVEL:-INFO} # Added LOG_LEVEL
       # Add other necessary environment variables
@@ -246,10 +204,8 @@ services:
         condition: service_healthy
       memorable_weaviate:
         condition: service_healthy
-      memorable_embedding_service: # Added dependency
-        condition: service_started # Or service_healthy if it has a healthcheck
-      memorable_nnna_service:      # Added dependency
-        condition: service_started # Or service_healthy if it has a healthcheck
+      memorable_embedding_service:
+        condition: service_started
     networks:
       - memorable_net
     restart: unless-stopped
@@ -340,8 +296,11 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle' # Allows for hot-reloading of config
-    ports:
-      - "9090:9090"
+    # SECURITY FIX: Don't expose Prometheus externally, access via Grafana only
+    # ports:
+    #   - "9090:9090"  # Commented out - internal only
+    expose:
+      - "9090"  # Internal Docker network only
     networks:
       - memorable_net
     deploy:
@@ -361,9 +320,13 @@ services:
       # - ./docker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       # - ./docker/grafana/dashboards:/var/lib/grafana/dashboards # If using file-based dashboard provisioning
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin} # Use .env for password
+      # SECURITY FIX: No default password, require explicit config
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD required}
       - GF_USERS_ALLOW_SIGN_UP=false
-      # Example: Point Grafana to Prometheus
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_SECURITY_COOKIE_SECURE=true
+      # Point Grafana to Prometheus
       - GF_DATASOURCES_DEFAULT_PROMETHEUS_URL=http://memorable_prometheus:9090
     ports:
       - "3001:3000" # Exposing Grafana on 3001 to avoid conflict with app on 3000

@@ -575,7 +575,7 @@ Resources:
           Secrets: !If
             - UseAnthropic
             - - Name: ANTHROPIC_API_KEY
-                ValueFrom: !Sub ${AnthropicSecret}:api_key::
+                ValueFrom: !Sub '${AnthropicSecret}:api_key::'
             - !Ref AWS::NoValue
           LogConfiguration:
             LogDriver: awslogs

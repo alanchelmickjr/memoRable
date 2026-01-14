@@ -1,0 +1,7 @@
+{
+    "name": "20260113-043246-wires-connected-3am",
+    "created": "2026-01-13T12:32:46Z",
+    "label": "wires-connected-3am",
+    "mongodb_collections": ["memory_mementos"],
+    "weaviate_classes": ["MemoryMemento"]
+}

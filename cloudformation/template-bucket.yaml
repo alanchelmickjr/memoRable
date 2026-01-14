@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 bucket for hosting MemoRable CloudFormation templates (enables one-click deploy)'
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: memorable-cloudformation-templates
+    Description: Name for the S3 bucket (must be globally unique)
+    AllowedPattern: ^[a-z0-9][a-z0-9.-]*[a-z0-9]$
+    ConstraintDescription: Bucket name must be lowercase, can contain hyphens and periods
+
+Resources:
+  TemplateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['https://console.aws.amazon.com']
+            MaxAge: 3600
+      Tags:
+        - Key: Purpose
+          Value: CloudFormation template hosting
+        - Key: Project
+          Value: MemoRable
+
+  TemplateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TemplateBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadForTemplates
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub ${TemplateBucket.Arn}/*
+
+Outputs:
+  BucketName:
+    Description: S3 bucket name
+    Value: !Ref TemplateBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-bucket-name
+
+  BucketURL:
+    Description: S3 bucket URL for templates
+    Value: !Sub https://${TemplateBucket}.s3.amazonaws.com
+    Export:
+      Name: !Sub ${AWS::StackName}-bucket-url
+
+  BucketRegionalURL:
+    Description: S3 bucket regional URL (recommended for CloudFormation)
+    Value: !Sub https://${TemplateBucket}.s3.${AWS::Region}.amazonaws.com
+    Export:
+      Name: !Sub ${AWS::StackName}-bucket-regional-url
+
+  OneClickDeployURL:
+    Description: Base URL for one-click deploy buttons
+    Value: !Sub https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://${TemplateBucket}.s3.${AWS::Region}.amazonaws.com/memorable-stack.yaml&stackName=memorable
