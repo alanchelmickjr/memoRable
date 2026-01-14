@@ -47,15 +47,7 @@ else
     exit 1
 fi
 
-# Test NNNA service health
-echo "Testing NNNA service..."
-nnna_response=$(curl -sf http://localhost:3005/health)
-if [[ $nnna_response == *"healthy"* ]]; then
-    echo -e "${GREEN}✓${NC} NNNA service is healthy"
-else
-    echo -e "${RED}✗${NC} NNNA service health check failed"
-    exit 1
-fi
+# Note: NNNA service (port 3005) was deprecated - all processing now happens at ingest time
 
 # Test memory ingestion
 echo "Testing memory ingestion..."

@@ -16,8 +16,8 @@ export const options = {
 const INGESTION_URL = 'http://localhost:8001';
 const EMBEDDING_URL = 'http://localhost:3003';
 const RETRIEVAL_URL = 'http://localhost:3004';
-const NNNA_URL = 'http://localhost:3005';
 const WEAVIATE_URL = 'http://localhost:8080';
+// Note: NNNA service (port 3005) was deprecated - all processing now happens at ingest time
 
 export default function () {
   const headers = {
@@ -47,12 +47,6 @@ export default function () {
   const retrievalHealth = http.get(`${RETRIEVAL_URL}/health`);
   check(retrievalHealth, {
     'retrieval service is healthy': (r) => r.status === 200,
-  });
-
-  // Test NNNA service health
-  const nnnaHealth = http.get(`${NNNA_URL}/health`);
-  check(nnnaHealth, {
-    'nnna service is healthy': (r) => r.status === 200,
   });
 
   // Test memory ingestion
