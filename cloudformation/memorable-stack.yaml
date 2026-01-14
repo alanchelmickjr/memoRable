@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'MemoRable - One-Click Deploy. Context-aware memory for AI agents.'
+Description: 'MemoRable - One-Click Deploy. Context-aware memory for AI agents. NOTE: Deploy to us-west-2, us-east-1, or other DocumentDB-supported region.'
 
 Metadata:
   AWS::CloudFormation::Interface:
