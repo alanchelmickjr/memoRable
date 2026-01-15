@@ -1294,6 +1294,452 @@ app.get('/dashboard/json', (_req, res) => {
 // In-memory store (fallback if no DB configured)
 const memoryStore = new Map();
 
+// =============================================================================
+// BACKUP & RESTORE SYSTEM
+// "TEMPORAL CONTROL → The power to CHOOSE what to forget"
+// Minute-level recovery with segmented storage
+// =============================================================================
+
+// Backup store - holds snapshots indexed by timestamp
+const backupStore = new Map();
+
+// Frames - named recovery points (like git tags)
+const frameStore = new Map();
+
+// Configuration
+const BACKUP_CONFIG = {
+  SEGMENT_SIZE: parseInt(process.env.BACKUP_SEGMENT_SIZE) || 100, // memories per segment
+  MAX_BACKUPS: parseInt(process.env.MAX_BACKUPS) || 60, // keep last 60 backups (1 hour at 1/min)
+  AUTO_BACKUP_INTERVAL_MS: parseInt(process.env.AUTO_BACKUP_INTERVAL_MS) || 60000, // 1 minute
+};
+
+/**
+ * Create a backup snapshot of all memories.
+ * Stores in segments for efficient retrieval and transfer.
+ *
+ * @param {string} reason - Why the backup was created
+ * @param {string} frameName - Optional: create a named frame for this backup
+ * @returns {object} Backup manifest
+ */
+function createBackup(reason = 'manual', frameName = null) {
+  const timestamp = new Date().toISOString();
+  const memories = Array.from(memoryStore.values());
+
+  // Segment the memories
+  const segments = [];
+  for (let i = 0; i < memories.length; i += BACKUP_CONFIG.SEGMENT_SIZE) {
+    const segment = memories.slice(i, i + BACKUP_CONFIG.SEGMENT_SIZE);
+    segments.push({
+      index: Math.floor(i / BACKUP_CONFIG.SEGMENT_SIZE),
+      count: segment.length,
+      memories: segment,
+      checksum: simpleChecksum(JSON.stringify(segment)),
+    });
+  }
+
+  // Create backup manifest
+  const backup = {
+    id: `backup_${Date.now()}`,
+    timestamp,
+    reason,
+    total_memories: memories.length,
+    segment_count: segments.length,
+    segment_size: BACKUP_CONFIG.SEGMENT_SIZE,
+    segments,
+    metadata: {
+      created_by: 'memorable',
+      version: '2.0.0',
+      checksum: simpleChecksum(JSON.stringify(memories)),
+    },
+  };
+
+  // Store the backup
+  backupStore.set(backup.id, backup);
+
+  // Create frame if requested
+  if (frameName) {
+    frameStore.set(frameName, {
+      name: frameName,
+      backup_id: backup.id,
+      created_at: timestamp,
+      memory_count: memories.length,
+    });
+  }
+
+  // Prune old backups (keep only MAX_BACKUPS)
+  pruneOldBackups();
+
+  metrics.inc('backup_created_total', { reason });
+
+  return {
+    id: backup.id,
+    timestamp,
+    total_memories: memories.length,
+    segment_count: segments.length,
+    frame: frameName || null,
+  };
+}
+
+/**
+ * Restore from a backup - point-in-time recovery.
+ *
+ * @param {string} backupId - The backup ID to restore from
+ * @param {object} options - Restore options
+ * @returns {object} Restore result
+ */
+function restoreFromBackup(backupId, options = {}) {
+  const backup = backupStore.get(backupId);
+  if (!backup) {
+    throw new Error(`Backup not found: ${backupId}`);
+  }
+
+  const { merge = false, segmentFilter = null } = options;
+
+  // Verify backup integrity
+  const allMemories = backup.segments.flatMap(s => s.memories);
+  const currentChecksum = simpleChecksum(JSON.stringify(allMemories));
+  if (currentChecksum !== backup.metadata.checksum) {
+    console.warn('[Backup] Checksum mismatch - backup may be corrupted');
+  }
+
+  // Apply segment filter if specified (restore only specific segments)
+  let memoriesToRestore = allMemories;
+  if (segmentFilter !== null) {
+    const filteredSegments = backup.segments.filter(s =>
+      Array.isArray(segmentFilter) ? segmentFilter.includes(s.index) : s.index === segmentFilter
+    );
+    memoriesToRestore = filteredSegments.flatMap(s => s.memories);
+  }
+
+  // Create backup of current state before restore (safety net)
+  const preRestoreBackup = createBackup('pre_restore_safety', null);
+
+  // Clear or merge
+  if (!merge) {
+    memoryStore.clear();
+  }
+
+  // Restore memories
+  let restored = 0;
+  let skipped = 0;
+  for (const memory of memoriesToRestore) {
+    if (merge && memoryStore.has(memory.id)) {
+      skipped++;
+      continue;
+    }
+    memoryStore.set(memory.id, memory);
+    restored++;
+  }
+
+  metrics.inc('backup_restored_total', {});
+
+  return {
+    success: true,
+    backup_id: backupId,
+    backup_timestamp: backup.timestamp,
+    restored_count: restored,
+    skipped_count: skipped,
+    merge_mode: merge,
+    safety_backup_id: preRestoreBackup.id,
+    current_memory_count: memoryStore.size,
+  };
+}
+
+/**
+ * Restore from a named frame.
+ */
+function restoreFromFrame(frameName, options = {}) {
+  const frame = frameStore.get(frameName);
+  if (!frame) {
+    throw new Error(`Frame not found: ${frameName}`);
+  }
+  return restoreFromBackup(frame.backup_id, options);
+}
+
+/**
+ * List all available backups.
+ */
+function listBackups(limit = 20) {
+  const backups = Array.from(backupStore.values())
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, limit)
+    .map(b => ({
+      id: b.id,
+      timestamp: b.timestamp,
+      reason: b.reason,
+      total_memories: b.total_memories,
+      segment_count: b.segment_count,
+      age_minutes: Math.round((Date.now() - new Date(b.timestamp)) / 60000),
+    }));
+
+  return backups;
+}
+
+/**
+ * List all named frames.
+ */
+function listFrames() {
+  return Array.from(frameStore.values())
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+/**
+ * Get a specific segment from a backup (for efficient transfer).
+ */
+function getBackupSegment(backupId, segmentIndex) {
+  const backup = backupStore.get(backupId);
+  if (!backup) {
+    throw new Error(`Backup not found: ${backupId}`);
+  }
+
+  const segment = backup.segments.find(s => s.index === segmentIndex);
+  if (!segment) {
+    throw new Error(`Segment ${segmentIndex} not found in backup ${backupId}`);
+  }
+
+  return {
+    backup_id: backupId,
+    backup_timestamp: backup.timestamp,
+    segment_index: segmentIndex,
+    total_segments: backup.segment_count,
+    memory_count: segment.count,
+    checksum: segment.checksum,
+    memories: segment.memories,
+  };
+}
+
+/**
+ * Simple checksum for integrity verification.
+ */
+function simpleChecksum(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(16);
+}
+
+/**
+ * Prune old backups to prevent memory bloat.
+ * Keeps named frames and their backups.
+ */
+function pruneOldBackups() {
+  const framedBackupIds = new Set(Array.from(frameStore.values()).map(f => f.backup_id));
+
+  const backups = Array.from(backupStore.entries())
+    .filter(([id]) => !framedBackupIds.has(id)) // Don't prune framed backups
+    .sort((a, b) => new Date(b[1].timestamp) - new Date(a[1].timestamp));
+
+  // Remove oldest backups beyond MAX_BACKUPS
+  const toRemove = backups.slice(BACKUP_CONFIG.MAX_BACKUPS);
+  for (const [id] of toRemove) {
+    backupStore.delete(id);
+  }
+
+  if (toRemove.length > 0) {
+    console.log(`[Backup] Pruned ${toRemove.length} old backups`);
+  }
+}
+
+// Auto-backup timer (disabled in test environment)
+let autoBackupTimer = null;
+if (process.env.NODE_ENV !== 'test' && BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS > 0) {
+  autoBackupTimer = setInterval(() => {
+    if (memoryStore.size > 0) {
+      createBackup('auto');
+      console.log(`[Backup] Auto-backup created: ${memoryStore.size} memories`);
+    }
+  }, BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS);
+}
+
+// =============================================================================
+// BACKUP & RESTORE ENDPOINTS
+// =============================================================================
+
+// Create a backup
+app.post('/backup', (_req, res) => {
+  try {
+    const { reason = 'manual', frame } = _req.body || {};
+    const result = createBackup(reason, frame);
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('[Backup] Create error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List all backups
+app.get('/backup', (_req, res) => {
+  try {
+    const limit = parseInt(_req.query.limit) || 20;
+    const backups = listBackups(limit);
+    res.json({
+      count: backups.length,
+      backups,
+      config: {
+        segment_size: BACKUP_CONFIG.SEGMENT_SIZE,
+        max_backups: BACKUP_CONFIG.MAX_BACKUPS,
+        auto_interval_minutes: BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS / 60000,
+      },
+    });
+  } catch (error) {
+    console.error('[Backup] List error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get backup details
+app.get('/backup/:id', (req, res) => {
+  try {
+    const backup = backupStore.get(req.params.id);
+    if (!backup) {
+      res.status(404).json({ error: 'Backup not found' });
+      return;
+    }
+
+    // Return manifest without full memory data (for efficiency)
+    res.json({
+      id: backup.id,
+      timestamp: backup.timestamp,
+      reason: backup.reason,
+      total_memories: backup.total_memories,
+      segment_count: backup.segment_count,
+      segment_size: backup.segment_size,
+      metadata: backup.metadata,
+      segments: backup.segments.map(s => ({
+        index: s.index,
+        count: s.count,
+        checksum: s.checksum,
+      })),
+    });
+  } catch (error) {
+    console.error('[Backup] Get error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a specific segment from a backup
+app.get('/backup/:id/segment/:index', (req, res) => {
+  try {
+    const segment = getBackupSegment(req.params.id, parseInt(req.params.index));
+    res.json(segment);
+  } catch (error) {
+    console.error('[Backup] Get segment error:', error);
+    res.status(404).json({ error: error.message });
+  }
+});
+
+// Restore from a backup
+app.post('/restore', (req, res) => {
+  try {
+    const { backup_id, frame, merge = false, segments = null } = req.body;
+
+    if (!backup_id && !frame) {
+      res.status(400).json({ error: 'backup_id or frame is required' });
+      return;
+    }
+
+    let result;
+    if (frame) {
+      result = restoreFromFrame(frame, { merge, segmentFilter: segments });
+    } else {
+      result = restoreFromBackup(backup_id, { merge, segmentFilter: segments });
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('[Restore] Error:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Create a named frame (recovery point)
+app.post('/frame', (req, res) => {
+  try {
+    const { name, reason = 'manual_frame' } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+
+    if (frameStore.has(name)) {
+      res.status(409).json({ error: `Frame '${name}' already exists` });
+      return;
+    }
+
+    const backup = createBackup(reason, name);
+    res.status(201).json({
+      success: true,
+      frame: name,
+      backup_id: backup.id,
+      memory_count: backup.total_memories,
+      timestamp: backup.timestamp,
+    });
+  } catch (error) {
+    console.error('[Frame] Create error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List all frames
+app.get('/frame', (_req, res) => {
+  try {
+    const frames = listFrames();
+    res.json({
+      count: frames.length,
+      frames,
+    });
+  } catch (error) {
+    console.error('[Frame] List error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get frame details
+app.get('/frame/:name', (req, res) => {
+  try {
+    const frame = frameStore.get(req.params.name);
+    if (!frame) {
+      res.status(404).json({ error: 'Frame not found' });
+      return;
+    }
+
+    const backup = backupStore.get(frame.backup_id);
+    res.json({
+      ...frame,
+      backup_available: !!backup,
+      backup_segments: backup ? backup.segment_count : null,
+    });
+  } catch (error) {
+    console.error('[Frame] Get error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a frame (does not delete the backup)
+app.delete('/frame/:name', (req, res) => {
+  try {
+    const frame = frameStore.get(req.params.name);
+    if (!frame) {
+      res.status(404).json({ error: 'Frame not found' });
+      return;
+    }
+
+    frameStore.delete(req.params.name);
+    res.json({
+      success: true,
+      deleted_frame: req.params.name,
+      note: 'Backup still available until pruned',
+    });
+  } catch (error) {
+    console.error('[Frame] Delete error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Store a memory
 // SIMPLE MODEL: Every memory references entities (who/what was involved)
 // "we are all projects, are we not? you included" - Alan
