@@ -597,7 +597,9 @@ Resources:
   #############################################
   ECSService:
     Type: AWS::ECS::Service
-    DependsOn: ALBListener
+    DependsOn:
+      - ALBListener
+      - TriggerBuild
     Properties:
       ServiceName: !Sub ${AWS::StackName}-app
       Cluster: !Ref ECSCluster
@@ -686,10 +688,6 @@ Resources:
             Value: !Ref AWS::Region
           - Name: ECR_REPO
             Value: !Ref ECRRepository
-          - Name: ECS_CLUSTER
-            Value: !Ref ECSCluster
-          - Name: ECS_SERVICE
-            Value: !GetAtt ECSService.Name
       Source:
         Type: GITHUB
         Location: !Ref GitHubRepo
@@ -709,9 +707,7 @@ Resources:
               commands:
                 - echo Pushing to ECR...
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:latest
-                - echo Updating ECS service...
-                - aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment
-                - echo Build complete!
+                - echo Build complete! ECS will pull this image when service starts.
       TimeoutInMinutes: 30
 
   # Lambda to trigger CodeBuild on stack creation
@@ -789,8 +785,8 @@ Resources:
   TriggerBuild:
     Type: Custom::TriggerBuild
     DependsOn:
-      - ECSService
       - CodeBuildProject
+      - ECRRepository
     Properties:
       ServiceToken: !GetAtt BuildTriggerFunction.Arn
       ProjectName: !Ref CodeBuildProject
