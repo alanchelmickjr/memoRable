@@ -1928,7 +1928,7 @@ app.delete('/memory/:id', (req, res) => {
 app.post('/memory/verbatim', async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entityType = 'user', source, context = {}, metadata = {} } = req.body;
+    const { content, entity, entities, entityType = 'user', source, context = {}, metadata = {} } = req.body;
 
     if (!content) {
       res.status(400).json({ error: 'content is required' });
@@ -1939,10 +1939,20 @@ app.post('/memory/verbatim', async (req, res) => {
       return;
     }
 
+    // Support both single entity and entities array (same as /memory endpoint)
+    let entityList = entities || [];
+    if (entity && !entityList.includes(entity)) {
+      entityList = [entity, ...entityList];
+    }
+    if (entityList.length === 0) {
+      entityList = ['default'];
+    }
+
     const memory = {
       id: `vmem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
-      entity: entity || 'default',
+      entities: entityList,           // WHO was involved (array)
+      entity: entityList[0],          // Backward compat: primary entity
       entityType,
       context: { ...context, verbatim: true },
       metadata: { ...metadata, source, exact_quote: true },
@@ -1968,7 +1978,7 @@ app.post('/memory/verbatim', async (req, res) => {
 app.post('/memory/interpretation', async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entityType = 'user', source_memory_id, interpreter = 'claude', context = {}, metadata = {} } = req.body;
+    const { content, entity, entities, entityType = 'user', source_memory_id, interpreter = 'claude', context = {}, metadata = {} } = req.body;
 
     if (!content) {
       res.status(400).json({ error: 'content is required' });
@@ -1986,10 +1996,21 @@ app.post('/memory/interpretation', async (req, res) => {
       return;
     }
 
+    // Support both single entity and entities array
+    // Default to source memory's entities if not provided
+    let entityList = entities || [];
+    if (entity && !entityList.includes(entity)) {
+      entityList = [entity, ...entityList];
+    }
+    if (entityList.length === 0) {
+      entityList = sourceMemory.entities || [sourceMemory.entity] || ['default'];
+    }
+
     const memory = {
       id: `imem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
-      entity: entity || sourceMemory.entity,
+      entities: entityList,
+      entity: entityList[0],
       entityType: entityType || sourceMemory.entityType,
       context,
       metadata: {
