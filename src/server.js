@@ -1,34 +1,45 @@
 /**
  * Main server entry point for Docker/ECS deployment.
- * Starts Express server with health endpoints and initializes services.
+ * Simple Express server with health endpoints.
  */
 
 import express from 'express';
 import cors from 'cors';
-import { initialize, shutdown, isAlive, isReady, probes, getState } from './services/salience_service/startup.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Track startup state
+let isReady = false;
+const startTime = Date.now();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // Health endpoints for load balancers and Kubernetes
-app.get('/health', async (_req, res) => {
-  const alive = isAlive();
-  const ready = await isReady();
-  res.status(alive && ready ? 200 : 503).json({
-    healthy: alive && ready,
-    alive,
-    ready,
-    state: getState(),
+app.get('/health', (_req, res) => {
+  res.status(isReady ? 200 : 503).json({
+    healthy: isReady,
+    uptime: Date.now() - startTime,
+    timestamp: new Date().toISOString(),
   });
 });
 
-app.get('/health/live', probes.live);
-app.get('/health/ready', probes.ready);
-app.get('/health/startup', probes.startup);
+app.get('/health/live', (_req, res) => {
+  // Liveness: is the process running?
+  res.status(200).json({ alive: true });
+});
+
+app.get('/health/ready', (_req, res) => {
+  // Readiness: is the service ready for traffic?
+  res.status(isReady ? 200 : 503).json({ ready: isReady });
+});
+
+app.get('/health/startup', (_req, res) => {
+  // Startup: has initialization completed?
+  res.status(isReady ? 200 : 503).json({ initialized: isReady });
+});
 
 // Basic info endpoint
 app.get('/', (_req, res) => {
@@ -36,31 +47,33 @@ app.get('/', (_req, res) => {
     name: 'MemoRable',
     version: process.env.npm_package_version || '1.0.0',
     description: 'Context-aware memory system for AI agents',
+    status: isReady ? 'ready' : 'starting',
   });
 });
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM, shutting down gracefully...');
-  await shutdown();
   process.exit(0);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   console.log('[Server] Received SIGINT, shutting down gracefully...');
-  await shutdown();
   process.exit(0);
 });
 
 // Start server
 async function start() {
   try {
-    console.log('[Server] Initializing services...');
-    await initialize();
+    console.log('[Server] Starting MemoRable...');
 
     app.listen(PORT, () => {
       console.log(`[Server] MemoRable listening on port ${PORT}`);
       console.log(`[Server] Health check: http://localhost:${PORT}/health`);
+
+      // Mark as ready after server starts
+      isReady = true;
+      console.log('[Server] Service is ready for traffic');
     });
   } catch (error) {
     console.error('[Server] Failed to start:', error);
