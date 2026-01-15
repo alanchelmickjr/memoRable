@@ -62,6 +62,7 @@
     "dotenv": "^16.0.0",
     "express": "^5.1.0",
     "face-api.js": "^0.22.2",
+    "fast-xml-parser": "^5.3.3",
     "geolib": "^3.3.4",
     "joi": "^17.9.0",
     "jsonwebtoken": "^9.0.3",

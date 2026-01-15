@@ -272,6 +272,235 @@ app.get('/metrics/dashboard', (_req, res) => {
 });
 
 // =============================================================================
+// INTELLIGENCE DASHBOARD - "gauges and lights for engineers" - Alan
+// Shows the VALUE metrics: salience, entities, relationships, patterns
+// =============================================================================
+app.get('/dashboard', (_req, res) => {
+  const memories = Array.from(memoryStore.values());
+
+  // Salience distribution
+  const salienceRanges = {
+    low: memories.filter(m => m.salience < 40).length,
+    medium: memories.filter(m => m.salience >= 40 && m.salience < 70).length,
+    high: memories.filter(m => m.salience >= 70).length,
+  };
+
+  // Entity breakdown
+  const entityCounts = {};
+  memories.forEach(m => {
+    const entities = m.entities || [m.entity];
+    entities.forEach(e => {
+      entityCounts[e] = (entityCounts[e] || 0) + 1;
+    });
+  });
+
+  // Fidelity breakdown
+  const fidelityCounts = {
+    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
+    derived: memories.filter(m => m.fidelity === 'derived').length,
+    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+  };
+
+  // Source breakdown (for Slack ingestion visibility)
+  const sourceCounts = {};
+  memories.forEach(m => {
+    const source = m.context?.source || 'direct';
+    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+  });
+
+  // Top entities by memory count
+  const topEntities = Object.entries(entityCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  // Average salience
+  const avgSalience = memories.length > 0
+    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
+    : 0;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MemoRable Intelligence</title>
+  <meta http-equiv="refresh" content="5">
+  <style>
+    body { font-family: 'SF Mono', 'Consolas', monospace; background: #0d1117; color: #c9d1d9; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+    h2 { color: #8b949e; font-size: 14px; text-transform: uppercase; margin-top: 30px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+    .card h3 { margin: 0 0 10px 0; color: #58a6ff; font-size: 12px; text-transform: uppercase; }
+    .big-number { font-size: 48px; font-weight: bold; color: #7ee787; margin: 10px 0; }
+    .bar { height: 8px; background: #30363d; border-radius: 4px; overflow: hidden; margin: 5px 0; }
+    .bar-fill { height: 100%; border-radius: 4px; }
+    .bar-low { background: #484f58; }
+    .bar-medium { background: #d29922; }
+    .bar-high { background: #7ee787; }
+    .stat-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; }
+    .stat-label { color: #8b949e; }
+    .stat-value { color: #c9d1d9; font-weight: bold; }
+    .entity-list { max-height: 300px; overflow-y: auto; }
+    .entity-item { padding: 8px; background: #21262d; border-radius: 4px; margin: 4px 0; display: flex; justify-content: space-between; }
+    .entity-name { color: #58a6ff; }
+    .entity-count { color: #7ee787; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin: 2px; }
+    .tag-verbatim { background: #238636; color: #fff; }
+    .tag-derived { background: #9e6a03; color: #fff; }
+    .tag-standard { background: #30363d; color: #c9d1d9; }
+    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #30363d; color: #484f58; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>MemoRable Intelligence Dashboard</h1>
+  <p style="color: #8b949e;">Stop talking and start listening. Business Intelligence for the new Age.</p>
+
+  <h2>Memory Gauges</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Total Memories</h3>
+      <div class="big-number">${memories.length}</div>
+    </div>
+    <div class="card">
+      <h3>Average Salience</h3>
+      <div class="big-number">${avgSalience}</div>
+      <div class="bar">
+        <div class="bar-fill bar-${avgSalience < 40 ? 'low' : avgSalience < 70 ? 'medium' : 'high'}" style="width: ${avgSalience}%"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Unique Entities</h3>
+      <div class="big-number">${Object.keys(entityCounts).length}</div>
+    </div>
+    <div class="card">
+      <h3>Data Sources</h3>
+      <div class="big-number">${Object.keys(sourceCounts).length}</div>
+    </div>
+  </div>
+
+  <h2>Salience Distribution</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="stat-row">
+        <span class="stat-label">High (70-100)</span>
+        <span class="stat-value">${salienceRanges.high}</span>
+      </div>
+      <div class="bar"><div class="bar-fill bar-high" style="width: ${memories.length ? (salienceRanges.high / memories.length * 100) : 0}%"></div></div>
+      <div class="stat-row">
+        <span class="stat-label">Medium (40-69)</span>
+        <span class="stat-value">${salienceRanges.medium}</span>
+      </div>
+      <div class="bar"><div class="bar-fill bar-medium" style="width: ${memories.length ? (salienceRanges.medium / memories.length * 100) : 0}%"></div></div>
+      <div class="stat-row">
+        <span class="stat-label">Low (0-39)</span>
+        <span class="stat-value">${salienceRanges.low}</span>
+      </div>
+      <div class="bar"><div class="bar-fill bar-low" style="width: ${memories.length ? (salienceRanges.low / memories.length * 100) : 0}%"></div></div>
+    </div>
+    <div class="card">
+      <h3>Fidelity Types</h3>
+      <div class="stat-row">
+        <span class="stat-label">Verbatim (exact quotes)</span>
+        <span class="stat-value"><span class="tag tag-verbatim">${fidelityCounts.verbatim}</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Derived (interpretations)</span>
+        <span class="stat-value"><span class="tag tag-derived">${fidelityCounts.derived}</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Standard</span>
+        <span class="stat-value"><span class="tag tag-standard">${fidelityCounts.standard}</span></span>
+      </div>
+    </div>
+  </div>
+
+  <h2>Data Sources</h2>
+  <div class="grid">
+    <div class="card">
+      ${Object.entries(sourceCounts).map(([source, count]) => `
+        <div class="stat-row">
+          <span class="stat-label">${source}</span>
+          <span class="stat-value">${count}</span>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <h2>Top Entities</h2>
+  <div class="card">
+    <div class="entity-list">
+      ${topEntities.map(([name, count]) => `
+        <div class="entity-item">
+          <span class="entity-name">${name}</span>
+          <span class="entity-count">${count} memories</span>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>MemoRable</strong> — Context Intelligence for AI Agents<br>
+    Dashboard auto-refreshes every 5 seconds
+  </div>
+</body>
+</html>`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// JSON endpoint for programmatic access
+app.get('/dashboard/json', (_req, res) => {
+  const memories = Array.from(memoryStore.values());
+
+  const salienceRanges = {
+    low: memories.filter(m => m.salience < 40).length,
+    medium: memories.filter(m => m.salience >= 40 && m.salience < 70).length,
+    high: memories.filter(m => m.salience >= 70).length,
+  };
+
+  const entityCounts = {};
+  memories.forEach(m => {
+    const entities = m.entities || [m.entity];
+    entities.forEach(e => {
+      entityCounts[e] = (entityCounts[e] || 0) + 1;
+    });
+  });
+
+  const fidelityCounts = {
+    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
+    derived: memories.filter(m => m.fidelity === 'derived').length,
+    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+  };
+
+  const sourceCounts = {};
+  memories.forEach(m => {
+    const source = m.context?.source || 'direct';
+    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+  });
+
+  const avgSalience = memories.length > 0
+    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
+    : 0;
+
+  res.json({
+    summary: {
+      totalMemories: memories.length,
+      avgSalience,
+      uniqueEntities: Object.keys(entityCounts).length,
+      dataSources: Object.keys(sourceCounts).length,
+    },
+    salience: salienceRanges,
+    fidelity: fidelityCounts,
+    sources: sourceCounts,
+    topEntities: Object.entries(entityCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([name, count]) => ({ name, count })),
+  });
+});
+
+// =============================================================================
 // MEMORY ENDPOINTS
 // Basic store/retrieve for testing - uses in-memory store or DocumentDB
 // =============================================================================
