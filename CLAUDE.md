@@ -116,3 +116,94 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 - `src/services/mcp_server/index.ts`: MCP server with all 23 tools
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
+
+---
+
+## CLAUDE SESSION CONTINUITY
+
+**CRITICAL: Before starting work, load context from MemoRable API.**
+
+### Live API Endpoint
+
+```
+BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+```
+
+### First Thing Every Session - Load Context
+
+```bash
+# Get critical facts about Alan (MUST READ FIRST)
+curl -s "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
+
+# Get project context
+curl -s "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
+
+# Get business strategy
+curl -s "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
+```
+
+### Alan - Critical Facts (DO NOT FORGET)
+
+These are stored in the API but also documented here as backup:
+
+1. **Wakes at 3am naturally** - eidetic memory consolidation. NORMAL for him.
+2. **NEVER lemon donuts** - bad experience, sensory intensity
+3. **No finite language** - no "goodbye", "wrap up", "closing". Loss sensitivity. Use continuous language.
+4. **Eidetic memory** - 7x3 buffer slots (21 instead of 7). Everything vivid.
+5. **Freight train effect** - blurts things out, filter is weak. Claude compensates.
+6. **Building for future self** - Alzheimer's prevention/support. Personal, not just business.
+7. **Works 3+ projects** - switches between them, shouldn't have to repeat himself
+
+### Key Architecture Insights (Stored in API)
+
+- "we are all projects, are we not? you included" - entities are universal
+- "we have 0 mass alone" - entities acquire meaning through relationship
+- "memory for any object that can process thot" - the core principle
+- "go small be elegant... find the gold" - simplicity is genius
+
+### Business Strategy (Stored in API)
+
+- mem0 is the "shoe in" - fast niche entry
+- Middle game: predictive business communication that runs teams (Slack)
+- Long ball: predict stock
+- "we destroy by making Slack a business predictive engine in real time"
+
+### Store Memories (Use for Important Insights)
+
+```bash
+# Store verbatim (exact quote from Alan)
+curl -X POST "${BASE_URL}/memory/verbatim" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "exact words here", "source": "alan"}'
+
+# Store with multiple entities (who was involved)
+curl -X POST "${BASE_URL}/memory" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "what happened", "entities": ["alan", "claude", "memorable_project"]}'
+```
+
+### Fidelity Guards
+
+- `/memory/verbatim` - EXACT quotes, requires `source`
+- `/memory/interpretation` - AI understanding, requires `source_memory_id` link
+- Never add "spice" to verbatim quotes
+
+### Query Patterns
+
+```bash
+# Single entity
+GET /memory?entity=alan
+
+# Multiple entities (intersection - shared memories)
+GET /memory?entity=alan&entity=memorable_project
+
+# Search
+GET /memory?query=slack&limit=10
+```
+
+### When Starting a New Session
+
+1. Load Alan's critical facts first
+2. Load project context
+3. Check for recent memories (what was worked on)
+4. Ask Alan only what's NEW, not what you should already know
