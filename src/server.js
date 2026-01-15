@@ -449,6 +449,792 @@ app.get('/dashboard', (_req, res) => {
   res.send(html);
 });
 
+// =============================================================================
+// INTERACTIVE METRICS DASHBOARD - Game-like experience for everyone
+// "Stop talking and start listening" - but make it FUN
+// =============================================================================
+app.get('/dashboard/interactive', (_req, res) => {
+  const memories = Array.from(memoryStore.values());
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+  // Calculate level based on total memories (every 10 memories = 1 level)
+  const memoryCount = memories.length;
+  const level = Math.floor(memoryCount / 10) + 1;
+  const xpInLevel = memoryCount % 10;
+  const xpToNextLevel = 10;
+
+  // Calculate "Memory Power" score (0-100)
+  const avgSalience = memories.length > 0
+    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
+    : 0;
+
+  // Salience distribution for the "quality meter"
+  const salienceRanges = {
+    legendary: memories.filter(m => m.salience >= 90).length,
+    epic: memories.filter(m => m.salience >= 70 && m.salience < 90).length,
+    rare: memories.filter(m => m.salience >= 50 && m.salience < 70).length,
+    common: memories.filter(m => m.salience < 50).length,
+  };
+
+  // Entity counts for "relationship constellation"
+  const entityCounts = {};
+  memories.forEach(m => {
+    const entities = m.entities || [m.entity];
+    entities.forEach(e => {
+      entityCounts[e] = (entityCounts[e] || 0) + 1;
+    });
+  });
+
+  const topEntities = Object.entries(entityCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+
+  // Fidelity for "authenticity score"
+  const fidelityCounts = {
+    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
+    derived: memories.filter(m => m.fidelity === 'derived').length,
+    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+  };
+  const authenticityScore = memories.length > 0
+    ? Math.round((fidelityCounts.verbatim * 100 + fidelityCounts.derived * 60 + fidelityCounts.standard * 40) / memories.length)
+    : 0;
+
+  // Source breakdown as "data streams"
+  const sourceCounts = {};
+  memories.forEach(m => {
+    const source = m.context?.source || 'direct';
+    sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+  });
+
+  // Recent activity (last 5 memories)
+  const recentMemories = memories
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 5);
+
+  // Calculate achievements
+  const achievements = [];
+  if (memoryCount >= 1) achievements.push({ icon: '🧠', name: 'First Memory', desc: 'Stored your first memory' });
+  if (memoryCount >= 10) achievements.push({ icon: '📚', name: 'Memory Keeper', desc: 'Stored 10 memories' });
+  if (memoryCount >= 50) achievements.push({ icon: '🏆', name: 'Memory Master', desc: 'Stored 50 memories' });
+  if (memoryCount >= 100) achievements.push({ icon: '👑', name: 'Memory Monarch', desc: 'Stored 100 memories' });
+  if (fidelityCounts.verbatim >= 5) achievements.push({ icon: '💎', name: 'Truth Seeker', desc: '5 verbatim memories' });
+  if (Object.keys(entityCounts).length >= 5) achievements.push({ icon: '🌐', name: 'Connected', desc: '5 unique entities' });
+  if (avgSalience >= 70) achievements.push({ icon: '⚡', name: 'High Impact', desc: 'Avg salience 70+' });
+  if (Object.keys(sourceCounts).length >= 2) achievements.push({ icon: '📡', name: 'Multi-Source', desc: '2+ data sources' });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MemoRable - Memory Intelligence</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a1a;
+      --bg-secondary: #12122a;
+      --bg-card: #1a1a3a;
+      --accent-primary: #00f0ff;
+      --accent-secondary: #ff00ff;
+      --accent-gold: #ffd700;
+      --accent-green: #00ff88;
+      --text-primary: #ffffff;
+      --text-secondary: #8888aa;
+      --glow-cyan: 0 0 20px rgba(0, 240, 255, 0.5);
+      --glow-magenta: 0 0 20px rgba(255, 0, 255, 0.5);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background */
+    .bg-animation {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      background:
+        radial-gradient(ellipse at 20% 80%, rgba(0, 240, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(255, 0, 255, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(0, 255, 136, 0.05) 0%, transparent 70%);
+      animation: bgPulse 8s ease-in-out infinite;
+    }
+
+    @keyframes bgPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+
+    /* Floating particles */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--accent-primary);
+      border-radius: 50%;
+      animation: float 15s infinite linear;
+      opacity: 0.6;
+    }
+
+    @keyframes float {
+      0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.6; }
+      90% { opacity: 0.6; }
+      100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: var(--glow-cyan);
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.7); }
+      50% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+    }
+
+    /* Main grid */
+    .dashboard {
+      padding: 30px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid rgba(255,255,255,0.1);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+    }
+
+    .card-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    /* Level Card - Main hero */
+    .level-card {
+      grid-column: span 2;
+      display: flex;
+      align-items: center;
+      gap: 30px;
+    }
+
+    .level-orb {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, var(--accent-primary), var(--accent-secondary));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      box-shadow: var(--glow-cyan), var(--glow-magenta);
+      animation: orbGlow 3s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes orbGlow {
+      0%, 100% { box-shadow: 0 0 30px rgba(0, 240, 255, 0.5), 0 0 60px rgba(255, 0, 255, 0.3); }
+      50% { box-shadow: 0 0 50px rgba(0, 240, 255, 0.8), 0 0 80px rgba(255, 0, 255, 0.5); }
+    }
+
+    .level-info { flex: 1; }
+    .level-info h2 { font-family: 'Orbitron', sans-serif; font-size: 24px; margin-bottom: 8px; }
+    .level-info p { color: var(--text-secondary); margin-bottom: 16px; }
+
+    .xp-bar {
+      height: 12px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .xp-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-primary), var(--accent-green));
+      border-radius: 6px;
+      transition: width 0.5s ease;
+      position: relative;
+    }
+
+    .xp-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .xp-text {
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* Big number stat */
+    .big-stat {
+      text-align: center;
+    }
+
+    .big-number {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 56px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent-primary), var(--accent-green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+    }
+
+    .big-label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    /* Memory quality bars */
+    .quality-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .quality-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .quality-label {
+      width: 80px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .quality-bar {
+      flex: 1;
+      height: 8px;
+      background: var(--bg-secondary);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .quality-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .legendary .quality-fill { background: linear-gradient(90deg, #ffd700, #ff8c00); }
+    .epic .quality-fill { background: linear-gradient(90deg, #a855f7, #ec4899); }
+    .rare .quality-fill { background: linear-gradient(90deg, #3b82f6, #06b6d4); }
+    .common .quality-fill { background: linear-gradient(90deg, #6b7280, #9ca3af); }
+
+    .quality-count {
+      width: 40px;
+      text-align: right;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+    }
+
+    /* Entity constellation */
+    .constellation {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .entity-node {
+      padding: 8px 16px;
+      background: var(--bg-secondary);
+      border-radius: 20px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.3s ease;
+    }
+
+    .entity-node:hover {
+      border-color: var(--accent-primary);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .entity-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+    }
+
+    .entity-count {
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+
+    /* Achievements */
+    .achievements {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 12px;
+    }
+
+    .achievement {
+      text-align: center;
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      transition: transform 0.3s ease;
+    }
+
+    .achievement:hover {
+      transform: scale(1.05);
+    }
+
+    .achievement-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+
+    .achievement-name {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .achievement-desc {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    /* Activity feed */
+    .activity-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .activity-item {
+      padding: 12px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      border-left: 3px solid var(--accent-primary);
+      animation: slideIn 0.5s ease;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    .activity-content {
+      font-size: 13px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .activity-meta {
+      font-size: 11px;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Gauge meter */
+    .gauge {
+      position: relative;
+      width: 150px;
+      height: 75px;
+      margin: 0 auto 20px;
+      overflow: hidden;
+    }
+
+    .gauge-bg {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 12px solid var(--bg-secondary);
+      border-bottom-color: transparent;
+      border-left-color: transparent;
+      transform: rotate(-45deg);
+    }
+
+    .gauge-fill {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      border: 12px solid var(--accent-primary);
+      border-bottom-color: transparent;
+      border-left-color: transparent;
+      transform: rotate(-45deg);
+      clip-path: polygon(0 0, 100% 0, 100% 50%, 0 50%);
+      transition: transform 0.5s ease;
+    }
+
+    .gauge-value {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    /* Data streams */
+    .data-streams {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .stream {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+    }
+
+    .stream-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent-primary);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .stream-info { flex: 1; }
+    .stream-name { font-size: 13px; font-weight: 600; }
+    .stream-count { font-size: 11px; color: var(--text-secondary); }
+
+    .stream-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      animation: pulse 2s infinite;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 30px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .level-card { grid-column: span 1; flex-direction: column; text-align: center; }
+      .level-orb { width: 80px; height: 80px; font-size: 24px; }
+      .dashboard { padding: 15px; gap: 15px; }
+      .header { padding: 15px 20px; flex-direction: column; gap: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-animation"></div>
+  <div class="particles">
+    ${Array.from({length: 20}, (_, i) => `
+      <div class="particle" style="
+        left: ${Math.random() * 100}%;
+        animation-delay: ${Math.random() * 15}s;
+        animation-duration: ${10 + Math.random() * 10}s;
+      "></div>
+    `).join('')}
+  </div>
+
+  <div class="header">
+    <div class="logo">MemoRable</div>
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-dot"></div>
+        <span>Live</span>
+      </div>
+      <div class="status-item">
+        <span>Uptime: ${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard">
+    <!-- Level Card -->
+    <div class="card level-card">
+      <div class="level-orb">${level}</div>
+      <div class="level-info">
+        <h2>Memory Level ${level}</h2>
+        <p>Your AI memory system is growing stronger with every interaction</p>
+        <div class="xp-bar">
+          <div class="xp-fill" style="width: ${(xpInLevel / xpToNextLevel) * 100}%"></div>
+        </div>
+        <div class="xp-text">${xpInLevel} / ${xpToNextLevel} memories to next level</div>
+      </div>
+    </div>
+
+    <!-- Total Memories -->
+    <div class="card">
+      <div class="card-title">Memory Bank</div>
+      <div class="big-stat">
+        <div class="big-number">${memoryCount}</div>
+        <div class="big-label">Total Memories Stored</div>
+      </div>
+    </div>
+
+    <!-- Memory Power -->
+    <div class="card">
+      <div class="card-title">Memory Power</div>
+      <div class="big-stat">
+        <div class="big-number">${avgSalience}</div>
+        <div class="big-label">Average Salience Score</div>
+      </div>
+    </div>
+
+    <!-- Quality Distribution -->
+    <div class="card">
+      <div class="card-title">Memory Quality</div>
+      <div class="quality-bars">
+        <div class="quality-row legendary">
+          <span class="quality-label" style="color: #ffd700;">Legendary</span>
+          <div class="quality-bar">
+            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.legendary / memoryCount) * 100 : 0}%"></div>
+          </div>
+          <span class="quality-count">${salienceRanges.legendary}</span>
+        </div>
+        <div class="quality-row epic">
+          <span class="quality-label" style="color: #a855f7;">Epic</span>
+          <div class="quality-bar">
+            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.epic / memoryCount) * 100 : 0}%"></div>
+          </div>
+          <span class="quality-count">${salienceRanges.epic}</span>
+        </div>
+        <div class="quality-row rare">
+          <span class="quality-label" style="color: #3b82f6;">Rare</span>
+          <div class="quality-bar">
+            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.rare / memoryCount) * 100 : 0}%"></div>
+          </div>
+          <span class="quality-count">${salienceRanges.rare}</span>
+        </div>
+        <div class="quality-row common">
+          <span class="quality-label" style="color: #6b7280;">Common</span>
+          <div class="quality-bar">
+            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.common / memoryCount) * 100 : 0}%"></div>
+          </div>
+          <span class="quality-count">${salienceRanges.common}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Authenticity Score -->
+    <div class="card">
+      <div class="card-title">Authenticity Score</div>
+      <div style="text-align: center;">
+        <div class="big-number" style="font-size: 42px;">${authenticityScore}%</div>
+        <div class="big-label">Memory Fidelity Rating</div>
+        <div style="margin-top: 16px; display: flex; justify-content: center; gap: 16px; font-size: 12px;">
+          <span style="color: var(--accent-green);">💎 ${fidelityCounts.verbatim} Verbatim</span>
+          <span style="color: var(--accent-gold);">🔮 ${fidelityCounts.derived} Derived</span>
+          <span style="color: var(--text-secondary);">📝 ${fidelityCounts.standard} Standard</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Entity Constellation -->
+    <div class="card">
+      <div class="card-title">Entity Constellation</div>
+      <div class="constellation">
+        ${topEntities.length > 0 ? topEntities.map(([name, count]) => `
+          <div class="entity-node">
+            <div class="entity-dot"></div>
+            <span>${name}</span>
+            <span class="entity-count">${count}</span>
+          </div>
+        `).join('') : '<span style="color: var(--text-secondary);">No entities yet</span>'}
+      </div>
+    </div>
+
+    <!-- Data Streams -->
+    <div class="card">
+      <div class="card-title">Data Streams</div>
+      <div class="data-streams">
+        ${Object.entries(sourceCounts).map(([source, count]) => `
+          <div class="stream">
+            <div class="stream-icon">${source === 'slack' ? '💬' : source === 'api' ? '🔌' : '📡'}</div>
+            <div class="stream-info">
+              <div class="stream-name">${source.charAt(0).toUpperCase() + source.slice(1)}</div>
+              <div class="stream-count">${count} memories ingested</div>
+            </div>
+            <div class="stream-indicator"></div>
+          </div>
+        `).join('') || '<span style="color: var(--text-secondary);">No data streams active</span>'}
+      </div>
+    </div>
+
+    <!-- Achievements -->
+    <div class="card" style="grid-column: span 2;">
+      <div class="card-title">Achievements Unlocked</div>
+      <div class="achievements">
+        ${achievements.length > 0 ? achievements.map(a => `
+          <div class="achievement">
+            <div class="achievement-icon">${a.icon}</div>
+            <div class="achievement-name">${a.name}</div>
+            <div class="achievement-desc">${a.desc}</div>
+          </div>
+        `).join('') : '<span style="color: var(--text-secondary);">Start storing memories to unlock achievements!</span>'}
+      </div>
+    </div>
+
+    <!-- Activity Feed -->
+    <div class="card">
+      <div class="card-title">Recent Activity</div>
+      <div class="activity-feed">
+        ${recentMemories.length > 0 ? recentMemories.map(m => `
+          <div class="activity-item">
+            <div class="activity-content">${m.content.substring(0, 60)}${m.content.length > 60 ? '...' : ''}</div>
+            <div class="activity-meta">
+              <span>Salience: ${m.salience}</span>
+              <span>${new Date(m.timestamp).toLocaleTimeString()}</span>
+            </div>
+          </div>
+        `).join('') : '<span style="color: var(--text-secondary);">No activity yet</span>'}
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <strong>MemoRable</strong> — Memory Intelligence for AI Agents<br>
+    Dashboard auto-refreshes every 5 seconds | <a href="/dashboard" style="color: var(--accent-primary);">Classic View</a> | <a href="/metrics" style="color: var(--accent-primary);">Raw Metrics</a>
+  </div>
+
+  <script>
+    // Auto-refresh every 5 seconds
+    setTimeout(() => location.reload(), 5000);
+
+    // Add subtle animation to numbers on load
+    document.querySelectorAll('.big-number').forEach(el => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(20px)';
+      setTimeout(() => {
+        el.style.transition = 'all 0.5s ease';
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, 100);
+    });
+  </script>
+</body>
+</html>`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // JSON endpoint for programmatic access
 app.get('/dashboard/json', (_req, res) => {
   const memories = Array.from(memoryStore.values());
@@ -597,8 +1383,12 @@ app.get('/memory', (req, res) => {
       );
     }
 
-    // Sort by salience (highest first)
-    memories.sort((a, b) => b.salience - a.salience);
+    // Apply temporal perspective to each memory
+    // This adjusts salience based on how time changes perception
+    memories = memories.map(applyTemporalPerspective);
+
+    // Sort by adjusted salience (highest first) - this is the "current" importance
+    memories.sort((a, b) => (b.adjusted_salience || b.salience) - (a.adjusted_salience || a.salience));
 
     // Limit results
     memories = memories.slice(0, parseInt(limit));
@@ -609,6 +1399,9 @@ app.get('/memory', (req, res) => {
     res.json({
       count: memories.length,
       memories,
+      _meta: {
+        note: 'adjusted_salience reflects current temporal perspective - memories shift in importance over time',
+      }
     });
   } catch (error) {
     metrics.inc('memory_retrieve_errors', {});
@@ -625,10 +1418,42 @@ app.get('/memory/:id', (req, res) => {
       res.status(404).json({ error: 'Memory not found' });
       return;
     }
-    res.json(memory);
+    // Apply temporal perspective to show current state
+    const enrichedMemory = applyTemporalPerspective(memory);
+    res.json(enrichedMemory);
   } catch (error) {
     console.error('[Memory] Get by ID error:', error);
     res.status(500).json({ error: 'Failed to get memory' });
+  }
+});
+
+// Get perspective analysis for a memory
+// Shows how this memory's perceived importance has shifted over time
+app.get('/memory/:id/perspective', (req, res) => {
+  try {
+    const memory = memoryStore.get(req.params.id);
+    if (!memory) {
+      res.status(404).json({ error: 'Memory not found' });
+      return;
+    }
+
+    const perspective = calculatePerspective(memory.timestamp, memory.context);
+
+    res.json({
+      memory_id: memory.id,
+      content_preview: memory.content.substring(0, 100),
+      original_salience: memory.salience,
+      perspective,
+      adjusted_salience: Math.min(100, Math.max(0, Math.round(memory.salience * perspective.perspective_factor))),
+      interpretation: perspective.perspective_factor > 1
+        ? 'This memory has GROWN in importance over time (wisdom/pattern recognition)'
+        : perspective.perspective_factor < 0.8
+          ? 'This memory has FADED in emotional intensity (normal temporal drift)'
+          : 'This memory maintains stable importance',
+    });
+  } catch (error) {
+    console.error('[Memory] Perspective error:', error);
+    res.status(500).json({ error: 'Failed to calculate perspective' });
   }
 });
 
@@ -1085,6 +1910,84 @@ app.post('/project/:id/loop', (req, res) => {
 });
 
 // =============================================================================
+
+// =============================================================================
+// TEMPORAL PERSPECTIVE TRACKING
+// "memories are like versioning atoms... distances and things change" - Alan
+// When you were a child, stores were big. Now they're small. Same store.
+// We track how memory perception shifts over time.
+// =============================================================================
+
+/**
+ * Calculate temporal perspective factors for a memory.
+ * This captures how the "scale" or importance of a memory might shift over time.
+ *
+ * @param {Date} createdAt - When the memory was created
+ * @param {object} context - Context including emotional state, life stage, etc.
+ * @returns {object} Perspective factors
+ */
+function calculatePerspective(createdAt, context = {}) {
+  const now = new Date();
+  const ageMs = now - new Date(createdAt);
+  const ageDays = ageMs / (1000 * 60 * 60 * 24);
+
+  // Original scale - how "big" it felt when created (1-10)
+  // Higher emotional content = felt bigger at the time
+  let originalScale = 5; // Default neutral
+  if (context.emotionalIntensity) {
+    originalScale = Math.min(10, context.emotionalIntensity);
+  }
+  if (context.priority === 'high') originalScale = Math.min(10, originalScale + 2);
+  if (context.isOpenLoop) originalScale = Math.min(10, originalScale + 1);
+
+  // Temporal drift - how much perspective shifts over time
+  // Memories generally "shrink" in emotional impact but can also grow in wisdom value
+  // Uses logarithmic decay - rapid initial change, then stabilizes
+  const driftRate = context.driftRate || 0.1; // Configurable via env
+  const temporalDrift = Math.log10(1 + ageDays * driftRate);
+
+  // Current perceived scale - adjusted by temporal drift
+  // Fresh memories feel bigger, older memories feel more "settled"
+  // But some memories GROW in importance (wisdom, patterns recognized later)
+  let currentScale = originalScale;
+  if (context.growsWithTime) {
+    // This memory type appreciates with age (wisdom, pattern recognition)
+    currentScale = Math.min(10, originalScale * (1 + temporalDrift * 0.2));
+  } else {
+    // Default: emotional intensity fades, but never below 20% of original
+    currentScale = Math.max(originalScale * 0.2, originalScale * Math.exp(-temporalDrift * 0.3));
+  }
+
+  // Perspective factor - multiplier for salience recalculation
+  // 1.0 = no change, >1 = grew in importance, <1 = diminished
+  const perspectiveFactor = originalScale > 0 ? currentScale / originalScale : 1;
+
+  return {
+    original_scale: Math.round(originalScale * 10) / 10,
+    current_scale: Math.round(currentScale * 10) / 10,
+    temporal_drift: Math.round(temporalDrift * 100) / 100,
+    perspective_factor: Math.round(perspectiveFactor * 100) / 100,
+    age_days: Math.round(ageDays),
+    assessed_at: now.toISOString(),
+  };
+}
+
+/**
+ * Recalculate salience with temporal perspective applied.
+ * Call this when retrieving memories to get "current" salience.
+ */
+function applyTemporalPerspective(memory) {
+  if (!memory.timestamp) return memory;
+
+  const perspective = calculatePerspective(memory.timestamp, memory.context);
+  const adjustedSalience = Math.round(memory.salience * perspective.perspective_factor);
+
+  return {
+    ...memory,
+    perspective,
+    adjusted_salience: Math.min(100, Math.max(0, adjustedSalience)),
+  };
+}
 
 // Simple salience calculation (placeholder for real salience service)
 function calculateSalience(content, context) {
