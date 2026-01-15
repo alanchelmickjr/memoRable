@@ -271,6 +271,151 @@ app.get('/metrics/dashboard', (_req, res) => {
   res.send(html);
 });
 
+// =============================================================================
+// MEMORY ENDPOINTS
+// Basic store/retrieve for testing - uses in-memory store or DocumentDB
+// =============================================================================
+
+// In-memory store (fallback if no DB configured)
+const memoryStore = new Map();
+
+// Store a memory
+app.post('/memory', async (req, res) => {
+  const start = Date.now();
+  try {
+    const { content, entity, entityType = 'user', context = {}, metadata = {} } = req.body;
+
+    if (!content) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+
+    const memory = {
+      id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content,
+      entity: entity || 'default',
+      entityType,
+      context,
+      metadata,
+      timestamp: new Date().toISOString(),
+      salience: calculateSalience(content, context),
+    };
+
+    // Store in memory (or DB when connected)
+    memoryStore.set(memory.id, memory);
+
+    metrics.inc('memory_store_total', { entityType });
+    metrics.observe('memory_store_latency_ms', {}, Date.now() - start);
+
+    res.status(201).json({
+      success: true,
+      memory,
+    });
+  } catch (error) {
+    metrics.inc('memory_store_errors', {});
+    console.error('[Memory] Store error:', error);
+    res.status(500).json({ error: 'Failed to store memory' });
+  }
+});
+
+// Retrieve memories
+app.get('/memory', (req, res) => {
+  const start = Date.now();
+  try {
+    const { entity, entityType, limit = 10, query } = req.query;
+
+    let memories = Array.from(memoryStore.values());
+
+    // Filter by entity if provided
+    if (entity) {
+      memories = memories.filter(m => m.entity === entity);
+    }
+    if (entityType) {
+      memories = memories.filter(m => m.entityType === entityType);
+    }
+
+    // Simple text search if query provided
+    if (query) {
+      const q = query.toLowerCase();
+      memories = memories.filter(m =>
+        m.content.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort by salience (highest first)
+    memories.sort((a, b) => b.salience - a.salience);
+
+    // Limit results
+    memories = memories.slice(0, parseInt(limit));
+
+    metrics.inc('memory_retrieve_total', {});
+    metrics.observe('memory_retrieve_latency_ms', {}, Date.now() - start);
+
+    res.json({
+      count: memories.length,
+      memories,
+    });
+  } catch (error) {
+    metrics.inc('memory_retrieve_errors', {});
+    console.error('[Memory] Retrieve error:', error);
+    res.status(500).json({ error: 'Failed to retrieve memories' });
+  }
+});
+
+// Get memory by ID
+app.get('/memory/:id', (req, res) => {
+  try {
+    const memory = memoryStore.get(req.params.id);
+    if (!memory) {
+      res.status(404).json({ error: 'Memory not found' });
+      return;
+    }
+    res.json(memory);
+  } catch (error) {
+    console.error('[Memory] Get by ID error:', error);
+    res.status(500).json({ error: 'Failed to get memory' });
+  }
+});
+
+// Delete memory
+app.delete('/memory/:id', (req, res) => {
+  try {
+    const deleted = memoryStore.delete(req.params.id);
+    if (!deleted) {
+      res.status(404).json({ error: 'Memory not found' });
+      return;
+    }
+    res.json({ success: true, id: req.params.id });
+  } catch (error) {
+    console.error('[Memory] Delete error:', error);
+    res.status(500).json({ error: 'Failed to delete memory' });
+  }
+});
+
+// Simple salience calculation (placeholder for real salience service)
+function calculateSalience(content, context) {
+  let salience = 50; // Base salience
+
+  // Emotional markers boost salience
+  const emotionalWords = ['important', 'urgent', 'love', 'hate', 'amazing', 'terrible', 'critical'];
+  const hasEmotion = emotionalWords.some(w => content.toLowerCase().includes(w));
+  if (hasEmotion) salience += 20;
+
+  // Questions are more salient (open loops)
+  if (content.includes('?')) salience += 10;
+
+  // Length factor (not too short, not too long)
+  if (content.length > 50 && content.length < 500) salience += 10;
+
+  // Context factors
+  if (context.priority === 'high') salience += 15;
+  if (context.isOpenLoop) salience += 15;
+
+  return Math.min(100, Math.max(0, salience));
+}
+
+// =============================================================================
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM, shutting down gracefully...');
