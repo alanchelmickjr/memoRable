@@ -1,0 +1,194 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/mcp/main/schema/mcp.schema.json",
+  "name": "memorable",
+  "displayName": "MemoRable",
+  "version": "2.0.0",
+  "description": "Enterprise memory system for AI agents with salience scoring, commitment tracking, relationship intelligence, and predictive memory. Extends Mem0 with 23 MCP tools for Claude integration.",
+  "author": {
+    "name": "MemoRable Team",
+    "url": "https://github.com/alanchelmickjr/memoRable"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alanchelmickjr/memoRable"
+  },
+  "homepage": "https://github.com/alanchelmickjr/memoRable",
+  "icon": "https://raw.githubusercontent.com/alanchelmickjr/memoRable/main/assets/icon.png",
+  "categories": [
+    "memory",
+    "productivity",
+    "context",
+    "intelligence"
+  ],
+  "capabilities": {
+    "tools": 23,
+    "resources": 3,
+    "prompts": 2
+  },
+  "tools": [
+    {
+      "name": "store_memory",
+      "description": "Store a memory with automatic salience scoring and security tiering"
+    },
+    {
+      "name": "recall",
+      "description": "Search and retrieve memories by query, person, or salience threshold"
+    },
+    {
+      "name": "get_briefing",
+      "description": "Get pre-conversation briefing with obligations, events, and sensitivities"
+    },
+    {
+      "name": "forget",
+      "description": "Delete a specific memory by ID"
+    },
+    {
+      "name": "forget_person",
+      "description": "Delete all memories involving a specific person"
+    },
+    {
+      "name": "restore",
+      "description": "Restore a previously deleted memory"
+    },
+    {
+      "name": "list_loops",
+      "description": "List open commitments filtered by owner, person, or overdue status"
+    },
+    {
+      "name": "close_loop",
+      "description": "Mark a commitment as complete with optional note"
+    },
+    {
+      "name": "reassociate",
+      "description": "Update people, topics, tags, and project associations"
+    },
+    {
+      "name": "export_memories",
+      "description": "Export memories with optional password encryption"
+    },
+    {
+      "name": "set_context",
+      "description": "Set multi-device aware context (location, people, activity, mood)"
+    },
+    {
+      "name": "whats_relevant",
+      "description": "Query device-specific or unified context for relevance"
+    },
+    {
+      "name": "clear_context",
+      "description": "Clear specific context dimensions"
+    },
+    {
+      "name": "list_devices",
+      "description": "List active devices and their context status"
+    },
+    {
+      "name": "get_status",
+      "description": "Get system status, metrics, relationships, and patterns"
+    },
+    {
+      "name": "anticipate",
+      "description": "21-day pattern learning with calendar integration for predictions"
+    },
+    {
+      "name": "day_outlook",
+      "description": "Get daily behavioral predictions and likely topics"
+    },
+    {
+      "name": "pattern_stats",
+      "description": "View learning progress metrics and pattern confidence"
+    },
+    {
+      "name": "memory_feedback",
+      "description": "Reinforce predictions with used/ignored/dismissed signals"
+    },
+    {
+      "name": "identify_user",
+      "description": "Identify user by message behavioral fingerprinting"
+    },
+    {
+      "name": "behavioral_metrics",
+      "description": "ASCII visualization dashboards with recognition accuracy"
+    },
+    {
+      "name": "behavioral_feedback",
+      "description": "Improve recognition accuracy through feedback"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "memory://recent",
+      "name": "Recent Memories",
+      "description": "Recent high-salience memories from the past week"
+    },
+    {
+      "uri": "memory://loops",
+      "name": "Open Loops",
+      "description": "Open commitments awaiting action"
+    },
+    {
+      "uri": "memory://contacts",
+      "name": "Contacts",
+      "description": "Active and cold relationships with interaction data"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "daily_briefing",
+      "description": "Summary of attention items for the day"
+    },
+    {
+      "name": "person_context",
+      "description": "Full briefing before conversation with a specific person",
+      "arguments": [
+        {
+          "name": "person",
+          "required": true,
+          "description": "Name of the person to get context for"
+        }
+      ]
+    }
+  ],
+  "transports": ["stdio", "http"],
+  "authentication": {
+    "type": "optional",
+    "methods": ["oauth2", "jwt"]
+  },
+  "security": {
+    "tiers": [
+      {
+        "name": "Tier1_General",
+        "description": "Public data, can be sent to external LLMs"
+      },
+      {
+        "name": "Tier2_Personal",
+        "description": "Personal data, local LLM only"
+      },
+      {
+        "name": "Tier3_Vault",
+        "description": "Sensitive data (PII, financial, medical), AES-256-GCM encrypted, no LLM access"
+      }
+    ]
+  },
+  "requirements": {
+    "node": ">=18.0.0",
+    "databases": [
+      {
+        "name": "MongoDB",
+        "required": true,
+        "purpose": "Document storage for memories, relationships, patterns"
+      },
+      {
+        "name": "Redis",
+        "required": false,
+        "purpose": "Context frames, caching, session state"
+      }
+    ]
+  },
+  "installation": {
+    "npm": "npm install @memorable/mcp-server",
+    "claude_code": "Add to claude_desktop_config.json: {\"mcpServers\": {\"memorable\": {\"command\": \"npx\", \"args\": [\"-y\", \"@memorable/mcp-server\"]}}}",
+    "docker": "docker run -d -p 8080:8080 ghcr.io/alanchelmickjr/memorable-mcp-server"
+  }
+}

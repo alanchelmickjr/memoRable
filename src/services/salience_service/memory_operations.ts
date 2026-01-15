@@ -637,6 +637,7 @@ export async function exportMemories(
 
 /**
  * Import memories from export format.
+ * Automatically tracks import for undo capability.
  */
 export async function importMemories(
   userId: string,
@@ -648,15 +649,31 @@ export async function importMemories(
     targetProject?: string;
     /** Skip duplicates based on text similarity */
     skipDuplicates?: boolean;
+    /** Source of import (mem0, file, api) */
+    source?: 'mem0' | 'file' | 'api';
+    /** Import tracking ID (if continuing an existing import) */
+    importId?: string;
   } = {}
 ): Promise<{
   imported: number;
   skipped: number;
   errors: string[];
+  importId: string;
 }> {
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const importedIds: { [collection: string]: string[] } = {
+    memories: [],
+    open_loops: [],
+    person_timeline_events: [],
+  };
+
+  // Track this import for undo capability
+  const importId = options.importId || `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const source = options.source || 'api';
+
+  console.log(`[Import] Starting import ${importId} from ${source}: ${memories.length} memories`);
 
   for (const memory of memories) {
     try {
@@ -691,12 +708,17 @@ export async function importMemories(
         project: options.targetProject || memory.project,
         state: 'active',
         importedFrom: memory.id,
+        importId, // Track which import this came from
+        importSource: source,
       } as any);
+
+      importedIds.memories.push(newId);
 
       // Import loops
       for (const loop of memory.loops || []) {
+        const loopId = `${newId}_loop_${Math.random().toString(36).slice(2, 8)}`;
         await collections.openLoops().insertOne({
-          id: `${newId}_loop_${Math.random().toString(36).slice(2, 8)}`,
+          id: loopId,
           userId,
           memoryId: newId,
           description: loop.description,
@@ -709,13 +731,16 @@ export async function importMemories(
           urgency: 'normal',
           remindedCount: 0,
           escalateAfterDays: 7,
+          importId,
         } as any);
+        importedIds.open_loops.push(loopId);
       }
 
       // Import timeline events
       for (const event of memory.timelineEvents || []) {
+        const eventId = `${newId}_event_${Math.random().toString(36).slice(2, 8)}`;
         await collections.personTimelineEvents().insertOne({
-          id: `${newId}_event_${Math.random().toString(36).slice(2, 8)}`,
+          id: eventId,
           userId,
           memoryId: newId,
           description: event.description,
@@ -727,7 +752,9 @@ export async function importMemories(
           isRecurring: false,
           goodToMention: true,
           sensitivity: 'neutral',
+          importId,
         } as any);
+        importedIds.person_timeline_events.push(eventId);
       }
 
       imported++;
@@ -736,7 +763,50 @@ export async function importMemories(
     }
   }
 
-  return { imported, skipped, errors };
+  console.log(`[Import] Completed ${importId}: ${imported} imported, ${skipped} skipped, ${errors.length} errors`);
+
+  return { imported, skipped, errors, importId };
+}
+
+/**
+ * Undo an import by removing all documents with matching importId.
+ * This is the "undoable Mem0 integration" feature.
+ */
+export async function undoImport(
+  userId: string,
+  importId: string
+): Promise<{
+  success: boolean;
+  removed: { [collection: string]: number };
+}> {
+  console.log(`[Import] Undoing import ${importId} for user ${userId}`);
+
+  const removed: { [collection: string]: number } = {};
+
+  // Remove from memories
+  const memResult = await collections.memories().deleteMany({
+    userId,
+    importId,
+  } as any);
+  removed.memories = memResult.deletedCount;
+
+  // Remove from open_loops
+  const loopResult = await collections.openLoops().deleteMany({
+    userId,
+    importId,
+  } as any);
+  removed.open_loops = loopResult.deletedCount;
+
+  // Remove from person_timeline_events
+  const eventResult = await collections.personTimelineEvents().deleteMany({
+    userId,
+    importId,
+  } as any);
+  removed.person_timeline_events = eventResult.deletedCount;
+
+  console.log(`[Import] Undone ${importId}: removed ${JSON.stringify(removed)}`);
+
+  return { success: true, removed };
 }
 
 // ============================================================================
