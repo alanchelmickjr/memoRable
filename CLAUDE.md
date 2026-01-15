@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ALAN'S CODING RULES - READ FIRST
+
+**NEVER DO THESE THINGS:**
+
+1. **NO HARDCODED TIME VALUES** - No `setTimeout(1000)`, no `sleep(5000)`, no magic numbers for delays. Use environment variables or constants with clear names.
+
+2. **NO SECRETS TO GIT** - Never commit API keys, tokens, passwords, or any sensitive data. Check `.env.example` exists, use environment variables, and verify `.gitignore` covers secret files BEFORE committing.
+
+These are non-negotiable. Alan has asked Claude to remember this across every session.
+
+---
+
 ## Core Philosophy - The Three Pillars
 
 ```
