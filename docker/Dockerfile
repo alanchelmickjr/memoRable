@@ -49,5 +49,5 @@ chmod +x /usr/local/bin/health.sh
 # Expose port
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "src/index.js"]
+# Start the application server
+CMD ["node", "src/server.js"]
