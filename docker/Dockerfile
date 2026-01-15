@@ -1,4 +1,5 @@
-FROM node:18-alpine
+# Use ECR Public to avoid Docker Hub rate limits
+FROM public.ecr.aws/docker/library/node:18-alpine
 
 # Install system dependencies
 RUN apk add --no-cache \
