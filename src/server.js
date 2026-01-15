@@ -280,6 +280,8 @@ app.get('/metrics/dashboard', (_req, res) => {
 const memoryStore = new Map();
 
 // Store a memory
+// VERBATIM MODE: When storing user quotes, use verbatim endpoint or set verbatim:true
+// This guards against AI interpretation creeping into source memories
 app.post('/memory', async (req, res) => {
   const start = Date.now();
   try {
@@ -299,6 +301,8 @@ app.post('/memory', async (req, res) => {
       metadata,
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
+      // Mark if this is verbatim (exact quote) or derived (interpretation)
+      fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
     };
 
     // Store in memory (or DB when connected)
@@ -391,6 +395,445 @@ app.delete('/memory/:id', (req, res) => {
     res.status(500).json({ error: 'Failed to delete memory' });
   }
 });
+
+// =============================================================================
+// FIDELITY GUARDS
+// Verbatim vs Interpretation - keep them separate
+// =============================================================================
+
+// Store VERBATIM - exact quote, no interpretation allowed
+// Use this when storing what someone ACTUALLY said
+app.post('/memory/verbatim', async (req, res) => {
+  const start = Date.now();
+  try {
+    const { content, entity, entityType = 'user', source, context = {}, metadata = {} } = req.body;
+
+    if (!content) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+    if (!source) {
+      res.status(400).json({ error: 'source is required for verbatim memories (who said this?)' });
+      return;
+    }
+
+    const memory = {
+      id: `vmem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content,
+      entity: entity || 'default',
+      entityType,
+      context: { ...context, verbatim: true },
+      metadata: { ...metadata, source, exact_quote: true },
+      timestamp: new Date().toISOString(),
+      salience: calculateSalience(content, context),
+      fidelity: 'verbatim',  // Locked
+    };
+
+    memoryStore.set(memory.id, memory);
+    metrics.inc('memory_verbatim_total', {});
+
+    console.log(`[Memory] Verbatim stored from ${source}: "${content.substring(0, 50)}..."`);
+    res.status(201).json({ success: true, memory, note: 'Stored as verbatim - exact quote preserved' });
+  } catch (error) {
+    metrics.inc('memory_store_errors', {});
+    console.error('[Memory] Verbatim store error:', error);
+    res.status(500).json({ error: 'Failed to store verbatim memory' });
+  }
+});
+
+// Store INTERPRETATION - must link to source verbatim memory
+// Use this when storing AI understanding of what was said
+app.post('/memory/interpretation', async (req, res) => {
+  const start = Date.now();
+  try {
+    const { content, entity, entityType = 'user', source_memory_id, interpreter = 'claude', context = {}, metadata = {} } = req.body;
+
+    if (!content) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+    if (!source_memory_id) {
+      res.status(400).json({ error: 'source_memory_id is required - interpretations must link to verbatim source' });
+      return;
+    }
+
+    // Verify source exists
+    const sourceMemory = memoryStore.get(source_memory_id);
+    if (!sourceMemory) {
+      res.status(404).json({ error: 'Source memory not found - interpretation must link to existing memory' });
+      return;
+    }
+
+    const memory = {
+      id: `imem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content,
+      entity: entity || sourceMemory.entity,
+      entityType: entityType || sourceMemory.entityType,
+      context,
+      metadata: {
+        ...metadata,
+        interpreter,
+        derived_from: source_memory_id,
+        source_content: sourceMemory.content.substring(0, 100)
+      },
+      timestamp: new Date().toISOString(),
+      salience: calculateSalience(content, context),
+      fidelity: 'derived',  // Locked - this is interpretation
+    };
+
+    memoryStore.set(memory.id, memory);
+    metrics.inc('memory_interpretation_total', {});
+
+    console.log(`[Memory] Interpretation by ${interpreter} of ${source_memory_id}`);
+    res.status(201).json({
+      success: true,
+      memory,
+      source: sourceMemory.content.substring(0, 100),
+      note: 'Stored as interpretation - linked to source verbatim'
+    });
+  } catch (error) {
+    metrics.inc('memory_store_errors', {});
+    console.error('[Memory] Interpretation store error:', error);
+    res.status(500).json({ error: 'Failed to store interpretation' });
+  }
+});
+
+// =============================================================================
+// PROJECT MEMORY LAYER
+// Living projects with comprehension, curation, and compaction checkpoints
+// =============================================================================
+
+// Project store (same stack, different layer)
+const projectStore = new Map();
+
+// Create a project
+app.post('/project', (req, res) => {
+  try {
+    const { name, description = '' } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'name is required' });
+      return;
+    }
+
+    const project = {
+      id: `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      description,
+      lifecycle: {
+        created: new Date().toISOString(),
+        state: 'inception',
+        state_history: [{ state: 'inception', timestamp: new Date().toISOString() }]
+      },
+      participants: [],
+      comprehension: {
+        participants: {},
+        architecture: '',
+        principles: '',
+        current_focus: ''
+      },
+      critical_facts: [],
+      open_loops: []
+    };
+
+    projectStore.set(project.id, project);
+    metrics.inc('project_create_total', {});
+
+    console.log(`[Project] Created: ${project.name} (${project.id})`);
+    res.status(201).json({ success: true, project });
+  } catch (error) {
+    console.error('[Project] Create error:', error);
+    res.status(500).json({ error: 'Failed to create project' });
+  }
+});
+
+// Get project by ID
+app.get('/project/:id', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    // Enrich with memory count
+    const projectMemories = Array.from(memoryStore.values())
+      .filter(m => m.context?.projectId === project.id);
+
+    res.json({
+      ...project,
+      memory_count: projectMemories.length,
+      critical_count: project.critical_facts.length
+    });
+  } catch (error) {
+    console.error('[Project] Get error:', error);
+    res.status(500).json({ error: 'Failed to get project' });
+  }
+});
+
+// List all projects
+app.get('/project', (req, res) => {
+  try {
+    const projects = Array.from(projectStore.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      state: p.lifecycle.state,
+      created: p.lifecycle.created,
+      participant_count: p.participants.length,
+      critical_count: p.critical_facts.length
+    }));
+    res.json({ count: projects.length, projects });
+  } catch (error) {
+    console.error('[Project] List error:', error);
+    res.status(500).json({ error: 'Failed to list projects' });
+  }
+});
+
+// Add participant to project
+app.post('/project/:id/participant', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const { participantId, type = 'user', role = 'contributor' } = req.body;
+    if (!participantId) {
+      res.status(400).json({ error: 'participantId is required' });
+      return;
+    }
+
+    project.participants.push({
+      id: participantId,
+      type,
+      role,
+      joined: new Date().toISOString(),
+      active: true
+    });
+
+    console.log(`[Project] Added participant ${participantId} to ${project.name}`);
+    res.json({ success: true, participants: project.participants });
+  } catch (error) {
+    console.error('[Project] Add participant error:', error);
+    res.status(500).json({ error: 'Failed to add participant' });
+  }
+});
+
+// Curate a memory (mark as critical)
+app.post('/project/:id/curate', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const { fact, weight = 1.0, reason = '', curatedBy = 'system' } = req.body;
+    if (!fact) {
+      res.status(400).json({ error: 'fact is required' });
+      return;
+    }
+
+    const criticalFact = {
+      id: `cf_${Date.now()}`,
+      fact,
+      weight: Math.min(1.0, Math.max(0.0, weight)),
+      curated_by: curatedBy,
+      curated_at: new Date().toISOString(),
+      reason
+    };
+
+    project.critical_facts.push(criticalFact);
+    metrics.inc('project_curate_total', {});
+
+    console.log(`[Project] Curated fact for ${project.name}: "${fact.substring(0, 50)}..."`);
+    res.status(201).json({ success: true, criticalFact });
+  } catch (error) {
+    console.error('[Project] Curate error:', error);
+    res.status(500).json({ error: 'Failed to curate fact' });
+  }
+});
+
+// Update comprehension
+app.post('/project/:id/comprehension', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const { subject, understanding } = req.body;
+    if (!subject || !understanding) {
+      res.status(400).json({ error: 'subject and understanding are required' });
+      return;
+    }
+
+    // Update the appropriate comprehension field
+    if (subject === 'architecture' || subject === 'principles' || subject === 'current_focus') {
+      project.comprehension[subject] = understanding;
+    } else {
+      // It's a participant
+      project.comprehension.participants[subject] = understanding;
+    }
+
+    console.log(`[Project] Updated comprehension for ${project.name}: ${subject}`);
+    res.json({ success: true, comprehension: project.comprehension });
+  } catch (error) {
+    console.error('[Project] Comprehension error:', error);
+    res.status(500).json({ error: 'Failed to update comprehension' });
+  }
+});
+
+// Get understanding of a subject
+app.get('/project/:id/understand/:subject', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const subject = req.params.subject;
+    let understanding;
+
+    if (subject === 'architecture' || subject === 'principles' || subject === 'current_focus') {
+      understanding = project.comprehension[subject];
+    } else {
+      understanding = project.comprehension.participants[subject];
+    }
+
+    if (!understanding) {
+      res.status(404).json({ error: `No understanding of ${subject}` });
+      return;
+    }
+
+    res.json({ subject, understanding });
+  } catch (error) {
+    console.error('[Project] Understand error:', error);
+    res.status(500).json({ error: 'Failed to get understanding' });
+  }
+});
+
+// COMPACTION CHECKPOINT - The critical endpoint
+// When Claude compacts, query this to recover critical context
+app.get('/project/:id/checkpoint', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    // Get recent project memories
+    const projectMemories = Array.from(memoryStore.values())
+      .filter(m => m.context?.projectId === project.id)
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 20);
+
+    const checkpoint = {
+      project_id: project.id,
+      project_name: project.name,
+      retrieved_at: new Date().toISOString(),
+
+      // Critical facts that MUST survive compaction
+      critical_facts: project.critical_facts
+        .sort((a, b) => b.weight - a.weight),
+
+      // Comprehension layer
+      comprehension: project.comprehension,
+
+      // Current state
+      active_context: {
+        state: project.lifecycle.state,
+        participant_count: project.participants.length,
+        open_loops: project.open_loops,
+        recent_memories: projectMemories.map(m => ({
+          content: m.content.substring(0, 100),
+          timestamp: m.timestamp,
+          salience: m.salience
+        }))
+      },
+
+      // Recovery instructions
+      recovery_note: "These facts and comprehension MUST be re-injected into context after compaction."
+    };
+
+    metrics.inc('project_checkpoint_total', {});
+    console.log(`[Project] Checkpoint retrieved for ${project.name}`);
+
+    res.json(checkpoint);
+  } catch (error) {
+    console.error('[Project] Checkpoint error:', error);
+    res.status(500).json({ error: 'Failed to get checkpoint' });
+  }
+});
+
+// Update project state
+app.post('/project/:id/state', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const { state } = req.body;
+    const validStates = ['inception', 'planning', 'active', 'dormant', 'revived', 'completed', 'archived'];
+
+    if (!validStates.includes(state)) {
+      res.status(400).json({ error: `Invalid state. Must be one of: ${validStates.join(', ')}` });
+      return;
+    }
+
+    project.lifecycle.state = state;
+    project.lifecycle.state_history.push({
+      state,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log(`[Project] ${project.name} state changed to: ${state}`);
+    res.json({ success: true, lifecycle: project.lifecycle });
+  } catch (error) {
+    console.error('[Project] State change error:', error);
+    res.status(500).json({ error: 'Failed to change state' });
+  }
+});
+
+// Add open loop to project
+app.post('/project/:id/loop', (req, res) => {
+  try {
+    const project = projectStore.get(req.params.id);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
+      return;
+    }
+
+    const { description, priority = 'medium' } = req.body;
+    if (!description) {
+      res.status(400).json({ error: 'description is required' });
+      return;
+    }
+
+    const loop = {
+      id: `loop_${Date.now()}`,
+      description,
+      priority,
+      created: new Date().toISOString(),
+      status: 'open'
+    };
+
+    project.open_loops.push(loop);
+    console.log(`[Project] Added open loop to ${project.name}: ${description}`);
+    res.status(201).json({ success: true, loop });
+  } catch (error) {
+    console.error('[Project] Add loop error:', error);
+    res.status(500).json({ error: 'Failed to add loop' });
+  }
+});
+
+// =============================================================================
 
 // Simple salience calculation (placeholder for real salience service)
 function calculateSalience(content, context) {
