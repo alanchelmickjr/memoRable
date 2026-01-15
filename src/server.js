@@ -280,28 +280,39 @@ app.get('/metrics/dashboard', (_req, res) => {
 const memoryStore = new Map();
 
 // Store a memory
-// VERBATIM MODE: When storing user quotes, use verbatim endpoint or set verbatim:true
-// This guards against AI interpretation creeping into source memories
+// SIMPLE MODEL: Every memory references entities (who/what was involved)
+// "we are all projects, are we not? you included" - Alan
+// VERBATIM MODE: set verbatim:true to preserve exact quotes
 app.post('/memory', async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entityType = 'user', context = {}, metadata = {} } = req.body;
+    const { content, entity, entities, entityType = 'user', context = {}, metadata = {} } = req.body;
 
     if (!content) {
       res.status(400).json({ error: 'content is required' });
       return;
     }
 
+    // Support both single entity and entities array
+    // Everything is just entities - no special project/user/intersection
+    let entityList = entities || [];
+    if (entity && !entityList.includes(entity)) {
+      entityList = [entity, ...entityList];
+    }
+    if (entityList.length === 0) {
+      entityList = ['default'];
+    }
+
     const memory = {
       id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
-      entity: entity || 'default',
+      entities: entityList,           // WHO was involved (simple array)
+      entity: entityList[0],          // Backward compat: primary entity
       entityType,
       context,
       metadata,
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
-      // Mark if this is verbatim (exact quote) or derived (interpretation)
       fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
     };
 
@@ -323,16 +334,27 @@ app.post('/memory', async (req, res) => {
 });
 
 // Retrieve memories
+// SIMPLE: Query by one or more entities
+// GET /memory?entity=alan                    → Alan's memories
+// GET /memory?entity=alan&entity=memorable   → Where Alan + MemoRable together
 app.get('/memory', (req, res) => {
   const start = Date.now();
   try {
-    const { entity, entityType, limit = 10, query } = req.query;
+    // Support multiple entity params: ?entity=alan&entity=memorable
+    let entityFilter = req.query.entity;
+    if (entityFilter && !Array.isArray(entityFilter)) {
+      entityFilter = [entityFilter];
+    }
+    const { entityType, limit = 10, query } = req.query;
 
     let memories = Array.from(memoryStore.values());
 
-    // Filter by entity if provided
-    if (entity) {
-      memories = memories.filter(m => m.entity === entity);
+    // Filter by entities - memory must include ALL requested entities
+    if (entityFilter && entityFilter.length > 0) {
+      memories = memories.filter(m => {
+        const memEntities = m.entities || [m.entity];
+        return entityFilter.every(e => memEntities.includes(e));
+      });
     }
     if (entityType) {
       memories = memories.filter(m => m.entityType === entityType);
