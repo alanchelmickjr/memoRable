@@ -1,0 +1,16 @@
+{
+  "name": "@memorable/cli",
+  "version": "0.1.0",
+  "description": "A shell that remembers - MemoRable CLI",
+  "type": "module",
+  "bin": {
+    "memorable": "./memorable.js",
+    "mem": "./memorable.js"
+  },
+  "scripts": {
+    "start": "node memorable.js"
+  },
+  "keywords": ["cli", "memory", "ai", "shell", "terminal"],
+  "author": "Alan Chelm",
+  "license": "MIT"
+}

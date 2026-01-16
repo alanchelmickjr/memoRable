@@ -138,6 +138,117 @@ app.use(cors());
 app.use(express.json());
 app.use(metricsMiddleware);
 
+// =============================================================================
+// API KEY AUTHENTICATION - Betty's data is Fort Knox
+// Zero tolerance for unauthorized access to memories
+// =============================================================================
+const API_KEY = process.env.MEMORABLE_API_KEY;
+const PUBLIC_PATHS = [
+  '/health',
+  '/health/live',
+  '/health/ready',
+  '/health/startup',
+  '/',
+  '/metrics'
+];
+
+const authMiddleware = (req, res, next) => {
+  // Skip auth for public paths (health checks, etc.)
+  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health'))) {
+    return next();
+  }
+
+  // If no API key configured, log warning but allow (dev mode)
+  if (!API_KEY) {
+    if (!req._warnedNoAuth) {
+      console.warn('[SECURITY] No MEMORABLE_API_KEY set - running in INSECURE mode');
+      req._warnedNoAuth = true;
+    }
+    return next();
+  }
+
+  // Check for API key in headers
+  const providedKey = req.headers['x-api-key'] ||
+    req.headers['authorization']?.replace('Bearer ', '');
+
+  if (!providedKey) {
+    metrics.inc('auth_failures', { reason: 'missing_key' });
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Provide API key via X-API-Key header or Authorization: Bearer <key>'
+    });
+  }
+
+  if (providedKey !== API_KEY) {
+    metrics.inc('auth_failures', { reason: 'invalid_key' });
+    return res.status(401).json({
+      error: 'Invalid API key',
+      message: 'The provided API key is not valid'
+    });
+  }
+
+  // Valid key - proceed
+  metrics.inc('auth_success');
+  next();
+};
+
+app.use(authMiddleware);
+
+// =============================================================================
+// RATE LIMITING - Protect against scraping and abuse
+// =============================================================================
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000; // 1 minute
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 100; // 100 requests per window
+
+const rateLimitMiddleware = (req, res, next) => {
+  // Skip rate limiting for health checks
+  if (req.path.startsWith('/health')) {
+    return next();
+  }
+
+  const clientId = req.headers['x-api-key'] || req.ip || 'anonymous';
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  // Get or create rate limit entry
+  let entry = rateLimitStore.get(clientId);
+  if (!entry || entry.windowStart < windowStart) {
+    entry = { windowStart: now, count: 0 };
+    rateLimitStore.set(clientId, entry);
+  }
+
+  entry.count++;
+
+  // Set rate limit headers
+  res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX);
+  res.setHeader('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX - entry.count));
+  res.setHeader('X-RateLimit-Reset', Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS) / 1000));
+
+  if (entry.count > RATE_LIMIT_MAX) {
+    metrics.inc('rate_limit_exceeded', { client: clientId.substring(0, 8) });
+    return res.status(429).json({
+      error: 'Rate limit exceeded',
+      message: `Maximum ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS / 1000}s`,
+      retryAfter: Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000)
+    });
+  }
+
+  next();
+};
+
+app.use(rateLimitMiddleware);
+
+// Clean up old rate limit entries every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS * 2;
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (entry.windowStart < cutoff) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 // Health endpoints for load balancers and Kubernetes
 app.get('/health', (_req, res) => {
   res.status(isReady ? 200 : 503).json({

@@ -21,12 +21,22 @@ const execAsync = promisify(exec);
 // Configuration
 const config = {
   apiBase: process.env.MEMORABLE_API || 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com',
+  apiKey: process.env.MEMORABLE_API_KEY || '',
   userId: process.env.MEMORABLE_USER || 'alan',
   deviceId: `osx-${os.hostname()}`,
   deviceType: 'desktop',
   syncInterval: 30000,  // 30 seconds
   contextInterval: 5000, // 5 seconds for local context
 };
+
+// Helper for authenticated API calls
+function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (config.apiKey) {
+    headers['X-API-Key'] = config.apiKey;
+  }
+  return headers;
+}
 
 // Local context state
 let currentContext = {
@@ -158,7 +168,7 @@ async function syncToCloud(context) {
 
     const response = await fetch(`${config.apiBase}/context/sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     });
 
@@ -195,7 +205,7 @@ async function storeContextChange(prev, curr) {
   try {
     await fetch(`${config.apiBase}/memory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         content,
         entities: [config.userId, 'osx_agent'],
