@@ -13,8 +13,8 @@ import os from 'os';
 
 const execAsync = promisify(exec);
 
-// Config
-const API_URL = process.env.MEMORABLE_API || 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+// Config - HTTPS by default for Betty's data
+const API_URL = process.env.MEMORABLE_API || 'https://d3o7gt2rjhcgj0.cloudfront.net';
 const API_KEY = process.env.MEMORABLE_API_KEY || '';
 const USER = process.env.MEMORABLE_USER || process.env.USER || 'user';
 const DEVICE = `cli-${os.hostname()}`;
