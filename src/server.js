@@ -249,6 +249,217 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// =============================================================================
+// STYLOMETRY SECURITY - The words betray the impostor
+// Even with valid API key, wrong writing style = flagged
+// =============================================================================
+
+const FUNCTION_WORDS = [
+  'a', 'an', 'the', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they',
+  'in', 'on', 'at', 'by', 'for', 'with', 'about', 'from', 'up', 'down', 'out',
+  'and', 'but', 'or', 'so', 'if', 'then', 'because', 'when', 'while',
+  'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did',
+  'will', 'would', 'can', 'could', 'should', 'must', 'may', 'might',
+  'this', 'that', 'these', 'those', 'all', 'each', 'every', 'some', 'any', 'no',
+  'just', 'very', 'really', 'also', 'too', 'now', 'then', 'here', 'there'
+];
+
+// User stylometry baselines (userId -> profile)
+const stylometryBaselines = new Map();
+
+function analyzeStylometry(text) {
+  if (!text || typeof text !== 'string' || text.length < 20) {
+    return null; // Not enough text to analyze
+  }
+
+  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+
+  // Core metrics that are stable across time for an individual
+  const profile = {
+    // Vocabulary fingerprint
+    avgWordLength: words.length > 0 ? words.reduce((s, w) => s + w.length, 0) / words.length : 0,
+    uniqueWordRatio: words.length > 0 ? new Set(words).size / words.length : 0,
+
+    // Syntax fingerprint
+    avgSentenceLength: sentences.length > 0 ? words.length / sentences.length : 0,
+    questionRatio: sentences.length > 0 ? (text.match(/\?/g) || []).length / sentences.length : 0,
+    exclamationRatio: sentences.length > 0 ? (text.match(/!/g) || []).length / sentences.length : 0,
+    commaFrequency: sentences.length > 0 ? (text.match(/,/g) || []).length / sentences.length : 0,
+
+    // Style fingerprint
+    contractionRatio: words.length > 0 ? (text.match(/'(t|re|ve|ll|m|d|s)\b/g) || []).length / words.length : 0,
+    ellipsisUsage: text.includes('...') || text.includes('…'),
+    capsRatio: text.length > 0 ? (text.match(/[A-Z]/g) || []).length / text.length : 0,
+
+    // Function word distribution (most stable fingerprint)
+    functionWordRatios: {},
+  };
+
+  // Calculate function word ratios
+  const totalFW = words.filter(w => FUNCTION_WORDS.includes(w)).length;
+  for (const fw of ['i', 'you', 'the', 'and', 'but', 'so', 'just', 'really']) {
+    const count = words.filter(w => w === fw).length;
+    profile.functionWordRatios[fw] = totalFW > 0 ? count / totalFW : 0;
+  }
+
+  return profile;
+}
+
+function compareStylometry(baseline, current) {
+  if (!baseline || !current) return { match: true, confidence: 0, deviations: [] };
+
+  const deviations = [];
+  let totalDeviation = 0;
+  let metrics = 0;
+
+  // Compare scalar metrics
+  const scalarMetrics = [
+    'avgWordLength', 'uniqueWordRatio', 'avgSentenceLength',
+    'questionRatio', 'exclamationRatio', 'commaFrequency',
+    'contractionRatio', 'capsRatio'
+  ];
+
+  for (const metric of scalarMetrics) {
+    if (baseline[metric] !== undefined && current[metric] !== undefined) {
+      const diff = Math.abs(baseline[metric] - current[metric]);
+      const threshold = baseline[metric] * 0.5 + 0.1; // 50% deviation + small absolute
+      if (diff > threshold) {
+        deviations.push({ metric, baseline: baseline[metric], current: current[metric], diff });
+        totalDeviation += diff / (threshold || 0.1);
+      }
+      metrics++;
+    }
+  }
+
+  // Compare function word ratios (strongest signal)
+  if (baseline.functionWordRatios && current.functionWordRatios) {
+    for (const [fw, baseRatio] of Object.entries(baseline.functionWordRatios)) {
+      const currRatio = current.functionWordRatios[fw] || 0;
+      const diff = Math.abs(baseRatio - currRatio);
+      if (diff > 0.15) { // 15% deviation in function word usage
+        deviations.push({ metric: `fw_${fw}`, baseline: baseRatio, current: currRatio, diff });
+        totalDeviation += diff * 3; // Weight function words heavily
+      }
+      metrics++;
+    }
+  }
+
+  const avgDeviation = metrics > 0 ? totalDeviation / metrics : 0;
+  const match = avgDeviation < 0.5; // Threshold for "same person"
+  const confidence = Math.max(0, Math.min(100, 100 - avgDeviation * 100));
+
+  return { match, confidence: Math.round(confidence), deviations, avgDeviation };
+}
+
+// Endpoint to build/update user stylometry baseline
+app.post('/stylometry/baseline', (req, res) => {
+  const { userId, samples } = req.body;
+
+  if (!userId || !samples || !Array.isArray(samples)) {
+    return res.status(400).json({ error: 'userId and samples[] required' });
+  }
+
+  // Combine samples and analyze
+  const combinedText = samples.join(' ');
+  const profile = analyzeStylometry(combinedText);
+
+  if (!profile) {
+    return res.status(400).json({ error: 'Not enough text to build profile (min 20 chars)' });
+  }
+
+  stylometryBaselines.set(userId, {
+    profile,
+    samplesUsed: samples.length,
+    createdAt: new Date().toISOString(),
+  });
+
+  res.json({
+    success: true,
+    userId,
+    profile,
+    message: 'Baseline created - impostor detection active'
+  });
+});
+
+// Endpoint to check text against baseline
+app.post('/stylometry/verify', (req, res) => {
+  const { userId, text } = req.body;
+
+  if (!userId || !text) {
+    return res.status(400).json({ error: 'userId and text required' });
+  }
+
+  const baseline = stylometryBaselines.get(userId);
+  if (!baseline) {
+    return res.json({ verified: true, reason: 'no_baseline', confidence: 0 });
+  }
+
+  const current = analyzeStylometry(text);
+  if (!current) {
+    return res.json({ verified: true, reason: 'insufficient_text', confidence: 0 });
+  }
+
+  const comparison = compareStylometry(baseline.profile, current);
+
+  if (!comparison.match) {
+    metrics.inc('stylometry_anomaly', { userId });
+    console.log(`[STYLOMETRY] Anomaly detected for ${userId}:`, comparison.deviations);
+  }
+
+  res.json({
+    verified: comparison.match,
+    confidence: comparison.confidence,
+    deviations: comparison.deviations,
+    avgDeviation: comparison.avgDeviation
+  });
+});
+
+// Middleware to flag stylometric anomalies on memory writes
+const stylometryMiddleware = (req, res, next) => {
+  // Only check POST/PUT requests with content
+  if ((req.method !== 'POST' && req.method !== 'PUT') || !req.body?.content) {
+    return next();
+  }
+
+  // Extract userId from request
+  const userId = req.body.entities?.[0] || req.body.userId || 'unknown';
+  const baseline = stylometryBaselines.get(userId);
+
+  if (!baseline) {
+    // No baseline yet - let it through but maybe build one
+    return next();
+  }
+
+  const current = analyzeStylometry(req.body.content);
+  if (!current) {
+    return next(); // Not enough text
+  }
+
+  const comparison = compareStylometry(baseline.profile, current);
+
+  // Attach stylometry result to request for downstream use
+  req.stylometry = {
+    verified: comparison.match,
+    confidence: comparison.confidence,
+    deviations: comparison.deviations
+  };
+
+  if (!comparison.match) {
+    metrics.inc('stylometry_anomaly_blocked', { userId });
+    console.warn(`[STYLOMETRY WARNING] Writing style anomaly for ${userId}`, {
+      confidence: comparison.confidence,
+      deviations: comparison.deviations.map(d => d.metric)
+    });
+    // Don't block, but flag in response
+    res.setHeader('X-Stylometry-Warning', 'anomaly-detected');
+  }
+
+  next();
+};
+
+app.use(stylometryMiddleware);
+
 // Health endpoints for load balancers and Kubernetes
 app.get('/health', (_req, res) => {
   res.status(isReady ? 200 : 503).json({
