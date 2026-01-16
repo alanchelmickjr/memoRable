@@ -1269,12 +1269,21 @@ app.get('/dashboard/json', (_req, res) => {
     ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
     : 0;
 
+  // Calculate patterns from memories
+  const patterns = analyzePatterns(memories);
+
+  // Get active device contexts
+  const devices = Array.from(deviceContextStore.values());
+  const activeDevices = devices.filter(d => d.context?.isActive);
+
   res.json({
     summary: {
       totalMemories: memories.length,
       avgSalience,
       uniqueEntities: Object.keys(entityCounts).length,
       dataSources: Object.keys(sourceCounts).length,
+      activeDevices: activeDevices.length,
+      totalDevices: devices.length,
     },
     salience: salienceRanges,
     fidelity: fidelityCounts,
@@ -1283,8 +1292,83 @@ app.get('/dashboard/json', (_req, res) => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20)
       .map(([name, count]) => ({ name, count })),
+    patterns,
+    devices: devices.map(d => ({
+      deviceId: d.deviceId,
+      deviceType: d.deviceType,
+      location: d.context?.location,
+      activity: d.context?.activity,
+      isActive: d.context?.isActive,
+      lastSeen: d.lastSeen,
+    })),
   });
 });
+
+// Pattern analysis from memory data
+function analyzePatterns(memories) {
+  if (memories.length === 0) {
+    return {
+      observationDays: 0,
+      readyForPrediction: false,
+      cycles: {},
+      appUsage: {},
+      timePatterns: {},
+    };
+  }
+
+  // Calculate observation window
+  const timestamps = memories.map(m => new Date(m.timestamp).getTime());
+  const oldest = Math.min(...timestamps);
+  const newest = Math.max(...timestamps);
+  const observationDays = Math.ceil((newest - oldest) / (24 * 60 * 60 * 1000));
+
+  // App usage patterns (from context events)
+  const appUsage = {};
+  const timePatterns = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+
+  memories.forEach(m => {
+    // App tracking
+    if (m.context?.app) {
+      appUsage[m.context.app] = (appUsage[m.context.app] || 0) + 1;
+    }
+
+    // Time of day patterns
+    const hour = new Date(m.timestamp).getHours();
+    if (hour >= 5 && hour < 12) timePatterns.morning++;
+    else if (hour >= 12 && hour < 17) timePatterns.afternoon++;
+    else if (hour >= 17 && hour < 21) timePatterns.evening++;
+    else timePatterns.night++;
+  });
+
+  // Cycle detection (weekly patterns)
+  const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
+  memories.forEach(m => {
+    const dow = new Date(m.timestamp).getDay();
+    dayOfWeekCounts[dow]++;
+  });
+
+  const avgPerDay = memories.length / 7;
+  const weeklyPattern = dayOfWeekCounts.map((count, day) => ({
+    day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day],
+    count,
+    deviation: avgPerDay > 0 ? ((count - avgPerDay) / avgPerDay * 100).toFixed(1) + '%' : '0%',
+  }));
+
+  return {
+    observationDays,
+    readyForPrediction: observationDays >= 21,
+    confidence: Math.min(1, observationDays / 21).toFixed(2),
+    cycles: {
+      weekly: weeklyPattern,
+      peakDay: weeklyPattern.sort((a, b) => b.count - a.count)[0]?.day || 'N/A',
+    },
+    timePatterns,
+    topApps: Object.entries(appUsage)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([app, count]) => ({ app, count })),
+  };
+}
 
 // =============================================================================
 // MEMORY ENDPOINTS
