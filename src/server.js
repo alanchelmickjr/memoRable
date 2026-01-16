@@ -1627,6 +1627,7 @@ app.get('/dashboard/json', (_req, res) => {
 });
 
 // Pattern analysis from memory data
+// Circles within circles: 7 (week) → 21 (habit) → 28 (month) → 91 (season) → 365 (year)
 function analyzePatterns(memories) {
   if (memories.length === 0) {
     return {
@@ -1639,22 +1640,83 @@ function analyzePatterns(memories) {
   }
 
   // Calculate observation window
+  const now = Date.now();
   const timestamps = memories.map(m => new Date(m.timestamp).getTime());
   const oldest = Math.min(...timestamps);
   const newest = Math.max(...timestamps);
   const observationDays = Math.ceil((newest - oldest) / (24 * 60 * 60 * 1000));
 
-  // App usage patterns (from context events)
-  const appUsage = {};
-  const timePatterns = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+  // Cycle constants - circles within circles
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const WEEK_DAYS = 7;
+  const HABIT_DAYS = 21;    // 3 weeks - habit formation
+  const MONTH_DAYS = 28;    // 4 weeks
+  const SEASON_DAYS = 91;   // ~3 months
+  const YEAR_DAYS = 365;
+  const HUMAN_DAYS = 2555;  // 7 years - to truly know a human
 
+  // Helper: bucket memories by time period
+  const bucketByPeriod = (ms) => {
+    const buckets = {};
+    memories.forEach(m => {
+      const t = new Date(m.timestamp).getTime();
+      const bucket = Math.floor((now - t) / ms);
+      buckets[bucket] = (buckets[bucket] || 0) + 1;
+    });
+    return buckets;
+  };
+
+  // Current position in each cycle
+  const daysSinceOldest = Math.floor((now - oldest) / DAY_MS);
+  const currentCyclePosition = {
+    week: daysSinceOldest % WEEK_DAYS,
+    habit: daysSinceOldest % HABIT_DAYS,
+    month: daysSinceOldest % MONTH_DAYS,
+  };
+
+  // Completed cycles
+  const completedCycles = {
+    weeks: Math.floor(daysSinceOldest / WEEK_DAYS),
+    habits: Math.floor(daysSinceOldest / HABIT_DAYS),
+    months: Math.floor(daysSinceOldest / MONTH_DAYS),
+    seasons: Math.floor(daysSinceOldest / SEASON_DAYS),
+    years: Math.floor(daysSinceOldest / YEAR_DAYS),
+    humanCycles: Math.floor(daysSinceOldest / HUMAN_DAYS), // 7-year cycles
+  };
+
+  // Weekly pattern (day of week)
+  const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
   memories.forEach(m => {
-    // App tracking
-    if (m.context?.app) {
-      appUsage[m.context.app] = (appUsage[m.context.app] || 0) + 1;
-    }
+    const dow = new Date(m.timestamp).getDay();
+    dayOfWeekCounts[dow]++;
+  });
 
-    // Time of day patterns
+  const avgPerDay = memories.length / Math.max(1, Math.min(7, observationDays));
+  const weeklyPattern = dayOfWeekCounts.map((count, day) => ({
+    day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day],
+    count,
+    deviation: avgPerDay > 0 ? ((count - avgPerDay) / avgPerDay * 100).toFixed(1) + '%' : '0%',
+  }));
+
+  // 21-day habit cycle analysis
+  const habitBuckets = bucketByPeriod(HABIT_DAYS * DAY_MS);
+  const habitCycleData = Object.entries(habitBuckets).map(([cycle, count]) => ({
+    cycle: parseInt(cycle),
+    memoriesInCycle: count,
+    label: cycle === '0' ? 'current' : `${cycle} cycles ago`,
+  })).sort((a, b) => a.cycle - b.cycle);
+
+  // Monthly trend (4-week buckets)
+  const monthBuckets = bucketByPeriod(MONTH_DAYS * DAY_MS);
+  const monthlyTrend = Object.entries(monthBuckets).map(([month, count]) => ({
+    month: parseInt(month),
+    memoriesInMonth: count,
+    label: month === '0' ? 'current' : `${month} months ago`,
+  })).sort((a, b) => a.month - b.month);
+
+  // Time of day patterns
+  const timePatterns = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+  memories.forEach(m => {
     const hour = new Date(m.timestamp).getHours();
     if (hour >= 5 && hour < 12) timePatterns.morning++;
     else if (hour >= 12 && hour < 17) timePatterns.afternoon++;
@@ -1662,28 +1724,63 @@ function analyzePatterns(memories) {
     else timePatterns.night++;
   });
 
-  // Cycle detection (weekly patterns)
-  const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
+  // App usage patterns
+  const appUsage = {};
   memories.forEach(m => {
-    const dow = new Date(m.timestamp).getDay();
-    dayOfWeekCounts[dow]++;
+    if (m.context?.app) {
+      appUsage[m.context.app] = (appUsage[m.context.app] || 0) + 1;
+    }
   });
 
-  const avgPerDay = memories.length / 7;
-  const weeklyPattern = dayOfWeekCounts.map((count, day) => ({
-    day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day],
-    count,
-    deviation: avgPerDay > 0 ? ((count - avgPerDay) / avgPerDay * 100).toFixed(1) + '%' : '0%',
-  }));
+  // Readiness levels - how well can we predict at each cycle?
+  const readiness = {
+    weekly: observationDays >= WEEK_DAYS,
+    habit: observationDays >= HABIT_DAYS,
+    monthly: observationDays >= MONTH_DAYS,
+    seasonal: observationDays >= SEASON_DAYS,
+    yearly: observationDays >= YEAR_DAYS,
+    human: observationDays >= HUMAN_DAYS, // 7 years to truly know someone
+  };
+
+  // Progress toward knowing this human
+  const knowledgeProgress = {
+    percent: Math.min(100, (observationDays / HUMAN_DAYS * 100)).toFixed(1),
+    daysObserved: observationDays,
+    daysToFullKnowledge: Math.max(0, HUMAN_DAYS - observationDays),
+    yearsToFullKnowledge: Math.max(0, (HUMAN_DAYS - observationDays) / YEAR_DAYS).toFixed(1),
+  };
 
   return {
     observationDays,
-    readyForPrediction: observationDays >= 21,
-    confidence: Math.min(1, observationDays / 21).toFixed(2),
-    cycles: {
-      weekly: weeklyPattern,
-      peakDay: weeklyPattern.sort((a, b) => b.count - a.count)[0]?.day || 'N/A',
+    readyForPrediction: observationDays >= HABIT_DAYS,
+    confidence: Math.min(1, observationDays / HABIT_DAYS).toFixed(2),
+    knowledgeProgress, // Progress toward 7 years of knowing
+
+    // Current position in cycles
+    currentPosition: {
+      dayInWeek: currentCyclePosition.week,
+      dayInHabitCycle: currentCyclePosition.habit,
+      dayInMonth: currentCyclePosition.month,
+      daysUntilHabitComplete: HABIT_DAYS - currentCyclePosition.habit,
     },
+
+    // Completed cycles
+    completedCycles,
+
+    // Readiness for each cycle type
+    readiness,
+
+    // Detailed cycle data
+    cycles: {
+      weekly: weeklyPattern.sort((a, b) =>
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(a.day) -
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(b.day)
+      ),
+      peakDay: [...weeklyPattern].sort((a, b) => b.count - a.count)[0]?.day || 'N/A',
+      habitCycles: habitCycleData.slice(0, 5),
+      monthlyTrend: monthlyTrend.slice(0, 6),
+    },
+
     timePatterns,
     topApps: Object.entries(appUsage)
       .sort((a, b) => b[1] - a[1])
