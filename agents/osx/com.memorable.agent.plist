@@ -15,6 +15,8 @@
     <dict>
         <key>MEMORABLE_API</key>
         <string>http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com</string>
+        <key>MEMORABLE_API_KEY</key>
+        <string>YOUR_API_KEY_HERE</string>
         <key>MEMORABLE_USER</key>
         <string>alan</string>
         <key>PATH</key>
