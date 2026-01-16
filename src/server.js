@@ -1754,6 +1754,25 @@ app.post('/memory', async (req, res) => {
       return;
     }
 
+    // Apply better-self prosody filter
+    const filterResult = applyBetterSelfFilter(content, {
+      forceStore: metadata.forceStore || context.forceStore,
+      bypassFilter: metadata.bypassFilter || context.bypassFilter,
+    });
+
+    if (!filterResult.shouldStore) {
+      // Memory filtered - return success but with filter info
+      metrics.inc('memory_prosody_filtered', { entityType });
+      res.status(200).json({
+        success: true,
+        filtered: true,
+        reason: filterResult.reason,
+        message: filterResult.message,
+        prosody: filterResult.prosody,
+      });
+      return;
+    }
+
     // Support both single entity and entities array
     // Everything is just entities - no special project/user/intersection
     let entityList = entities || [];
@@ -1771,7 +1790,10 @@ app.post('/memory', async (req, res) => {
       entity: entityList[0],          // Backward compat: primary entity
       entityType,
       context,
-      metadata,
+      metadata: {
+        ...metadata,
+        prosody: filterResult.prosody,  // Store prosody analysis
+      },
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
       fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
@@ -1939,6 +1961,25 @@ app.post('/memory/verbatim', async (req, res) => {
       return;
     }
 
+    // Apply better-self prosody filter (even for verbatim - don't store meltdowns)
+    const filterResult = applyBetterSelfFilter(content, {
+      forceStore: metadata.forceStore || context.forceStore,
+      bypassFilter: metadata.bypassFilter || context.bypassFilter,
+    });
+
+    if (!filterResult.shouldStore) {
+      // Memory filtered - return success but with filter info
+      metrics.inc('memory_prosody_filtered', { type: 'verbatim' });
+      res.status(200).json({
+        success: true,
+        filtered: true,
+        reason: filterResult.reason,
+        message: filterResult.message,
+        prosody: filterResult.prosody,
+      });
+      return;
+    }
+
     // Support both single entity and entities array (same as /memory endpoint)
     let entityList = entities || [];
     if (entity && !entityList.includes(entity)) {
@@ -1955,7 +1996,7 @@ app.post('/memory/verbatim', async (req, res) => {
       entity: entityList[0],          // Backward compat: primary entity
       entityType,
       context: { ...context, verbatim: true },
-      metadata: { ...metadata, source, exact_quote: true },
+      metadata: { ...metadata, source, exact_quote: true, prosody: filterResult.prosody },
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
       fidelity: 'verbatim',  // Locked
@@ -1973,6 +2014,29 @@ app.post('/memory/verbatim', async (req, res) => {
   }
 });
 
+// Analyze prosody without storing - test endpoint
+app.post('/prosody/analyze', (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+    const prosody = analyzeProsody(content);
+    const filterResult = applyBetterSelfFilter(content);
+
+    res.json({
+      prosody,
+      wouldStore: filterResult.shouldStore,
+      filterReason: filterResult.reason,
+      message: filterResult.message || 'Content would be stored',
+    });
+  } catch (error) {
+    console.error('[Prosody] Analysis error:', error);
+    res.status(500).json({ error: 'Failed to analyze prosody' });
+  }
+});
+
 // Store INTERPRETATION - must link to source verbatim memory
 // Use this when storing AI understanding of what was said
 app.post('/memory/interpretation', async (req, res) => {
@@ -1986,6 +2050,24 @@ app.post('/memory/interpretation', async (req, res) => {
     }
     if (!source_memory_id) {
       res.status(400).json({ error: 'source_memory_id is required - interpretations must link to verbatim source' });
+      return;
+    }
+
+    // Apply better-self prosody filter
+    const filterResult = applyBetterSelfFilter(content, {
+      forceStore: metadata.forceStore || context.forceStore,
+      bypassFilter: metadata.bypassFilter || context.bypassFilter,
+    });
+
+    if (!filterResult.shouldStore) {
+      metrics.inc('memory_prosody_filtered', { type: 'interpretation' });
+      res.status(200).json({
+        success: true,
+        filtered: true,
+        reason: filterResult.reason,
+        message: filterResult.message,
+        prosody: filterResult.prosody,
+      });
       return;
     }
 
@@ -2017,7 +2099,8 @@ app.post('/memory/interpretation', async (req, res) => {
         ...metadata,
         interpreter,
         derived_from: source_memory_id,
-        source_content: sourceMemory.content.substring(0, 100)
+        source_content: sourceMemory.content.substring(0, 100),
+        prosody: filterResult.prosody,
       },
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
@@ -2476,6 +2559,132 @@ function calculateSalience(content, context) {
   if (context.isOpenLoop) salience += 15;
 
   return Math.min(100, Math.max(0, salience));
+}
+
+// =============================================================================
+// PROSODY ANALYZER - "Better Self" Filter
+// Detects emotional distress and filters memories to represent who you want to be
+// =============================================================================
+
+/**
+ * Analyze text for prosody/emotional indicators
+ * Returns emotional state and whether content represents "better self"
+ */
+function analyzeProsody(content) {
+  const text = content.toLowerCase();
+
+  // Distress indicators - signs of emotional flooding
+  const distressMarkers = {
+    drowning: ['drowning', 'underwater', 'cant breathe', "can't breathe", 'suffocating'],
+    helplessness: ['helpless', 'hopeless', 'trapped', 'stuck', 'cant escape', "can't escape", 'no way out'],
+    panic: ['panic', 'terrified', 'scared', 'afraid', 'fear', 'anxious', 'anxiety'],
+    anger: ['furious', 'rage', 'hate you', 'fuck you', 'fucking', 'bullshit', 'piece of shit'],
+    shutdown: ['give up', 'quit', 'done', 'leaving', 'goodbye forever', 'never again'],
+    repetition: [], // Detected by pattern, not keywords
+    threats: ['kill', 'hurt', 'destroy', 'end it', 'harm'],
+  };
+
+  // Recovery/forward indicators - signs of moving through it
+  const recoveryMarkers = {
+    pivot: ['so!', 'anyway', 'moving on', 'lets do', "let's do", 'next step'],
+    humor: ['lol', 'haha', ':d', ':)', 'funny', 'laugh'],
+    constructive: ['build', 'create', 'fix', 'solve', 'implement', 'plan'],
+    reflection: ['i realize', 'i understand', 'makes sense', 'learned'],
+    forward: ['now', 'next', 'continue', 'proceed', 'ready'],
+  };
+
+  // Calculate distress score
+  let distressScore = 0;
+  let distressSignals = [];
+
+  for (const [category, markers] of Object.entries(distressMarkers)) {
+    for (const marker of markers) {
+      if (text.includes(marker)) {
+        distressScore += 15;
+        distressSignals.push({ category, marker });
+      }
+    }
+  }
+
+  // Calculate recovery score
+  let recoveryScore = 0;
+  let recoverySignals = [];
+
+  for (const [category, markers] of Object.entries(recoveryMarkers)) {
+    for (const marker of markers) {
+      if (text.includes(marker)) {
+        recoveryScore += 10;
+        recoverySignals.push({ category, marker });
+      }
+    }
+  }
+
+  // Detect all-caps (shouting)
+  const capsRatio = (text.match(/[A-Z]/g) || []).length / Math.max(text.length, 1);
+  if (capsRatio > 0.5 && text.length > 20) {
+    distressScore += 20;
+    distressSignals.push({ category: 'shouting', marker: 'excessive caps' });
+  }
+
+  // Detect excessive punctuation (!!!???)
+  const excessivePunctuation = (text.match(/[!?]{3,}/g) || []).length;
+  if (excessivePunctuation > 0) {
+    distressScore += 10 * excessivePunctuation;
+    distressSignals.push({ category: 'intensity', marker: 'excessive punctuation' });
+  }
+
+  // Net emotional state
+  const netScore = recoveryScore - distressScore;
+
+  // Determine if this represents "better self"
+  // Better self = either positive content, OR recovery happening (moving through it)
+  const isBetterSelf = netScore >= 0 || recoveryScore > 0;
+  const isDistressed = distressScore > 30;
+  const isRecovering = recoveryScore > 0 && distressScore > 0;
+
+  return {
+    distressScore,
+    recoveryScore,
+    netScore,
+    distressSignals,
+    recoverySignals,
+    isBetterSelf,
+    isDistressed,
+    isRecovering,
+    recommendation: isDistressed && !isRecovering
+      ? 'suppress'
+      : isRecovering
+        ? 'store_with_flag'
+        : 'store',
+  };
+}
+
+/**
+ * Apply better-self filter to memory storage
+ * Returns { shouldStore, prosody, reason }
+ */
+function applyBetterSelfFilter(content, options = {}) {
+  const { forceStore = false, bypassFilter = false } = options;
+
+  // Bypass filter if explicitly requested
+  if (bypassFilter || forceStore) {
+    return { shouldStore: true, prosody: null, reason: 'filter_bypassed' };
+  }
+
+  const prosody = analyzeProsody(content);
+
+  // If severely distressed with no recovery signals, suppress storage
+  if (prosody.recommendation === 'suppress') {
+    metrics.inc('memory_filtered_distress', {});
+    return {
+      shouldStore: false,
+      prosody,
+      reason: 'distress_filter',
+      message: 'Content filtered - not representative of better self. Memory not stored.'
+    };
+  }
+
+  return { shouldStore: true, prosody, reason: prosody.recommendation };
 }
 
 // =============================================================================
