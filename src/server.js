@@ -2509,7 +2509,7 @@ app.post('/memory/verbatim', async (req, res) => {
     memoryStore.set(memory.id, memory);
     metrics.inc('memory_verbatim_total', {});
 
-    console.log(`[Memory] Verbatim stored from ${source}: "${content.substring(0, 50)}..."`);
+    console.log(`[Memory] Verbatim stored from ${source}: [REDACTED]`);
     res.status(201).json({ success: true, memory, note: 'Stored as verbatim - exact quote preserved' });
   } catch (error) {
     metrics.inc('memory_store_errors', {});
@@ -2777,7 +2777,7 @@ app.post('/project/:id/curate', (req, res) => {
     project.critical_facts.push(criticalFact);
     metrics.inc('project_curate_total', {});
 
-    console.log(`[Project] Curated fact for ${project.name}: "${fact.substring(0, 50)}..."`);
+    console.log(`[Project] Curated fact for ${project.name}: [REDACTED]`);
     res.status(201).json({ success: true, criticalFact });
   } catch (error) {
     console.error('[Project] Curate error:', error);
