@@ -1941,6 +1941,104 @@ app.delete('/memory/:id', (req, res) => {
 });
 
 // =============================================================================
+// DEVICE CONTEXT SYNC
+// Real-time context from OSX/iOS/Android agents
+// =============================================================================
+
+// Store for device contexts (in-memory, would be Redis in production)
+const deviceContextStore = new Map();
+
+// Sync device context (called by agents)
+app.post('/context/sync', (req, res) => {
+  try {
+    const { userId, deviceId, deviceType, context, timestamp } = req.body;
+
+    if (!userId || !deviceId) {
+      res.status(400).json({ error: 'userId and deviceId required' });
+      return;
+    }
+
+    const deviceContext = {
+      userId,
+      deviceId,
+      deviceType: deviceType || 'unknown',
+      context: context || {},
+      timestamp: timestamp || new Date().toISOString(),
+      lastSeen: new Date().toISOString(),
+    };
+
+    // Store by device
+    deviceContextStore.set(deviceId, deviceContext);
+
+    // Update unified user context
+    const userDevices = Array.from(deviceContextStore.values())
+      .filter(d => d.userId === userId);
+
+    const unifiedContext = {
+      userId,
+      devices: userDevices.map(d => ({
+        deviceId: d.deviceId,
+        deviceType: d.deviceType,
+        isActive: d.context.isActive,
+        lastSeen: d.lastSeen,
+      })),
+      // Merge contexts - most recent active device wins
+      current: userDevices
+        .filter(d => d.context.isActive)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]?.context || {},
+      timestamp: new Date().toISOString(),
+    };
+
+    metrics.inc('context_sync_total', { deviceType });
+
+    res.json({
+      success: true,
+      deviceContext,
+      unifiedContext,
+    });
+  } catch (error) {
+    console.error('[Context] Sync error:', error);
+    res.status(500).json({ error: 'Failed to sync context' });
+  }
+});
+
+// Get current context for user
+app.get('/context/:userId', (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const userDevices = Array.from(deviceContextStore.values())
+      .filter(d => d.userId === userId);
+
+    if (userDevices.length === 0) {
+      res.json({ userId, devices: [], current: null });
+      return;
+    }
+
+    // Find most recent active context
+    const activeDevices = userDevices
+      .filter(d => d.context.isActive)
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json({
+      userId,
+      devices: userDevices.map(d => ({
+        deviceId: d.deviceId,
+        deviceType: d.deviceType,
+        context: d.context,
+        lastSeen: d.lastSeen,
+        isActive: d.context.isActive,
+      })),
+      current: activeDevices[0]?.context || null,
+      primaryDevice: activeDevices[0]?.deviceId || null,
+    });
+  } catch (error) {
+    console.error('[Context] Get error:', error);
+    res.status(500).json({ error: 'Failed to get context' });
+  }
+});
+
+// =============================================================================
 // FIDELITY GUARDS
 // Verbatim vs Interpretation - keep them separate
 // =============================================================================
