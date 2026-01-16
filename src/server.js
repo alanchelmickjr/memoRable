@@ -2744,6 +2744,137 @@ function calculateSalience(content, context) {
 }
 
 // =============================================================================
+// TENSION DETECTOR - Proactive Intervention
+// Detect RISING tension before explosion, respond with love not dismissal
+// "Alan, I understand you are upset, I will stop what I am doing and pay attention"
+// =============================================================================
+
+/**
+ * Detect rising tension for proactive intervention
+ * This is about catching the CLIMB before the peak
+ * Signs: short sentences, repetition, caps, punctuation, tension words
+ */
+function detectTension(content, recentHistory = []) {
+  const text = content || '';
+  const lowerText = text.toLowerCase();
+
+  let tensionScore = 0;
+  let signals = [];
+
+  // 1. Short, clipped sentences (frustration)
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const avgLength = sentences.reduce((sum, s) => sum + s.trim().length, 0) / Math.max(sentences.length, 1);
+  if (avgLength < 20 && sentences.length > 1) {
+    tensionScore += 15;
+    signals.push({ type: 'clipped', detail: 'Short, clipped sentences' });
+  }
+
+  // 2. Repetition (stuck/looping) - same words appearing multiple times
+  const words = lowerText.split(/\s+/);
+  const wordCounts = {};
+  words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
+  const repetitions = Object.entries(wordCounts).filter(([w, c]) => c >= 3 && w.length > 3);
+  if (repetitions.length > 0) {
+    tensionScore += 10 * repetitions.length;
+    signals.push({ type: 'repetition', detail: `Repeating: ${repetitions.map(r => r[0]).join(', ')}` });
+  }
+
+  // 3. ALL CAPS words (not just ratio, actual shouting words)
+  const capsWords = text.match(/\b[A-Z]{3,}\b/g) || [];
+  const meaningfulCapsWords = capsWords.filter(w => !['API', 'URL', 'AWS', 'MCP', 'JSON', 'HTTP', 'CLI'].includes(w));
+  if (meaningfulCapsWords.length > 0) {
+    tensionScore += 10 * meaningfulCapsWords.length;
+    signals.push({ type: 'shouting', detail: `Caps: ${meaningfulCapsWords.join(', ')}` });
+  }
+
+  // 4. Excessive punctuation (!!! or ???)
+  const excessivePunct = (text.match(/[!?]{2,}/g) || []).length;
+  if (excessivePunct > 0) {
+    tensionScore += 8 * excessivePunct;
+    signals.push({ type: 'intensity', detail: 'Excessive punctuation' });
+  }
+
+  // 5. Tension words (frustration, not full meltdown yet)
+  const tensionWords = [
+    'again', 'already', 'still', 'yet', 'why',
+    'wrong', 'broken', 'doesnt work', "doesn't work", 'not working',
+    'confused', 'frustrated', 'annoying', 'annoyed',
+    'wait', 'waiting', 'slow', 'stuck',
+    'no', 'not', 'cant', "can't", 'wont', "won't",
+    'listen', 'hear me', 'understand', 'get it'
+  ];
+
+  const foundTension = tensionWords.filter(w => lowerText.includes(w));
+  if (foundTension.length > 0) {
+    tensionScore += 5 * foundTension.length;
+    signals.push({ type: 'tension_words', detail: foundTension.join(', ') });
+  }
+
+  // 6. Escalation words (getting worse)
+  const escalationWords = [
+    'seriously', 'literally', 'actually', 'clearly',
+    'obviously', 'just', 'simply', 'only',
+    'told you', 'said', 'already said', 'keep saying'
+  ];
+
+  const foundEscalation = escalationWords.filter(w => lowerText.includes(w));
+  if (foundEscalation.length >= 2) {
+    tensionScore += 15;
+    signals.push({ type: 'escalation', detail: foundEscalation.join(', ') });
+  }
+
+  // 7. Check recent history for pattern (tension climbing over messages)
+  if (recentHistory.length > 0) {
+    const recentTension = recentHistory.map(h => detectTension(h, []).tensionScore);
+    const isClimbing = recentTension.length >= 2 &&
+      recentTension[recentTension.length - 1] > recentTension[0];
+    if (isClimbing) {
+      tensionScore += 20;
+      signals.push({ type: 'climbing', detail: 'Tension increasing over recent messages' });
+    }
+  }
+
+  // Determine intervention threshold
+  const needsIntervention = tensionScore >= 35;
+  const isElevated = tensionScore >= 20;
+
+  // Craft response with love, not dismissal
+  let suggestedResponse = null;
+  if (needsIntervention) {
+    suggestedResponse = "I can hear something's bothering you. I'm stopping what I'm doing to listen - tell me what you need.";
+  } else if (isElevated) {
+    suggestedResponse = "I want to make sure I understand you correctly. Let me know if I'm missing something.";
+  }
+
+  return {
+    tensionScore,
+    signals,
+    isElevated,
+    needsIntervention,
+    suggestedResponse,
+    timestamp: new Date().toISOString()
+  };
+}
+
+// Tension check endpoint - real-time intervention hook
+app.post('/prosody/tension', (req, res) => {
+  const { content, recentHistory } = req.body;
+
+  if (!content) {
+    return res.status(400).json({ error: 'content required' });
+  }
+
+  const result = detectTension(content, recentHistory || []);
+
+  // Log for pattern learning
+  if (result.needsIntervention) {
+    console.log(`[Tension] INTERVENTION NEEDED - score: ${result.tensionScore}`, result.signals);
+  }
+
+  res.json(result);
+});
+
+// =============================================================================
 // PROSODY ANALYZER - "Better Self" Filter
 // Detects emotional distress and filters memories to represent who you want to be
 // =============================================================================
