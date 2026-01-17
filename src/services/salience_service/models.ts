@@ -699,3 +699,232 @@ export interface RetrievalOptions {
   minSalience?: number;        // Minimum salience score
   limit?: number;
 }
+
+// ============================================================================
+// PREDICTIVE MEMORY SYSTEM (3×7 Temporal Model)
+// ============================================================================
+
+/**
+ * Temporal window constants based on 3×7 model.
+ * - 21 days: First patterns emerge
+ * - 63 days: Patterns are reliable (3×7×3)
+ * - 84 days: Max window before decay (3×7×4)
+ */
+export const TEMPORAL_WINDOWS = {
+  detectionStart: 21,      // 3×7: First patterns emerge
+  patternStable: 63,       // 3×7×3: Patterns are reliable
+  rollingMax: 84,          // 3×7×4: Max window before decay
+} as const;
+
+/**
+ * Pattern detection periods in hours.
+ */
+export const PATTERN_PERIODS = {
+  daily: 24,               // hours
+  weekly: 168,             // 24×7
+  triWeekly: 504,          // 24×7×3
+  monthly: 720,            // ~30 days
+} as const;
+
+/**
+ * Pattern type detected from temporal analysis.
+ */
+export type PatternType = 'daily' | 'weekly' | 'tri_weekly' | 'monthly';
+
+/**
+ * Storage tier for memory (Zipfian cache hierarchy).
+ * - hot: Redis (frequently accessed, < 1 hour TTL)
+ * - warm: MongoDB (standard storage, < 63 days TTL)
+ * - cold: S3 (archive, long-term)
+ */
+export type StorageTier = 'hot' | 'warm' | 'cold';
+
+/**
+ * Temporal pattern metadata attached to a memory.
+ * Describes when this memory is typically accessed.
+ */
+export interface TemporalPattern {
+  /** Hour of day when memory is typically accessed (0-23) */
+  hourPattern?: number;
+  /** Day of week when memory is typically accessed (0-6, 0=Sunday) */
+  dayPattern?: number;
+  /** Confidence in the detected pattern (0.0-1.0) */
+  confidence: number;
+  /** Type of pattern detected */
+  patternType?: PatternType;
+  /** Peak access times (hour indices) */
+  peakTimes?: number[];
+  /** Days until pattern is considered stable */
+  stabilityDays?: number;
+}
+
+/**
+ * Context frame captured with a memory.
+ * Used for context-aware retrieval and anticipation.
+ */
+export interface ContextFrame {
+  /** Physical or virtual location */
+  location?: string;
+  /** People involved in the context */
+  people?: string[];
+  /** Current activity */
+  activity?: string;
+  /** Project or workspace context */
+  project?: string;
+}
+
+/**
+ * Open loop structure for memory-level tracking.
+ * Represents unresolved commitments, questions, or follow-ups.
+ */
+export interface MemoryOpenLoop {
+  /** Type of open loop */
+  type: 'commitment' | 'question' | 'followup';
+  /** Target user/contact for this loop */
+  targetUser?: string;
+  /** Due date for resolution */
+  dueDate?: Date;
+  /** Whether the loop has been resolved */
+  resolved: boolean;
+  /** Resolution note (when resolved) */
+  resolutionNote?: string;
+  /** When the loop was resolved */
+  resolvedAt?: string;
+}
+
+/**
+ * Extended salience score including normalized components.
+ * Used for storage in the new schema format.
+ */
+export interface NormalizedSalience {
+  /** Emotional arousal (0.0-1.0) */
+  emotional: number;
+  /** Novelty score (0.0-1.0) */
+  novelty: number;
+  /** Personal relevance (0.0-1.0) */
+  relevance: number;
+  /** Social significance (0.0-1.0) */
+  social: number;
+  /** Consequentiality (0.0-1.0) */
+  consequential: number;
+}
+
+/**
+ * Extended memory document for predictive memory system.
+ * Follows the new schema from the architecture spec.
+ */
+export interface PredictiveMemoryDocument {
+  _id?: string;
+  /** Unique memory identifier (UUID v4) */
+  memoryId: string;
+  /** User who owns this memory */
+  userId: string;
+  /** Raw memory content */
+  content: string;
+  /** LLM-generated summary */
+  summary?: string;
+  /** Overall importance score (0.0-1.0) */
+  importance: number;
+  /** Detailed salience components (normalized 0.0-1.0) */
+  salience: NormalizedSalience;
+  /** Access count for tier management */
+  accessCount: number;
+  /** Creation timestamp */
+  createdAt: Date;
+  /** Last access timestamp */
+  lastAccessed: Date;
+  /** Current storage tier */
+  tier: StorageTier;
+  /** Content tags */
+  tags: string[];
+  /** Reference to Weaviate vector ID */
+  vectorId?: string;
+  /** Temporal access pattern */
+  temporal?: TemporalPattern;
+  /** Context frame at capture time */
+  contextFrame?: ContextFrame;
+  /** Open loop data (if any) */
+  openLoop?: MemoryOpenLoop;
+  /** Security tier classification */
+  securityTier?: SecurityTier;
+  /** Whether content is encrypted */
+  encrypted?: boolean;
+  /** Encryption version */
+  encryptionVersion?: string;
+}
+
+/**
+ * Tier configuration for cache management.
+ */
+export interface TierConfig {
+  /** Accesses/hour threshold for hot tier promotion */
+  hotThreshold: number;
+  /** Accesses/day threshold for warm tier retention */
+  warmThreshold: number;
+  /** TTL for hot tier (seconds) */
+  hotTtl: number;
+  /** TTL for warm tier (seconds) - 63 days default */
+  warmTtl: number;
+  /** TTL for cold tier (seconds) - 1 year default */
+  coldTtl: number;
+}
+
+/**
+ * Default tier configuration values.
+ */
+export const DEFAULT_TIER_CONFIG: TierConfig = {
+  hotThreshold: 10,         // accesses/hour for hot promotion
+  warmThreshold: 1,         // accesses/day for warm retention
+  hotTtl: 3600,             // 1 hour
+  warmTtl: 5443200,         // 63 days (3×7×3)
+  coldTtl: 31536000,        // 1 year
+};
+
+/**
+ * Result of pattern detection on access timestamps.
+ */
+export interface DetectedPattern {
+  /** Period in hours */
+  periodHours: number;
+  /** Confidence in pattern (0.0-1.0) */
+  confidence: number;
+  /** Pattern type classification */
+  patternType: PatternType;
+  /** Top peak times (hour indices) */
+  peakTimes: number[];
+  /** Days until stable (target: 63) */
+  stabilityDays: number;
+}
+
+/**
+ * Input for anticipation service.
+ */
+export interface AnticipationInput {
+  userId: string;
+  contextFrame?: ContextFrame;
+  maxMemories?: number;
+  lookaheadMinutes?: number;
+}
+
+/**
+ * Scored memory for anticipation results.
+ */
+export interface AnticipatedMemory {
+  memoryId: string;
+  content: string;
+  anticipationScore: number;
+  anticipationReasons: string[];
+  temporal?: TemporalPattern;
+  contextFrame?: ContextFrame;
+  openLoop?: MemoryOpenLoop;
+}
+
+/**
+ * Result of anticipation service.
+ */
+export interface AnticipationResult {
+  memories: AnticipatedMemory[];
+  contextMatched: boolean;
+  patternsUsed: string[];
+  timestamp: string;
+}

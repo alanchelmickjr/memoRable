@@ -1605,6 +1605,125 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ============================================
+      // PREDICTIVE MEMORY SYSTEM TOOLS (3×7 Model)
+      // ============================================
+      {
+        name: 'get_anticipated_context',
+        description:
+          'Get predictively relevant memories for the current context. Call at conversation start for proactive memory surfacing. Uses 63-day pattern learning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            context_frame: {
+              type: 'object',
+              description: 'Current context to match against memory patterns',
+              properties: {
+                location: { type: 'string', description: 'Current location' },
+                people: { type: 'array', items: { type: 'string' }, description: 'People involved' },
+                activity: { type: 'string', description: 'Current activity' },
+                project: { type: 'string', description: 'Current project or workspace' },
+              },
+            },
+            max_memories: {
+              type: 'integer',
+              description: 'Maximum memories to return (default: 5)',
+              default: 5,
+            },
+          },
+        },
+        annotations: {
+          title: 'Get Anticipated Context',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'search_memories',
+        description:
+          'Semantic search across memories with filtering by tags, importance, and temporal patterns.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+            limit: { type: 'integer', description: 'Maximum results (default: 10)', default: 10 },
+            filters: {
+              type: 'object',
+              properties: {
+                tags: { type: 'array', items: { type: 'string' }, description: 'Filter by tags' },
+                min_importance: { type: 'number', description: 'Minimum importance score (0.0-1.0)' },
+                pattern_type: {
+                  type: 'string',
+                  enum: ['daily', 'weekly', 'tri_weekly', 'monthly'],
+                  description: 'Filter by detected temporal pattern',
+                },
+              },
+            },
+          },
+          required: ['query'],
+        },
+        annotations: {
+          title: 'Search Memories',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'resolve_open_loop',
+        description:
+          'Mark a commitment, question, or follow-up as resolved.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memory_id: { type: 'string', description: 'Memory ID containing the open loop' },
+            resolution_note: { type: 'string', description: 'Note about how it was resolved' },
+          },
+          required: ['memory_id'],
+        },
+        annotations: {
+          title: 'Resolve Open Loop',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_pattern_stats',
+        description:
+          'Get statistics about learned temporal patterns. Shows pattern formation progress (21-day learning, 63-day stability).',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+        annotations: {
+          title: 'Get Pattern Stats',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_tier_stats',
+        description:
+          'Get memory tier statistics (hot/warm/cold distribution). Shows how memories are cached across the Zipfian hierarchy.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+        annotations: {
+          title: 'Get Tier Stats',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -2640,6 +2759,231 @@ function createServer(): Server {
                   : `✗ Incorrect. Learning from mistake. Actual user: ${actualUserId}`,
                 impactOnAccuracy: correct ? '+' : 'adjusted',
               }),
+            }],
+          };
+        }
+
+        // ============================================
+        // PREDICTIVE MEMORY SYSTEM HANDLERS
+        // ============================================
+
+        case 'get_anticipated_context': {
+          const { context_frame, max_memories = 5 } = args as {
+            context_frame?: {
+              location?: string;
+              people?: string[];
+              activity?: string;
+              project?: string;
+            };
+            max_memories?: number;
+          };
+
+          // Import predictive anticipation service
+          const { getAnticipatedForUser } = await import('../salience_service/predictive_anticipation.js');
+
+          const result = await getAnticipatedForUser(
+            CONFIG.defaultUserId,
+            context_frame,
+            max_memories
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                anticipated: result.memories.map(m => ({
+                  memoryId: m.memoryId,
+                  content: m.content,
+                  score: Math.round(m.anticipationScore * 100),
+                  reasons: m.anticipationReasons,
+                  pattern: m.temporal?.patternType,
+                  hasOpenLoop: m.openLoop && !m.openLoop.resolved,
+                })),
+                contextMatched: result.contextMatched,
+                patternsUsed: result.patternsUsed,
+                timestamp: result.timestamp,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'search_memories': {
+          const { query, limit = 10, filters } = args as {
+            query: string;
+            limit?: number;
+            filters?: {
+              tags?: string[];
+              min_importance?: number;
+              pattern_type?: string;
+            };
+          };
+
+          // Use existing retrieval with predictive memory collection
+          const predictiveMemories = collections.predictiveMemories();
+
+          const filter: Record<string, unknown> = {
+            userId: CONFIG.defaultUserId,
+          };
+
+          if (filters?.tags && filters.tags.length > 0) {
+            filter.tags = { $in: filters.tags };
+          }
+
+          if (filters?.min_importance !== undefined) {
+            filter.importance = { $gte: filters.min_importance };
+          }
+
+          if (filters?.pattern_type) {
+            filter['temporal.patternType'] = filters.pattern_type;
+          }
+
+          const memories = await predictiveMemories
+            .find(filter)
+            .sort({ importance: -1, lastAccessed: -1 })
+            .limit(limit)
+            .toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                query,
+                results: memories.map(m => ({
+                  memoryId: m.memoryId,
+                  content: m.content,
+                  importance: m.importance,
+                  tier: m.tier,
+                  tags: m.tags,
+                  pattern: m.temporal?.patternType,
+                  lastAccessed: m.lastAccessed,
+                })),
+                total: memories.length,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'resolve_open_loop': {
+          const { memory_id, resolution_note } = args as {
+            memory_id: string;
+            resolution_note?: string;
+          };
+
+          const predictiveMemories = collections.predictiveMemories();
+
+          // Update the open loop in the memory
+          const result = await predictiveMemories.updateOne(
+            {
+              userId: CONFIG.defaultUserId,
+              memoryId: memory_id,
+              'openLoop.resolved': false,
+            },
+            {
+              $set: {
+                'openLoop.resolved': true,
+                'openLoop.resolvedAt': new Date().toISOString(),
+                'openLoop.resolutionNote': resolution_note,
+              },
+            }
+          );
+
+          if (result.modifiedCount === 0) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  success: false,
+                  message: 'No unresolved open loop found for this memory',
+                }),
+              }],
+            };
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                memoryId: memory_id,
+                message: 'Open loop resolved',
+                resolutionNote: resolution_note,
+              }),
+            }],
+          };
+        }
+
+        case 'get_pattern_stats': {
+          const { getPatternDetector } = await import('../salience_service/pattern_detector.js');
+          const detector = getPatternDetector();
+
+          const stablePatterns = await detector.getStablePatterns(CONFIG.defaultUserId, 21);
+          const veryStablePatterns = await detector.getStablePatterns(CONFIG.defaultUserId, 63);
+
+          // Get access history stats
+          const accessHistory = collections.accessHistory();
+          const historyCount = await accessHistory.countDocuments({
+            userId: CONFIG.defaultUserId,
+          });
+
+          // Calculate data collection period
+          const oldestAccess = await accessHistory
+            .find({ userId: CONFIG.defaultUserId })
+            .sort({ timestamp: 1 })
+            .limit(1)
+            .toArray();
+
+          const dataCollectionDays = oldestAccess.length > 0
+            ? Math.floor((Date.now() - new Date(oldestAccess[0].timestamp).getTime()) / (24 * 60 * 60 * 1000))
+            : 0;
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                totalPatterns: stablePatterns.length,
+                formedPatterns: stablePatterns.filter(p => p.pattern.stabilityDays >= 21).length,
+                stablePatterns: veryStablePatterns.length,
+                dataCollectionDays,
+                accessHistoryCount: historyCount,
+                readyForPrediction: dataCollectionDays >= 21 && stablePatterns.length > 0,
+                patternBreakdown: {
+                  daily: stablePatterns.filter(p => p.pattern.patternType === 'daily').length,
+                  weekly: stablePatterns.filter(p => p.pattern.patternType === 'weekly').length,
+                  triWeekly: stablePatterns.filter(p => p.pattern.patternType === 'tri_weekly').length,
+                  monthly: stablePatterns.filter(p => p.pattern.patternType === 'monthly').length,
+                },
+                message: dataCollectionDays < 21
+                  ? `Still learning patterns (${dataCollectionDays}/21 days). Keep using the system!`
+                  : `${stablePatterns.length} patterns detected with ${veryStablePatterns.length} fully stable.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_tier_stats': {
+          const { getTierManager } = await import('../salience_service/tier_manager.js');
+          const tierManager = getTierManager();
+
+          const stats = await tierManager.getStats(CONFIG.defaultUserId);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                hot: stats.hot,
+                warm: stats.warm,
+                cold: stats.cold,
+                total: stats.total,
+                avgAccessCount: Math.round(stats.avgAccessCount * 100) / 100,
+                distribution: {
+                  hotPercent: stats.total > 0 ? Math.round((stats.hot / stats.total) * 100) : 0,
+                  warmPercent: stats.total > 0 ? Math.round((stats.warm / stats.total) * 100) : 0,
+                  coldPercent: stats.total > 0 ? Math.round((stats.cold / stats.total) * 100) : 0,
+                },
+                message: stats.total === 0
+                  ? 'No memories stored yet.'
+                  : `${stats.hot} hot, ${stats.warm} warm, ${stats.cold} cold memories.`,
+              }, null, 2),
             }],
           };
         }

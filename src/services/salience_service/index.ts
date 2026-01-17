@@ -251,6 +251,46 @@ export {
   type PatternStats,
 } from './anticipation_service';
 
+// Re-export pattern detector (FFT-based 63-day pattern detection)
+export {
+  PatternDetector,
+  getPatternDetector,
+  recordMemoryAccess,
+  getAccessHistory,
+} from './pattern_detector';
+
+// Re-export tier manager (Hot/Warm/Cold Zipfian cache hierarchy)
+export {
+  TierManager,
+  getTierManager,
+  initTierManager,
+  createMemoryDocument,
+} from './tier_manager';
+
+// Re-export context-aware gate (Engram-style memory gating)
+export {
+  NeuralContextGate,
+  ThresholdContextGate,
+  SemanticContextGate,
+  CompositeContextGate,
+  getContextGate,
+  rmsNorm,
+  dotProduct,
+  cosineSimilarity,
+  sigmoid,
+  type GateResult,
+  type MemoryWithEmbedding,
+  type ContextWithEmbedding,
+} from './context_gate';
+
+// Re-export predictive anticipation (enhanced 63-day pattern anticipation)
+export {
+  PredictiveAnticipationService,
+  getPredictiveAnticipationService,
+  getAnticipatedForUser,
+  generateUserDayBriefing,
+} from './predictive_anticipation';
+
 // Re-export energy-aware task retrieval (TaskForge Triage integration)
 export {
   getEnergyAwareTasks,
