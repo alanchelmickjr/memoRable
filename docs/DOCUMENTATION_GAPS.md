@@ -331,6 +331,7 @@ Features:
 27. `get_emotion_filters` - Get configured emotion filters
 28. `get_memories_by_emotion` - Search memories by emotional content
 29. `correct_emotion` - Override emotion tags when detection got it wrong (sarcasm≠anger)
+30. `clarify_intent` - Annotate what was meant vs what was said (truth beneath words)
 
 ---
 
