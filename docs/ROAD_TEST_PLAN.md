@@ -258,21 +258,71 @@ Dashboard: PASS - Returns full HTML dashboard with 269 memories
 
 ---
 
+## Endpoint Test Results
+
+| Endpoint | Method | Status | Response |
+|----------|--------|--------|----------|
+| `/health` | GET | ✅ PASS | `{"healthy":true,"uptime":210167234}` |
+| `/health/live` | GET | ✅ PASS | `{"alive":true}` |
+| `/dashboard` | GET | ✅ PASS | Full HTML dashboard |
+| `/dashboard/json` | GET | ✅ PASS | JSON with 270 memories, 27 entities |
+| `/memory?query=alan` | GET | ✅ PASS | Returns memories with salience |
+| `/memory` | POST | ✅ PASS | Stores with prosody analysis |
+| `/context/alan` | GET | ✅ PASS | Device context, location: Oakland |
+| `/loops` | GET | ❌ 404 | Not implemented (MCP only) |
+| `/briefing` | GET | ❌ 404 | Not implemented (MCP only) |
+
+## Live Stack Stats (2026-01-18)
+
+```json
+{
+  "totalMemories": 270,
+  "avgSalience": 51,
+  "uniqueEntities": 27,
+  "dataSources": 10,
+  "patternDays": 3,
+  "readyForPrediction": false
+}
+```
+
+**Top Sources:** direct (248), claude-code (6), precompact-hook (2)
+**Top Entities:** alan (261), osx_agent (230), jarvis (14)
+
+---
+
 ## Breakage Log
 
 | Test | What Broke | Error Message | Fix Applied | Fixed? |
 |------|------------|---------------|-------------|--------|
-| | | | | |
+| API Paths | README wrong | `/api/memory` vs `/memory` | Updated README & api-reference.md | ✅ |
+| Loops/Briefing | Not REST endpoints | 404 | Added note: MCP-only | ✅ (documented) |
 
 ---
 
 ## Summary
 
-**Tests Passed:** _/6
-**Tests Failed:** _/6
-**Blockers Found:**
+**Use Case Tests:** 2/2 PASS
+**Endpoint Tests:** 7/9 PASS (2 are MCP-only, documented)
+**Blockers Found:** 0 (issues found were doc errors, now fixed)
 
-**Ready for v1.0 branch?** YES / NO
+**Ready for v1.0 branch?** YES - Core functionality works
+
+### What Works:
+- Memory storage with salience scoring
+- Memory recall with query
+- Dashboard (HTML and JSON)
+- Context tracking per user/device
+- Prosody analysis on ingest
+- Health endpoints
+- API key authentication
+
+### What's MCP-Only (not REST):
+- `list_loops` / `close_loop`
+- `get_briefing`
+- `whats_relevant`
+- Energy-aware tasks
+- Emotion tools
+- Relationship intelligence
 
 ---
 
