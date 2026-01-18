@@ -326,6 +326,95 @@ Dashboard: PASS - Returns full HTML dashboard with 269 memories
 
 ---
 
+## Test 7: One-Click AWS Deploy
+
+**Goal:** Verify the "one-click" AWS deploy actually works for a new user
+
+### README Claims:
+> "Deploy to AWS in One Click"
+> Just click, fill in parameters, wait 15 minutes
+
+### What Alan Actually Had To Do:
+1. Create IAM user (not mentioned in README)
+2. Create access keys (not mentioned in README)
+3. Configure AWS CLI (not mentioned in README)
+4. THEN click the deploy link
+
+**This is NOT one-click.** It's "create IAM user → create access keys → configure CLI → one click"
+
+### Fresh Stack Deployment Test
+
+**Stack Name:** `memorable-roadtest`
+**Region:** us-west-2
+**Parameters:**
+- LLMProvider: bedrock
+- InstanceSize: small (~$150/mo)
+- Environment: staging
+
+**Start Time:** 2026-01-18 15:14 UTC
+
+### CloudFormation Resources Created:
+
+| Resource | Status | Notes |
+|----------|--------|-------|
+| VPC & Subnets | ✅ | 10.0.0.0/16 CIDR |
+| NAT Gateway | 🔄 | Creating (takes 2-5 min) |
+| Internet Gateway | ✅ | Attached to VPC |
+| DocumentDB Subnet Group | ✅ | Private subnets |
+| ElastiCache Subnet Group | 🔄 | Creating |
+| Security Groups | 🔄 | ALB, ECS, DocDB, Redis |
+| Secrets Manager | 🔄 | MongoDB credentials auto-generated |
+| DocumentDB Cluster | ⏳ | Pending (takes 10-15 min) |
+| Redis Cluster | ⏳ | Pending (takes 5-10 min) |
+| ECR Repository | ⏳ | Pending |
+| ECS Cluster | ⏳ | Pending |
+| ALB | ⏳ | Pending |
+| CodeBuild | ⏳ | Pending |
+| Lambda (build trigger) | ⏳ | Pending |
+| IAM Roles | ⏳ | Pending |
+
+### Issues Found During Deployment:
+
+| Issue | Severity | Description |
+|-------|----------|-------------|
+| **🔴 DocumentDB vs Atlas mismatch** | CRITICAL | Template deploys DocumentDB but Alan's working stack uses Atlas (dropped DocDB for AZ issues) |
+| **No prerequisite docs** | HIGH | README says "one-click" but needs IAM user + access keys + CLI |
+| **No time estimate accuracy** | MEDIUM | README says "15 minutes" - actual is 20-25 min |
+| **No progress visibility** | LOW | User doesn't know what's happening during deploy |
+
+### 🔴 CRITICAL: Database Architecture Mismatch
+
+**What the CloudFormation Template Deploys:**
+- AWS DocumentDB (MongoDB-compatible)
+- `AWS::DocDB::DBCluster` resource
+
+**What Alan's Working Stack Uses:**
+- MongoDB Atlas (cloud)
+- Dropped DocumentDB due to availability zone issues
+
+**Impact:**
+- New users deploying via CloudFormation get a different (rejected) architecture
+- May encounter the same AZ issues Alan already solved
+- Stack may not work correctly
+
+**Fix Required:**
+- Update CloudFormation to use Atlas OR
+- Document DocumentDB limitations and workarounds OR
+- Remove "one-click" claim until template matches working architecture
+
+### Deployment Timeline:
+(to be filled as stack progresses)
+
+### Post-Deploy Verification:
+- [ ] ALB URL responds
+- [ ] /health returns 200
+- [ ] /dashboard loads
+- [ ] API key works
+- [ ] Memory storage works
+- [ ] Memory recall works
+
+---
+
 ## Notes
 
 (observations, surprises, things to improve)
