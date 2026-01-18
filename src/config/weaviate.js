@@ -84,6 +84,84 @@ async function initializeSchema() {
       ],
     });
 
+    // Define schema for predictive memory system
+    // Uses text2vec-openai for embeddings (1536 dimensions)
+    await createSchemaClass('Memory', {
+      class: 'Memory',
+      description: 'Predictive memory system - stores memories with semantic embeddings',
+      vectorizer: 'text2vec-openai',
+      moduleConfig: {
+        'text2vec-openai': {
+          model: 'text-embedding-3-small',
+          dimensions: 1536
+        }
+      },
+      properties: [
+        {
+          name: 'content',
+          dataType: ['text'],
+          description: 'Memory content for vectorization',
+          moduleConfig: {
+            'text2vec-openai': {
+              skip: false,
+              vectorizePropertyName: false
+            }
+          },
+          tokenization: 'word'
+        },
+        {
+          name: 'userId',
+          dataType: ['string'],
+          description: 'User who owns this memory',
+          indexFilterable: true,
+          indexSearchable: false
+        },
+        {
+          name: 'mongoId',
+          dataType: ['string'],
+          description: 'Reference to MongoDB document ID'
+        },
+        {
+          name: 'importance',
+          dataType: ['number'],
+          description: 'Overall importance score (0.0-1.0)'
+        },
+        {
+          name: 'tags',
+          dataType: ['string[]'],
+          description: 'Content tags for filtering',
+          indexFilterable: true
+        },
+        {
+          name: 'patternType',
+          dataType: ['string'],
+          description: 'Temporal pattern type (daily, weekly, tri_weekly, monthly)',
+          indexFilterable: true
+        },
+        {
+          name: 'tier',
+          dataType: ['string'],
+          description: 'Storage tier (hot, warm, cold)',
+          indexFilterable: true
+        },
+        {
+          name: 'createdAt',
+          dataType: ['date'],
+          description: 'Creation timestamp'
+        },
+        {
+          name: 'lastAccessed',
+          dataType: ['date'],
+          description: 'Last access timestamp'
+        }
+      ],
+      vectorIndexConfig: {
+        distance: 'cosine',
+        ef: 256,
+        maxConnections: 64
+      }
+    });
+
     logger.info('Weaviate schema initialized');
   } catch (error) {
     logger.error('Failed to initialize Weaviate schema:', error);

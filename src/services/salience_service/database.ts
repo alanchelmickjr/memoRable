@@ -12,6 +12,8 @@ import type {
   RetrievalLog,
   LearnedWeights,
   MemoryDocument,
+  PredictiveMemoryDocument,
+  DetectedPattern,
 } from './models';
 
 let db: Db | null = null;
@@ -23,7 +25,12 @@ interface CollectionConfig {
   name: string;
   indexes: Array<{
     spec: IndexSpecification;
-    options?: { unique?: boolean; sparse?: boolean; expireAfterSeconds?: number };
+    options?: {
+      unique?: boolean;
+      sparse?: boolean;
+      expireAfterSeconds?: number;
+      partialFilterExpression?: Record<string, unknown>;
+    };
   }>;
 }
 
@@ -43,6 +50,52 @@ const SALIENCE_COLLECTIONS: CollectionConfig[] = [
       { spec: { status: 1, dueDate: 1 } },
       // For reminder scheduling
       { spec: { status: 1, nextReminder: 1 }, options: { sparse: true } },
+    ],
+  },
+  // ========================================================================
+  // PREDICTIVE MEMORY SYSTEM COLLECTIONS (3×7 Temporal Model)
+  // ========================================================================
+  {
+    name: 'predictive_memories',
+    indexes: [
+      // Primary access patterns
+      { spec: { userId: 1, lastAccessed: -1 } },
+      { spec: { userId: 1, tier: 1, importance: -1 } },
+      { spec: { userId: 1, tags: 1 } },
+      // Temporal pattern queries
+      { spec: { userId: 1, 'temporal.patternType': 1, 'temporal.confidence': -1 } },
+      // Open loop queries
+      { spec: { userId: 1, 'openLoop.resolved': 1, 'openLoop.dueDate': 1 } },
+      // Context frame queries
+      { spec: { userId: 1, 'contextFrame.project': 1 } },
+      { spec: { userId: 1, 'contextFrame.location': 1 } },
+      // Tier management
+      { spec: { tier: 1, lastAccessed: 1 } },
+      // TTL for warm tier (63 days) - memories not accessed demote to cold
+      {
+        spec: { lastAccessed: 1 },
+        options: { expireAfterSeconds: 5443200, partialFilterExpression: { tier: 'warm' } },
+      },
+    ],
+  },
+  {
+    name: 'access_history',
+    indexes: [
+      // Track memory access for pattern detection
+      { spec: { userId: 1, memoryId: 1, timestamp: -1 } },
+      { spec: { memoryId: 1, timestamp: -1 } },
+      // TTL: Keep 84 days (3×7×4) of access history
+      { spec: { timestamp: 1 }, options: { expireAfterSeconds: 7257600 } },
+    ],
+  },
+  {
+    name: 'detected_patterns',
+    indexes: [
+      // User pattern lookups
+      { spec: { userId: 1, patternType: 1, confidence: -1 } },
+      { spec: { userId: 1, memoryId: 1 }, options: { unique: true } },
+      // Pattern stability queries
+      { spec: { userId: 1, stabilityDays: -1 } },
     ],
   },
   {
@@ -177,6 +230,38 @@ export interface StateChangeDocument {
   changedBy?: string;
 }
 
+/**
+ * Access history document for pattern detection.
+ */
+export interface AccessHistoryDocument {
+  _id?: string;
+  userId: string;
+  memoryId: string;
+  timestamp: Date;
+  contextFrame?: {
+    location?: string;
+    people?: string[];
+    activity?: string;
+    project?: string;
+  };
+}
+
+/**
+ * Detected pattern document for storage.
+ */
+export interface DetectedPatternDocument {
+  _id?: string;
+  userId: string;
+  memoryId: string;
+  patternType: 'daily' | 'weekly' | 'tri_weekly' | 'monthly';
+  periodHours: number;
+  confidence: number;
+  peakTimes: number[];
+  stabilityDays: number;
+  firstDetected: Date;
+  lastUpdated: Date;
+}
+
 // Typed collection getters for convenience
 export const collections = {
   memories: () => getCollection<MemoryDocument>('memories'),
@@ -188,6 +273,10 @@ export const collections = {
   learnedWeights: () => getCollection<LearnedWeights>('learned_weights'),
   contacts: () => getCollection<ContactDocument>('contacts'),
   stateChanges: () => getCollection<StateChangeDocument>('state_changes'),
+  // Predictive memory system collections
+  predictiveMemories: () => getCollection<PredictiveMemoryDocument>('predictive_memories'),
+  accessHistory: () => getCollection<AccessHistoryDocument>('access_history'),
+  detectedPatterns: () => getCollection<DetectedPatternDocument>('detected_patterns'),
 };
 
 /**
