@@ -330,6 +330,7 @@ Features:
 26. `set_emotion_filter` - Configure emotion-based content filtering
 27. `get_emotion_filters` - Get configured emotion filters
 28. `get_memories_by_emotion` - Search memories by emotional content
+29. `correct_emotion` - Override emotion tags when detection got it wrong (sarcasm≠anger)
 
 ---
 
