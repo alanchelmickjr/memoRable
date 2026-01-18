@@ -121,7 +121,7 @@ GET /metrics          # Prometheus metrics
 
 #### Store Memory
 ```http
-POST /api/memory
+POST /memory
 Content-Type: application/json
 
 {
@@ -162,7 +162,7 @@ Response:
 
 #### Recall Memories
 ```http
-GET /api/memory?query=sarah&limit=10&minSalience=50
+GET /memory?query=sarah&limit=10&minSalience=50
 ```
 
 Response:
@@ -223,7 +223,7 @@ Response:
 
 #### Set Context
 ```http
-POST /api/context
+POST /context
 Content-Type: application/json
 
 {
@@ -238,7 +238,7 @@ Content-Type: application/json
 
 #### Get Relevant
 ```http
-GET /api/context/relevant?userId=user-123&unified=true
+GET /context/relevant?userId=user-123&unified=true
 ```
 
 ### Ingestion Service (Port 8001)
@@ -344,10 +344,10 @@ All errors follow this format:
 
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/api/memory` POST | 100 | 1 minute |
-| `/api/memory` GET | 1000 | 1 minute |
+| `/memory` POST | 100 | 1 minute |
+| `/memory` GET | 1000 | 1 minute |
 | `/api/ingest/*` | 500 | 1 minute |
-| `/api/context/*` | 200 | 1 minute |
+| `/context/*` | 200 | 1 minute |
 
 ---
 

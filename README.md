@@ -344,31 +344,41 @@ After startup, verify MemoRable connected to your Mem0 data:
 ```bash
 # Check health and connection
 curl http://localhost:3000/health
-# → {"status":"ok","services":{"mongodb":"connected"},"mem0":{"synced":true,"memories":1247}}
-
-# Check sync status
-curl http://localhost:3000/api/sync/status
-# → {"synced":1247,"pending":0,"lastSync":"2026-01-18T10:30:00Z"}
+# → {"healthy":true,"uptime":12345}
 
 # Query your memories with salience
-curl "http://localhost:3000/api/memory?query=sarah&limit=5"
+curl "http://localhost:3000/memory?query=sarah&limit=5"
 # → Returns memories with salience scores attached
+
+# View the dashboard
+curl http://localhost:3000/dashboard
+# → HTML dashboard with memory stats, salience distribution, top entities
 ```
 
 ### Instant Results
 
-After sync completes, try these via the API or MCP tools:
-
+**REST API** (available endpoints):
 ```bash
-# What do I owe people?
-curl "http://localhost:3000/api/loops?owner=you"
+# Search memories
+curl "http://localhost:3000/memory?query=Project%20X&limit=10"
 
-# Briefing before meeting Sarah
-curl "http://localhost:3000/api/briefing?person=Sarah"
+# Store a memory
+curl -X POST http://localhost:3000/memory \
+  -H "Content-Type: application/json" \
+  -d '{"content":"Met with Sarah about Q4","entity":"sarah"}'
 
-# High-salience memories about Project X
-curl "http://localhost:3000/api/memory?query=Project%20X&minSalience=70"
+# Get dashboard data as JSON
+curl http://localhost:3000/dashboard/json
 ```
+
+**MCP Tools** (via Claude Code - more features):
+```
+"What do I owe people?"        → list_loops tool
+"Briefing on Sarah"            → get_briefing tool
+"What's relevant right now?"   → whats_relevant tool
+```
+
+> **Note:** Loops and briefings are MCP-only. For full functionality, use Claude Code with MCP configured.
 
 ### What Gets Created
 
