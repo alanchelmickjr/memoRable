@@ -21,7 +21,7 @@ MemoRable is **ready for first testing**. The codebase is well-architected, secu
 | Aspect | Status | Notes |
 |--------|--------|-------|
 | Project structure | Excellent | Clean separation: core, services, config, utils |
-| MCP Server | Complete | 23 tools, resources, prompts implemented |
+| MCP Server | Complete | 35 tools, resources, prompts implemented |
 | OAuth 2.0 | Complete | Authorization code + refresh token flows |
 | Stylometry Engine | Complete | Research-based weights, proven methods |
 | Multi-device support | Complete | Brain-inspired context fusion |
@@ -161,7 +161,7 @@ Based on proven authorship attribution research:
 ## Conclusion
 
 MemoRable is production-quality code with:
-- Comprehensive MCP implementation (23 tools)
+- Comprehensive MCP implementation (35 tools)
 - Solid OAuth 2.0 authentication
 - Research-based behavioral identity
 - Extensive documentation

@@ -8,7 +8,7 @@
                     │                                                   │
      ┌──────────────▼──────────────┐    ┌──────────────▼──────────────┐
      │         MCP Server          │    │      Ingestion Service      │
-     │    (23 Claude Code Tools)   │    │        (Port 8001)          │
+     │    (35 Claude Code Tools)   │    │        (Port 8001)          │
      │         (stdio/HTTP)        │    │                             │
      │                             │    │  POST /api/ingest           │
      │  store_memory, recall,      │    │  - Text, Audio, Video       │

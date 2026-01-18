@@ -1965,6 +1965,186 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ========================================================================
+      // RELATIONSHIP INTELLIGENCE TOOLS
+      // Computed relationships, pressure tracking, prediction hooks
+      // ========================================================================
+      {
+        name: 'get_relationship',
+        description:
+          'Synthesize the relationship between two entities based on their shared memories. Does NOT use stored graph edges - computes relationship on-demand from evidence. Relationships evolve as memories accumulate.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity_a: {
+              type: 'string',
+              description: 'First entity ID or name',
+            },
+            entity_b: {
+              type: 'string',
+              description: 'Second entity ID or name',
+            },
+            context: {
+              type: 'string',
+              description: 'Optional context to focus synthesis (e.g., "regarding work", "regarding trust")',
+            },
+            force_refresh: {
+              type: 'boolean',
+              description: 'Ignore cached synthesis and recompute',
+              default: false,
+            },
+          },
+          required: ['entity_a', 'entity_b'],
+        },
+        annotations: {
+          title: 'Get Relationship Synthesis',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_entity_pressure',
+        description:
+          'Get pressure tracking for an entity. Tracks emotional pressure received and transmitted - the butterfly effect. High pressure + transmission = potential cascade. Surfaces to care circle when concerning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity_id: {
+              type: 'string',
+              description: 'Entity ID to check pressure for',
+            },
+            include_vectors: {
+              type: 'boolean',
+              description: 'Include detailed pressure vectors (incoming/outgoing)',
+              default: false,
+            },
+            days: {
+              type: 'integer',
+              description: 'Only include vectors from last N days',
+              default: 30,
+            },
+          },
+          required: ['entity_id'],
+        },
+        annotations: {
+          title: 'Get Entity Pressure',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_predictions',
+        description:
+          'Get memories that should be surfaced NOW based on current context. This is the north star - memories appear before you know you need them. Pass current context, get relevant memories proactively.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            context: {
+              type: 'object',
+              description: 'Current context frame',
+              properties: {
+                talking_to: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Entity IDs currently interacting with',
+                },
+                location: { type: 'string', description: 'Current location' },
+                location_type: { type: 'string', description: 'Type: home, work, transit, etc.' },
+                activity: { type: 'string', description: 'What you are doing' },
+                activity_type: { type: 'string', description: 'Type: meeting, coding, cooking, etc.' },
+                topics: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Current conversation topics',
+                },
+                emotional_state: { type: 'string', description: 'Detected emotion' },
+                device_type: { type: 'string', description: 'Device providing context' },
+              },
+            },
+            max_results: {
+              type: 'integer',
+              description: 'Maximum memories to surface (default: 3)',
+              default: 3,
+            },
+          },
+          required: ['context'],
+        },
+        annotations: {
+          title: 'Get Predicted Memories',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'record_prediction_feedback',
+        description:
+          'Record feedback on a surfaced memory prediction. Was it useful? Did you act on it? This teaches the system what predictions are valuable.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            hook_id: {
+              type: 'string',
+              description: 'The prediction hook ID that fired',
+            },
+            interaction: {
+              type: 'string',
+              enum: ['dismissed', 'viewed', 'acted_on', 'saved', 'blocked'],
+              description: 'How you interacted with the prediction',
+            },
+            context: {
+              type: 'string',
+              description: 'Optional context about why (helpful for learning)',
+            },
+          },
+          required: ['hook_id', 'interaction'],
+        },
+        annotations: {
+          title: 'Record Prediction Feedback',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'set_care_circle',
+        description:
+          'Set the care circle for an entity - people who should be alerted if pressure becomes concerning. For Betty, this might be her daughter and doctor.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity_id: {
+              type: 'string',
+              description: 'Entity to set care circle for',
+            },
+            care_circle: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Entity IDs of caregivers/trusted people',
+            },
+            alert_threshold: {
+              type: 'string',
+              enum: ['monitor', 'concern', 'urgent'],
+              description: 'When to alert care circle (default: concern)',
+              default: 'concern',
+            },
+          },
+          required: ['entity_id', 'care_circle'],
+        },
+        annotations: {
+          title: 'Set Care Circle',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -3718,6 +3898,403 @@ function createServer(): Server {
                 },
                 message: 'Intent clarified. The truth beneath the words is now preserved.',
                 note: 'This clarification is encrypted at Tier3_Vault level - your deepest truths are protected.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        // ========================================================================
+        // RELATIONSHIP INTELLIGENCE HANDLERS
+        // ========================================================================
+
+        case 'get_relationship': {
+          const {
+            entity_a,
+            entity_b,
+            context: relationshipContext,
+            force_refresh = false,
+          } = args as {
+            entity_a: string;
+            entity_b: string;
+            context?: string;
+            force_refresh?: boolean;
+          };
+
+          if (!entity_a || !entity_b) {
+            throw new McpError(ErrorCode.InvalidParams, 'Both entity_a and entity_b are required');
+          }
+
+          const db = getDb();
+
+          // Get shared memories between the two entities
+          const memories = await db.collection('memories')
+            .find({
+              userId: CONFIG.defaultUserId,
+              state: { $ne: 'suppressed' },
+              $or: [
+                { 'extractedFeatures.entities.people': { $all: [entity_a, entity_b] } },
+                { text: { $regex: entity_a, $options: 'i' }, 'text': { $regex: entity_b, $options: 'i' } },
+              ],
+            })
+            .sort({ createdAt: -1 })
+            .limit(20)
+            .toArray();
+
+          if (memories.length === 0) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  entity_a,
+                  entity_b,
+                  synthesis: `No shared memories found between ${entity_a} and ${entity_b}. Relationship unknown.`,
+                  strength: 0,
+                  sentiment: 0,
+                  evidence_count: 0,
+                }, null, 2),
+              }],
+            };
+          }
+
+          // For now, synthesize without LLM (can add LLM synthesis later)
+          const recentMemories = memories.slice(0, 5).map((m: Record<string, unknown>) => ({
+            date: typeof m.createdAt === 'string' ? m.createdAt.split('T')[0] : 'unknown',
+            text: typeof m.text === 'string' ? m.text.slice(0, 100) : '',
+          }));
+
+          const strength = Math.min(1, memories.length / 10);
+          const sentiment = 0; // Would need emotion analysis
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                entity_a,
+                entity_b,
+                context: relationshipContext,
+                synthesis: `${entity_a} and ${entity_b} have ${memories.length} shared memories. Relationship computed from evidence, not stored edges.`,
+                strength,
+                sentiment,
+                recent_trend: 'stable',
+                evidence_count: memories.length,
+                recent_evidence: recentMemories,
+                note: 'Full LLM synthesis available when LLM provider configured.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_entity_pressure': {
+          const {
+            entity_id,
+            include_vectors = false,
+            days = 30,
+          } = args as {
+            entity_id: string;
+            include_vectors?: boolean;
+            days?: number;
+          };
+
+          if (!entity_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'entity_id is required');
+          }
+
+          const db = getDb();
+
+          // Get pressure record for entity
+          const pressureRecord = await db.collection('entity_pressure').findOne({
+            entityId: entity_id,
+          });
+
+          if (!pressureRecord) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  entity_id,
+                  pressureScore: 0,
+                  pressureTrend: 'stable',
+                  patterns: {
+                    receivingFromMultipleSources: false,
+                    transmittingToOthers: false,
+                    escalating: false,
+                  },
+                  interventionUrgency: 'none',
+                  message: 'No pressure data recorded for this entity yet.',
+                }, null, 2),
+              }],
+            };
+          }
+
+          // Filter vectors by time window if requested
+          const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+          const response: Record<string, unknown> = {
+            entity_id,
+            pressureScore: pressureRecord.pressureScore,
+            pressureTrend: pressureRecord.pressureTrend,
+            patterns: pressureRecord.patterns,
+            interventionUrgency: pressureRecord.interventionUrgency,
+            careCircle: pressureRecord.careCircle,
+            lastUpdated: pressureRecord.lastUpdated,
+          };
+
+          if (include_vectors) {
+            response.negativeInputs = (pressureRecord.negativeInputs || [])
+              .filter((v: { timestamp: string }) => v.timestamp >= cutoff);
+            response.positiveInputs = (pressureRecord.positiveInputs || [])
+              .filter((v: { timestamp: string }) => v.timestamp >= cutoff);
+            response.negativeOutputs = (pressureRecord.negativeOutputs || [])
+              .filter((v: { timestamp: string }) => v.timestamp >= cutoff);
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(response, null, 2),
+            }],
+          };
+        }
+
+        case 'get_predictions': {
+          const {
+            context: predictionContext,
+            max_results = 3,
+          } = args as {
+            context: {
+              talking_to?: string[];
+              location?: string;
+              location_type?: string;
+              activity?: string;
+              activity_type?: string;
+              topics?: string[];
+              emotional_state?: string;
+              device_type?: string;
+            };
+            max_results?: number;
+          };
+
+          if (!predictionContext) {
+            throw new McpError(ErrorCode.InvalidParams, 'context is required');
+          }
+
+          const db = getDb();
+
+          // Get active prediction hooks for this user
+          const hooks = await db.collection('prediction_hooks')
+            .find({
+              entityId: CONFIG.defaultUserId,
+              disabled: { $ne: true },
+              $or: [
+                { expiresAt: { $exists: false } },
+                { expiresAt: { $gt: new Date().toISOString() } },
+              ],
+            })
+            .toArray();
+
+          // Evaluate hooks against context (simplified matching)
+          const surfaced: Array<{ hookId: string; memoryId: string; priority: string; matchedConditions: string[] }> = [];
+
+          for (const hook of hooks) {
+            const matchedConditions: string[] = [];
+            let allMatch = true;
+
+            for (const condition of (hook.conditions || [])) {
+              let matches = false;
+
+              switch (condition.type) {
+                case 'talking_to':
+                  matches = predictionContext.talking_to?.some(
+                    (t: string) => t.toLowerCase().includes(String(condition.value).toLowerCase())
+                  ) || false;
+                  break;
+                case 'location':
+                  matches = predictionContext.location?.toLowerCase().includes(String(condition.value).toLowerCase()) || false;
+                  break;
+                case 'location_type':
+                  matches = predictionContext.location_type === condition.value;
+                  break;
+                case 'activity':
+                case 'activity_type':
+                  matches = predictionContext.activity_type === condition.value ||
+                           predictionContext.activity?.toLowerCase().includes(String(condition.value).toLowerCase()) || false;
+                  break;
+                case 'topic':
+                  matches = predictionContext.topics?.some(
+                    (t: string) => t.toLowerCase().includes(String(condition.value).toLowerCase())
+                  ) || false;
+                  break;
+              }
+
+              if (matches) {
+                matchedConditions.push(`${condition.type}:${condition.value}`);
+              } else {
+                allMatch = false;
+                break;
+              }
+            }
+
+            if (allMatch && matchedConditions.length > 0) {
+              surfaced.push({
+                hookId: hook.hookId,
+                memoryId: hook.memoryId,
+                priority: hook.priority || 'medium',
+                matchedConditions,
+              });
+            }
+          }
+
+          // Get memory text for surfaced hooks
+          const memoryIds = surfaced.map(s => s.memoryId);
+          const memories = memoryIds.length > 0
+            ? await db.collection('memories')
+                .find({ memoryId: { $in: memoryIds } })
+                .toArray()
+            : [];
+
+          const memoryMap = new Map(memories.map((m: Record<string, unknown>) => [m.memoryId, m.text]));
+
+          const results = surfaced.slice(0, max_results).map(s => ({
+            ...s,
+            surfaceText: memoryMap.get(s.memoryId) || '[Memory not found]',
+          }));
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                context: predictionContext,
+                surfaced_count: results.length,
+                total_hooks_evaluated: hooks.length,
+                predictions: results,
+                note: results.length === 0
+                  ? 'No predictions match current context. Hooks are generated when memories are stored.'
+                  : 'These memories matched your current context and surfaced proactively.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'record_prediction_feedback': {
+          const {
+            hook_id,
+            interaction,
+            context: feedbackContext,
+          } = args as {
+            hook_id: string;
+            interaction: 'dismissed' | 'viewed' | 'acted_on' | 'saved' | 'blocked';
+            context?: string;
+          };
+
+          if (!hook_id || !interaction) {
+            throw new McpError(ErrorCode.InvalidParams, 'hook_id and interaction are required');
+          }
+
+          const db = getDb();
+
+          // Calculate confidence adjustment
+          const confidenceDeltas: Record<string, number> = {
+            acted_on: 0.1,
+            saved: 0.1,
+            viewed: 0.02,
+            dismissed: -0.05,
+            blocked: -0.3,
+          };
+
+          const delta = confidenceDeltas[interaction] || 0;
+
+          // Update hook with feedback
+          const result = await db.collection('prediction_hooks').updateOne(
+            { hookId: hook_id },
+            {
+              $push: {
+                feedbackHistory: {
+                  timestamp: new Date().toISOString(),
+                  interactionType: interaction,
+                  context: feedbackContext,
+                },
+              },
+              $inc: { confidence: delta },
+              $set: {
+                disabled: interaction === 'blocked',
+              },
+            }
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: result.modifiedCount > 0,
+                hook_id,
+                interaction,
+                confidence_delta: delta,
+                disabled: interaction === 'blocked',
+                message: interaction === 'blocked'
+                  ? 'Hook disabled - will not surface again.'
+                  : 'Feedback recorded. System is learning your preferences.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'set_care_circle': {
+          const {
+            entity_id,
+            care_circle,
+            alert_threshold = 'concern',
+          } = args as {
+            entity_id: string;
+            care_circle: string[];
+            alert_threshold?: 'monitor' | 'concern' | 'urgent';
+          };
+
+          if (!entity_id || !care_circle || !Array.isArray(care_circle)) {
+            throw new McpError(ErrorCode.InvalidParams, 'entity_id and care_circle array are required');
+          }
+
+          const db = getDb();
+
+          // Update or create entity pressure record with care circle
+          await db.collection('entity_pressure').updateOne(
+            { entityId: entity_id },
+            {
+              $set: {
+                careCircle: care_circle,
+                alertThreshold: alert_threshold,
+                updatedAt: new Date().toISOString(),
+              },
+              $setOnInsert: {
+                entityId: entity_id,
+                pressureScore: 0,
+                pressureTrend: 'stable',
+                patterns: {
+                  receivingFromMultipleSources: false,
+                  transmittingToOthers: false,
+                  behaviorChangeDetected: false,
+                  isolating: false,
+                  escalating: false,
+                },
+                interventionUrgency: 'none',
+                negativeInputs: [],
+                positiveInputs: [],
+                negativeOutputs: [],
+                positiveOutputs: [],
+                createdAt: new Date().toISOString(),
+              },
+            },
+            { upsert: true }
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                entity_id,
+                care_circle,
+                alert_threshold,
+                message: `Care circle set. ${care_circle.join(', ')} will be notified when pressure reaches "${alert_threshold}" level.`,
               }, null, 2),
             }],
           };

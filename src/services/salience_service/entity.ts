@@ -235,6 +235,391 @@ export function createOrgEntity(
 }
 
 // ============================================================================
+// Entity Pressure Tracking - Butterfly → Hurricane Early Warning
+// ============================================================================
+
+/**
+ * Tracks pressure accumulation on an entity.
+ *
+ * The butterfly effect: A wounded person wounds another.
+ * The hurricane: Accumulated pain finding an exit.
+ *
+ * We don't predict tragedies. We measure pressure and surface to those who can help.
+ */
+export interface EntityPressure {
+  entityId: string;
+
+  // Incoming vectors - pressure received
+  negativeInputs: PressureVector[];
+  positiveInputs: PressureVector[];
+
+  // Outgoing vectors - pressure transmitted
+  negativeOutputs: PressureVector[];
+  positiveOutputs: PressureVector[];
+
+  // Accumulation metrics
+  pressureScore: number;              // Current pressure level (can be negative = giving support)
+  pressureTrend: 'rising' | 'stable' | 'falling';
+  trendDuration: number;              // Days the trend has held
+
+  // Pattern flags for early warning
+  patterns: {
+    receivingFromMultipleSources: boolean;   // Multiple stressors
+    transmittingToOthers: boolean;           // Passing pain along
+    behaviorChangeDetected: boolean;         // Acting differently
+    isolating: boolean;                      // Fewer positive interactions
+    escalating: boolean;                     // Intensity increasing over time
+  };
+
+  // NOT prediction - readiness for intervention
+  interventionUrgency: 'none' | 'monitor' | 'concern' | 'urgent';
+
+  // Who should be notified if concerning
+  careCircle?: string[];              // entityIds of people who care about this entity
+
+  // Timestamps
+  lastUpdated: string;
+  lastSignificantChange: string;
+}
+
+export interface PressureVector {
+  sourceEntityId: string;             // Who/what caused this
+  targetEntityId: string;             // Who received it
+  memoryId: string;                   // The memory that captured this
+  timestamp: string;
+
+  intensity: number;                  // 0-1, how impactful
+  valence: number;                    // -1 (negative) to +1 (positive)
+
+  category?: PressureCategory;
+  isRepeated: boolean;                // Part of a pattern?
+
+  // Causal chain tracking
+  cascadeDepth: number;               // 0 = direct, 1+ = downstream effect
+  originMemoryId?: string;            // Where did this chain start?
+}
+
+export type PressureCategory =
+  | 'criticism'
+  | 'rejection'
+  | 'disappointment'
+  | 'conflict'
+  | 'loss'
+  | 'stress'
+  | 'support'
+  | 'encouragement'
+  | 'connection'
+  | 'achievement'
+  | 'neutral';
+
+/**
+ * Create initial pressure tracking for an entity
+ */
+export function createEntityPressure(entityId: string): EntityPressure {
+  const now = new Date().toISOString();
+
+  return {
+    entityId,
+    negativeInputs: [],
+    positiveInputs: [],
+    negativeOutputs: [],
+    positiveOutputs: [],
+    pressureScore: 0,
+    pressureTrend: 'stable',
+    trendDuration: 0,
+    patterns: {
+      receivingFromMultipleSources: false,
+      transmittingToOthers: false,
+      behaviorChangeDetected: false,
+      isolating: false,
+      escalating: false,
+    },
+    interventionUrgency: 'none',
+    lastUpdated: now,
+    lastSignificantChange: now,
+  };
+}
+
+/**
+ * Add a pressure vector and recalculate state
+ */
+export function addPressureVector(
+  pressure: EntityPressure,
+  vector: PressureVector
+): EntityPressure {
+  const now = new Date().toISOString();
+  const isNegative = vector.valence < 0;
+  const isIncoming = vector.targetEntityId === pressure.entityId;
+
+  // Add to appropriate array
+  if (isIncoming) {
+    if (isNegative) {
+      pressure.negativeInputs.push(vector);
+    } else {
+      pressure.positiveInputs.push(vector);
+    }
+  } else {
+    if (isNegative) {
+      pressure.negativeOutputs.push(vector);
+    } else {
+      pressure.positiveOutputs.push(vector);
+    }
+  }
+
+  // Recalculate pressure score
+  // Negative inputs increase pressure, positive decrease
+  // Negative outputs indicate pressure transmission
+  const negIn = pressure.negativeInputs.reduce((sum, v) => sum + Math.abs(v.valence) * v.intensity, 0);
+  const posIn = pressure.positiveInputs.reduce((sum, v) => sum + v.valence * v.intensity, 0);
+  const negOut = pressure.negativeOutputs.reduce((sum, v) => sum + Math.abs(v.valence) * v.intensity, 0);
+
+  const oldScore = pressure.pressureScore;
+  pressure.pressureScore = negIn - posIn + (negOut * 0.5); // Transmitting adds to your pressure too
+
+  // Update trend
+  const scoreDelta = pressure.pressureScore - oldScore;
+  if (Math.abs(scoreDelta) < 0.1) {
+    pressure.pressureTrend = 'stable';
+  } else if (scoreDelta > 0) {
+    pressure.pressureTrend = 'rising';
+  } else {
+    pressure.pressureTrend = 'falling';
+  }
+
+  // Detect patterns
+  const recentWindow = 7 * 24 * 60 * 60 * 1000; // 7 days
+  const now_ms = Date.now();
+  const recentNegInputs = pressure.negativeInputs.filter(
+    v => now_ms - new Date(v.timestamp).getTime() < recentWindow
+  );
+
+  const uniqueNegSources = new Set(recentNegInputs.map(v => v.sourceEntityId));
+  pressure.patterns.receivingFromMultipleSources = uniqueNegSources.size >= 2;
+
+  const recentNegOutputs = pressure.negativeOutputs.filter(
+    v => now_ms - new Date(v.timestamp).getTime() < recentWindow
+  );
+  pressure.patterns.transmittingToOthers = recentNegOutputs.length > 0;
+
+  // Check for escalation (intensity increasing)
+  if (recentNegInputs.length >= 3) {
+    const sorted = [...recentNegInputs].sort((a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    const firstHalf = sorted.slice(0, Math.floor(sorted.length / 2));
+    const secondHalf = sorted.slice(Math.floor(sorted.length / 2));
+    const avgFirst = firstHalf.reduce((s, v) => s + v.intensity, 0) / firstHalf.length;
+    const avgSecond = secondHalf.reduce((s, v) => s + v.intensity, 0) / secondHalf.length;
+    pressure.patterns.escalating = avgSecond > avgFirst * 1.2;
+  }
+
+  // Determine intervention urgency
+  let urgencyScore = 0;
+  if (pressure.patterns.receivingFromMultipleSources) urgencyScore++;
+  if (pressure.patterns.transmittingToOthers) urgencyScore++;
+  if (pressure.patterns.escalating) urgencyScore += 2;
+  if (pressure.patterns.isolating) urgencyScore++;
+  if (pressure.pressureScore > 2) urgencyScore++;
+  if (pressure.pressureScore > 4) urgencyScore++;
+
+  if (urgencyScore >= 5) {
+    pressure.interventionUrgency = 'urgent';
+  } else if (urgencyScore >= 3) {
+    pressure.interventionUrgency = 'concern';
+  } else if (urgencyScore >= 1) {
+    pressure.interventionUrgency = 'monitor';
+  } else {
+    pressure.interventionUrgency = 'none';
+  }
+
+  pressure.lastUpdated = now;
+  if (Math.abs(scoreDelta) > 0.5) {
+    pressure.lastSignificantChange = now;
+  }
+
+  return pressure;
+}
+
+// ============================================================================
+// Emotional Decay Observation - Learn Individual Patterns
+// ============================================================================
+
+/**
+ * Observes how emotional intensity changes over time for each person.
+ *
+ * "My anger for the guy that ripped me off is gone after a year...
+ *  but my feelings about my father's murder, much longer decay."
+ *
+ * We don't impose decay formulas. We OBSERVE decay empirically.
+ */
+export interface EmotionalDecayObservation {
+  observationId: string;
+  memoryId: string;
+  entityId: string;                 // Whose decay are we observing
+
+  // Temporal
+  observedAt: string;
+  daysSinceMemory: number;
+
+  // Emotional state at observation
+  emotionDetected: string;          // 'anger', 'sadness', 'neutral', etc.
+  valence: number;                  // -1 to +1
+  intensity: number;                // 0 to 1
+
+  // Context
+  triggerType: 'mentioned' | 'encountered' | 'reminded' | 'queried' | 'surfaced';
+  context?: string;                 // What triggered this reference
+
+  // For comparison
+  originalValence: number;          // What was the valence at creation
+  originalIntensity: number;
+  decayRatio: number;               // intensity / originalIntensity
+}
+
+/**
+ * Learned decay rate for an entity + category combination.
+ * Built from observations over time.
+ */
+export interface LearnedDecayRate {
+  entityId: string;
+  category: string;                 // 'financial', 'trauma', 'social', 'professional', etc.
+
+  // Learned parameters
+  halfLife: number;                 // Days until intensity halves
+  floor: number;                    // Minimum intensity (trauma may never fully decay)
+  confidence: number;               // 0-1, based on observation count
+
+  // Evidence
+  observationCount: number;
+  memoryIds: string[];              // Which memories contributed
+  lastObserved: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Create a decay observation when a memory is referenced
+ */
+export function createDecayObservation(
+  memoryId: string,
+  entityId: string,
+  memoryCreatedAt: string,
+  originalValence: number,
+  originalIntensity: number,
+  currentEmotion: {
+    emotion: string;
+    valence: number;
+    intensity: number;
+  },
+  triggerType: EmotionalDecayObservation['triggerType']
+): EmotionalDecayObservation {
+  const now = new Date();
+  const created = new Date(memoryCreatedAt);
+  const daysSince = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+
+  return {
+    observationId: `obs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    memoryId,
+    entityId,
+    observedAt: now.toISOString(),
+    daysSinceMemory: daysSince,
+    emotionDetected: currentEmotion.emotion,
+    valence: currentEmotion.valence,
+    intensity: currentEmotion.intensity,
+    triggerType,
+    originalValence,
+    originalIntensity,
+    decayRatio: originalIntensity > 0 ? currentEmotion.intensity / originalIntensity : 1,
+  };
+}
+
+/**
+ * Update learned decay rate based on new observations.
+ * Uses simple exponential decay model: I(t) = I_0 * e^(-t/τ) + floor
+ */
+export function updateDecayRate(
+  existing: LearnedDecayRate | null,
+  observations: EmotionalDecayObservation[],
+  category: string,
+  entityId: string
+): LearnedDecayRate {
+  const now = new Date().toISOString();
+
+  if (observations.length < 2) {
+    // Not enough data to learn decay
+    return existing || {
+      entityId,
+      category,
+      halfLife: 180,              // Default 6 months
+      floor: 0.1,                 // Default small floor
+      confidence: 0,
+      observationCount: observations.length,
+      memoryIds: observations.map(o => o.memoryId),
+      lastObserved: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  // Sort by days since memory
+  const sorted = [...observations].sort((a, b) => a.daysSinceMemory - b.daysSinceMemory);
+
+  // Estimate half-life from observations
+  // Find when intensity dropped to ~50% of original
+  let halfLife = 180; // Default
+  let floor = 0.1;
+
+  // Look for the observation closest to 50% decay
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].decayRatio <= 0.5 && sorted[i - 1].decayRatio > 0.5) {
+      // Interpolate
+      const ratio = (0.5 - sorted[i].decayRatio) / (sorted[i - 1].decayRatio - sorted[i].decayRatio);
+      halfLife = sorted[i].daysSinceMemory - ratio * (sorted[i].daysSinceMemory - sorted[i - 1].daysSinceMemory);
+      break;
+    }
+  }
+
+  // Estimate floor from longest observation
+  const oldest = sorted[sorted.length - 1];
+  if (oldest.daysSinceMemory > halfLife * 3) {
+    // If we have data past 3 half-lives, use that intensity as floor estimate
+    floor = oldest.intensity;
+  }
+
+  // Confidence based on observation count and time span
+  const timeSpan = sorted[sorted.length - 1].daysSinceMemory - sorted[0].daysSinceMemory;
+  const confidence = Math.min(1, (observations.length / 5) * (timeSpan / 365));
+
+  return {
+    entityId,
+    category,
+    halfLife,
+    floor,
+    confidence,
+    observationCount: (existing?.observationCount || 0) + observations.length,
+    memoryIds: [...(existing?.memoryIds || []), ...observations.map(o => o.memoryId)],
+    lastObserved: now,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Predict current emotional intensity using learned decay rate
+ */
+export function predictCurrentIntensity(
+  originalIntensity: number,
+  daysSinceMemory: number,
+  decayRate: LearnedDecayRate
+): number {
+  // Exponential decay with floor: I(t) = (I_0 - floor) * e^(-ln(2) * t / halfLife) + floor
+  const decayedPortion = (originalIntensity - decayRate.floor) *
+    Math.exp(-Math.log(2) * daysSinceMemory / decayRate.halfLife);
+
+  return Math.max(decayRate.floor, decayedPortion + decayRate.floor);
+}
+
+// ============================================================================
 // Entity ID Helpers
 // ============================================================================
 

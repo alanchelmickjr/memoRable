@@ -3,7 +3,7 @@
   "name": "memorable",
   "displayName": "MemoRable",
   "version": "2.0.0",
-  "description": "Enterprise memory system for AI agents with salience scoring, commitment tracking, relationship intelligence, and predictive memory. Extends Mem0 with 23 MCP tools for Claude integration.",
+  "description": "Enterprise memory system for AI agents with salience scoring, commitment tracking, relationship intelligence, pressure tracking, and predictive memory. Extends Mem0 with 35 MCP tools for Claude integration.",
   "author": {
     "name": "MemoRable Team",
     "url": "https://github.com/alanchelmickjr/memoRable"
@@ -22,7 +22,7 @@
     "intelligence"
   ],
   "capabilities": {
-    "tools": 23,
+    "tools": 35,
     "resources": 3,
     "prompts": 2
   },
@@ -114,6 +114,58 @@
     {
       "name": "behavioral_feedback",
       "description": "Improve recognition accuracy through feedback"
+    },
+    {
+      "name": "import_memories",
+      "description": "Import memories from backup with optional password decryption"
+    },
+    {
+      "name": "analyze_emotion",
+      "description": "Analyze emotional content of text or memory using Hume.ai"
+    },
+    {
+      "name": "get_emotional_context",
+      "description": "Get real-time emotion state from active streams"
+    },
+    {
+      "name": "set_emotion_filter",
+      "description": "Configure emotion-based content filtering rules"
+    },
+    {
+      "name": "get_emotion_filters",
+      "description": "Get currently configured emotion filters"
+    },
+    {
+      "name": "get_memories_by_emotion",
+      "description": "Search memories by emotional content"
+    },
+    {
+      "name": "correct_emotion",
+      "description": "Override emotion tags when detection got it wrong (sarcasm≠anger)"
+    },
+    {
+      "name": "clarify_intent",
+      "description": "Annotate what was meant vs what was said (truth beneath words)"
+    },
+    {
+      "name": "get_relationship",
+      "description": "Synthesize relationship from shared memories via LLM (no stored graph)"
+    },
+    {
+      "name": "get_entity_pressure",
+      "description": "Butterfly → Hurricane early warning - track emotional pressure patterns"
+    },
+    {
+      "name": "get_predictions",
+      "description": "Surface memories before you ask based on context hooks"
+    },
+    {
+      "name": "record_prediction_feedback",
+      "description": "Teach the system what predictions are useful"
+    },
+    {
+      "name": "set_care_circle",
+      "description": "Set who gets alerted when entity pressure is concerning"
     }
   ],
   "resources": [

@@ -1,11 +1,25 @@
 # Gap Analysis: Documentation & Implementation
 
 **Generated:** 2026-01-17
+**Updated:** 2026-01-18
 **Purpose:** Identify what's missing - both docs AND implementation
 
 ---
 
 ## Executive Summary
+
+### RECENTLY IMPLEMENTED (2026-01-18)
+
+| Feature | Files | Status |
+|---------|-------|--------|
+| **Entity Pressure Tracking** | `entity.ts` | ✅ BUILT |
+| **Emotional Decay Observation** | `entity.ts` | ✅ BUILT |
+| **Relationship Synthesis (no graph)** | `relationship.ts` | ✅ BUILT |
+| **Prediction Hooks** | `prediction_hooks.ts` | ✅ BUILT |
+| **5 New MCP Tools** | `mcp_server/index.ts` | ✅ BUILT |
+| **Testing Scaffold** | `tests/fixtures/`, `tests/load/` | ✅ BUILT |
+
+**Design Document:** `docs/design/relationship-intelligence.md`
 
 ### IMPLEMENTATION GAPS (Not Built Yet)
 
@@ -23,7 +37,7 @@
 |----------|------------|--------------|-----|
 | Core Services | 5 | 10 | 67% missing |
 | Memory Operations | 2 | 6 | 75% missing |
-| MCP Tools | 6 | 17 | 74% missing |
+| MCP Tools | 6 | 29 | 83% missing |
 | Integrations | 1 | 4 | 80% missing |
 
 ---
@@ -324,7 +338,7 @@ Features:
 22. `deep_work` - Focus tasks
 23. `triage_task` - Classify task
 
-### Prosody & Emotion Tools (NEW - implemented 2026-01-17)
+### Prosody & Emotion Tools (implemented 2026-01-17)
 24. `analyze_emotion` - Analyze emotional content of text or memory
 25. `get_emotional_context` - Get real-time emotion from active streams
 26. `set_emotion_filter` - Configure emotion-based content filtering
@@ -332,6 +346,15 @@ Features:
 28. `get_memories_by_emotion` - Search memories by emotional content
 29. `correct_emotion` - Override emotion tags when detection got it wrong (sarcasm≠anger)
 30. `clarify_intent` - Annotate what was meant vs what was said (truth beneath words)
+
+### Relationship Intelligence Tools (NEW - implemented 2026-01-18)
+31. `get_relationship` - Synthesize relationship from shared memories (no stored graph - computed on demand)
+32. `get_entity_pressure` - Butterfly → Hurricane early warning (pressure tracking for entities)
+33. `get_predictions` - Surface memories BEFORE you ask (prediction hooks based on context)
+34. `record_prediction_feedback` - Teach the system what predictions are useful
+35. `set_care_circle` - Set who gets alerted when entity pressure is concerning
+
+**Total MCP Tools: 35**
 
 ---
 
@@ -358,7 +381,7 @@ Features:
 ### Phase 2: Core Features (Week 1)
 4. **Multi-Device Context** - How devices sync
 5. **Energy-Aware Tasks** - TaskForge integration
-6. **MCP Tools Reference** - Complete the 23-tool list
+6. **MCP Tools Reference** - Complete the 35-tool list
 
 ### Phase 3: Advanced (Week 2)
 7. **Prosody & Emotion** - Hume.ai integration
@@ -378,7 +401,7 @@ Features:
 [ ] Create docs/features/memory-lifecycle.md
 [ ] Create docs/features/multi-device.md
 [ ] Create docs/features/energy-tasks.md
-[ ] Create docs/api/mcp-tools-reference.md (complete 23 tools)
+[ ] Create docs/api/mcp-tools-reference.md (complete 35 tools)
 [ ] Create docs/integrations/hume-prosody.md
 [ ] Create docs/security/identity-auth.md
 [ ] Audit legacy services in src/services/*.js
@@ -388,9 +411,71 @@ Features:
 
 ---
 
+## New This Session (2026-01-18)
+
+### Relationship Intelligence System
+
+Three revolutionary approaches implemented:
+
+1. **Pressure Tracking (Butterfly → Hurricane)**
+   - Track emotional pressure received/transmitted per entity
+   - Detect patterns: multiple sources, escalation, transmission
+   - Care circle alerts when pressure concerning
+   - File: `src/services/salience_service/entity.ts`
+
+2. **Computed Relationships (No Stored Graph)**
+   - Don't store relationship edges, store memory pointers
+   - Synthesize relationships via LLM on demand
+   - Cache invalidation on high-salience memories
+   - File: `src/services/salience_service/relationship.ts`
+
+3. **Prediction Hooks (Surface Before They Ask)**
+   - Generate hooks at ingest time
+   - Fire hooks on context change
+   - Learn from feedback
+   - File: `src/services/salience_service/prediction_hooks.ts`
+
+4. **Emotional Decay Observation**
+   - Don't impose decay formulas, OBSERVE them
+   - Learn per-person, per-incident decay rates
+   - "My anger about $3k is gone. My grief about my father, still raw after 30 years."
+   - File: `src/services/salience_service/entity.ts`
+
+### Testing Scaffold
+
+- **Synthetic Data Generators**: `tests/fixtures/synthetic_generators.ts`
+  - Seed data: Betty, Alan, Companies A-D, devices
+  - Memory templates with realistic patterns
+  - Pressure cascade scenarios
+  - Context stream generators
+
+- **Load Test Harness**: `tests/load/pipeline_load_test.ts`
+  - Profiles: smoke, standard, stress, versailles
+  - Latency percentiles (P50, P90, P95, P99)
+  - Memory usage tracking
+  - Error aggregation
+
+- **Leak Detector**: `tests/load/leak_detector.ts`
+  - Heap growth monitoring
+  - Event listener leak detection
+  - Handle leak detection
+  - Formatted reports
+
+### Philosophical Foundations (from docs/design/relationship-intelligence.md)
+
+- "Walk through the cloud and coalesce what you need when you need it"
+- "Prevent and prepare, not respond and recover"
+- Decay is individual - learned, not imposed
+- Diffusion models may hold answers for memory retrieval (future research)
+- Macro-level ripple detection - see the effect of a TV ad across the sensor net
+
+---
+
 ## Notes
 
 - "Photo brain" (iPhone Claude) has been reading docs but missing these features
 - The filter/block/suppress system exists but is invisible to users
 - Prosody tagging is in code but not exposed via MCP tools (maybe should be?)
 - Daemon may not be needed if real-time processing is sufficient (NNNA deprecated)
+- **NEW:** 35 MCP tools now, up from 23 in README (needs update)
+- **NEW:** Testing scaffold complete - calculate for pipe friction (Versailles)

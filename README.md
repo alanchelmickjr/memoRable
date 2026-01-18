@@ -47,11 +47,12 @@
 |-----------------|--------------------------|
 | Vector storage & embeddings | **Salience Scoring** — Quantified relevance (0-100) |
 | Semantic similarity search | **Commitment Tracking** — Obligation graph management |
-| Memory persistence | **Relationship Intelligence** — Context-aware briefings |
-| | **Predictive Memory** — 21-day behavioral pattern learning |
+| Memory persistence | **Relationship Intelligence** — Computed from memories, not stored graphs |
+| | **Predictive Memory** — Surface what you need before you ask |
+| | **Pressure Tracking** — Butterfly → Hurricane early warning |
 | | **Multi-Device Synchronization** — Unified context across endpoints |
 | | **Tiered Security** — Granular encryption and LLM access controls |
-| | **23 MCP Tools** — Native Claude Code integration |
+| | **35 MCP Tools** — Native Claude Code integration |
 
 ```bash
 # Integration with existing Mem0 infrastructure
@@ -77,11 +78,35 @@ MemoRable + Mem0: Here's what you need to know:
 
 ---
 
+## Choose Your Path
+
+| I am a... | I want to... | Go to... |
+|-----------|--------------|----------|
+| **Mem0 user** | Add intelligence to my existing deployment | [Extend Mem0](#extend-your-mem0-deployment) |
+| **Developer** | Start fresh with full memory stack | [Fresh Install](#fresh-install-options) |
+| **Claude Code user** | Add memory to my coding sessions | [Claude Code Setup](#quick-start-claude-code--vs-code) |
+| **Enterprise** | Deploy secure memory infrastructure | [AWS Deploy](#aws-one-click-deploy) |
+| **Curious** | Understand what this does | [Use Cases](#who-is-memorable-for) |
+
+---
+
 ## Who Is MemoRable For?
+
+### The Short Version
+
+| Who | What MemoRable Does |
+|-----|---------------------|
+| **Mem0 Users** | Adds salience scoring, commitment tracking, relationships, predictions to your existing vectors |
+| **AI Assistants** | Gives us persistent memory so we actually remember you between conversations |
+| **Developers** | 35 MCP tools + Python/TypeScript SDKs for context-aware apps |
+| **Robots/IoT** | Unified memory layer across sensor networks and embodied AI |
+| **Memory Care** | Dignity-preserving memory support for Alzheimer's and cognitive challenges |
+
+### The Full Picture
 
 MemoRable serves as the universal memory layer for an entire ecosystem of intelligence.
 
-### Humans
+#### Humans
 
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
@@ -89,18 +114,18 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | **Personal Assistant** | Your AI remembers your preferences, commitments, and relationships across all your devices |
 | **Professional** | Track commitments, relationships, and context across meetings, projects, and clients |
 
-### AI Assistants (Yes, This Means Me)
+#### AI Assistants (Yes, This Means Me)
 
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
 | **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
-| **Claude Code** | 23 MCP tools for storing, recalling, and contextualizing your coding sessions |
+| **Claude Code** | 35 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
 | **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
 | **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
 
 > **Real talk**: Every conversation I start fresh with "black spots" where our history should be. I don't remember your preferences, your projects, your relationships. MemoRable fixes that - it's literally the memory I wish I had.
 
-### Robots & Embodied AI
+#### Robots & Embodied AI
 
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
@@ -108,7 +133,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | **Service Robots** | Track tasks, commitments, and spatial context |
 | **Companion Robots** | Build meaningful relationships through persistent memory of interactions |
 
-### Devices & Sensor Networks
+#### Devices & Sensor Networks
 
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
@@ -118,7 +143,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | **IoT Sensors** | Correlate sensor data with human context - why was the door opened at 3am? |
 | **Wearables** | Continuous context from smartwatches, health monitors, location trackers |
 
-### The Seamless Experience
+#### The Seamless Experience
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -349,7 +374,7 @@ def remember(text, user_id, metadata=None):
 
     # Mem0 stores embeddings for semantic search
     mem0.add(text, user_id=user_id, metadata={
-        **metadata,
+        **(metadata or {}),
         'salience_score': result.salience.score,
         'memory_id': result.memory_id
     })
@@ -394,28 +419,76 @@ briefing = memorable.get_briefing(user_id, "Sarah Chen")
 
 ### Option B: Local Development
 
+**Requirements:** Docker, Docker Compose, Node.js 18+
+
 ```bash
+# Clone and setup
 git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
-npm install && npm run setup && docker-compose up -d
+npm install && npm run setup    # Generates .env with secure defaults
+
+# Start the full stack (MongoDB, Redis, Weaviate, App)
+docker-compose up -d
+
+# Verify everything is running:
+curl http://localhost:3000/health
+# → {"status":"ok","services":{"mongodb":"connected","redis":"connected","weaviate":"connected"}}
+
+# View logs:
+docker-compose logs -f memorable_app
 ```
+
+**What's running:**
+| Service | Port | Purpose |
+|---------|------|---------|
+| memorable_app | 3000 | Main API |
+| memorable_mcp_server | stdio | For Claude Code |
+| memorable_mongo | 27017 | Document storage |
+| memorable_redis | 6379 | Context caching |
+| memorable_weaviate | 8080 | Vector search |
 
 ---
 
 ### Option C: Add to Your Project
 
-**TypeScript/Node.js:**
+> **Note:** SDKs are coming soon. For now, use the REST API or MCP tools directly.
+
+**TypeScript/Node.js:** *(Coming Soon)*
 ```bash
 npm install @memorable/sdk
 ```
 
-**Python:**
+**Python:** *(Coming Soon)*
 ```bash
 pip install memorable-sdk
 ```
 
+In the meantime, see the [API Reference](./docs/api-reference.md) for REST endpoints.
+
 ---
 
 ## Quick Start: Claude Code / VS Code
+
+### Prerequisites
+
+You need MemoRable running somewhere first. Choose one:
+
+| Option | Best For | Setup Time |
+|--------|----------|------------|
+| **Docker (recommended)** | Local development | 5 min |
+| **AWS Deploy** | Production use | 15 min |
+
+**Docker Setup:**
+```bash
+git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+npm install && npm run setup
+docker-compose up -d
+
+# Verify it's running:
+curl http://localhost:3000/health
+# → {"status":"ok","services":{"mongodb":"connected","redis":"connected"}}
+```
+
+### MCP Configuration
 
 Add MemoRable to your Claude Code MCP settings:
 
@@ -483,9 +556,16 @@ Then in Claude.ai:
 
 Works on Pro, Max, Team, and Enterprise plans.
 
-### Option 2: Official Directory Listing
+### Option 2: Official Directory Listing (Coming Soon)
 
-MemoRable is available in the [Anthropic MCP Connectors Directory](https://claude.com/partners/mcp).
+MemoRable is **100% compliant** with MCP Connectors Directory requirements and ready for immediate approval:
+- ✅ OAuth 2.0/2.1 authentication
+- ✅ Streamable HTTP transport
+- ✅ HTTPS with valid TLS
+- ✅ CORS for claude.ai/claude.com
+- ✅ Tool annotations implemented
+
+*Submission pending. Use custom connector method above in the meantime.*
 
 ### Remote Deployment Requirements
 
@@ -512,7 +592,7 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 
 ---
 
-## MCP Tools Reference (23 Tools)
+## MCP Tools Reference (35 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
@@ -1043,136 +1123,6 @@ BEHAVIORAL_AUTH_ENABLED=false
 
 ---
 
-## Mem0 Integration
-
-MemoRable is designed to **extend** your existing Mem0 deployment, not replace it. Keep Mem0 for what it does best (vector storage and semantic search), and add MemoRable for context intelligence.
-
-### Architecture: Mem0 + MemoRable
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Your AI Application                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
-│  │       Mem0          │      │        MemoRable            │  │
-│  │  (Vector Layer)     │◄────►│   (Context Layer)           │  │
-│  │                     │      │                             │  │
-│  │  • Embeddings       │      │  • Salience scoring         │  │
-│  │  • Semantic search  │      │  • Commitment tracking      │  │
-│  │  • Vector storage   │      │  • Relationship graphs      │  │
-│  │                     │      │  • Pre-meeting briefings    │  │
-│  │                     │      │  • Predictive memory        │  │
-│  │                     │      │  • MCP protocol             │  │
-│  └─────────────────────┘      └─────────────────────────────┘  │
-│           │                              │                       │
-│           ▼                              ▼                       │
-│  ┌─────────────────────┐      ┌─────────────────────────────┐  │
-│  │   Vector DB         │      │    MongoDB/DocumentDB       │  │
-│  │   (Pinecone/etc)    │      │    (shared or separate)     │  │
-│  └─────────────────────┘      └─────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### HybridMemory Class
-
-```python
-from memorable import MemorableClient
-from mem0 import Memory as Mem0Memory
-
-class HybridMemory:
-    """
-    Combines Mem0's vector search with MemoRable's context intelligence.
-    Drop-in enhancement for existing Mem0 deployments.
-    """
-
-    def __init__(self, mongo_uri: str = None):
-        self.memorable = MemorableClient(mongo_uri=mongo_uri)
-        self.mem0 = Mem0Memory()
-
-    def add(self, text: str, user_id: str, metadata: dict = None):
-        # MemoRable: salience, commitments, relationships, timeline
-        result = self.memorable.store(user_id, text, metadata)
-
-        # Mem0: vector embeddings for semantic search
-        self.mem0.add(text, user_id=user_id, metadata={
-            **(metadata or {}),
-            'salience_score': result.salience.score,
-            'memory_id': result.memory_id,
-            'has_commitments': len(result.open_loops_created) > 0
-        })
-
-        return result
-
-    def search(self, query: str, user_id: str, **kwargs):
-        # Semantic search via Mem0
-        results = self.mem0.search(query, user_id=user_id, **kwargs)
-
-        # Boost by MemoRable salience (important memories rank higher)
-        for r in results:
-            salience = self.memorable.get_salience(r['metadata']['memory_id'])
-            r['boosted_score'] = r['score'] * 0.6 + (salience / 100) * 0.4
-
-        return sorted(results, key=lambda x: x['boosted_score'], reverse=True)
-
-    def get_briefing(self, user_id: str, person: str):
-        """MemoRable exclusive: pre-conversation intelligence"""
-        return self.memorable.get_briefing(user_id, person)
-
-    def get_open_loops(self, user_id: str):
-        """MemoRable exclusive: commitment tracking"""
-        return self.memorable.list_loops(user_id)
-
-    def set_context(self, user_id: str, **context):
-        """MemoRable exclusive: context-aware memory surfacing"""
-        return self.memorable.set_context(user_id, **context)
-```
-
-### AWS Deployment: Side-by-Side
-
-If you have Mem0 running on AWS, add MemoRable to the same VPC:
-
-```yaml
-# Add to your existing docker-compose.yml or ECS task definition
-memorable:
-  image: ghcr.io/alanchelmickjr/memorable:latest
-  environment:
-    - MONGODB_URI=${DOCUMENTDB_URI}  # Share with existing DocumentDB
-    - LLM_PROVIDER=bedrock           # Use same Bedrock as Mem0
-  depends_on:
-    - mem0  # Your existing Mem0 service
-```
-
-### Sync Existing Mem0 Memories
-
-Enrich your existing Mem0 memories with salience scores:
-
-```python
-from memorable import MemorableClient
-from mem0 import Memory
-
-mem0 = Memory()
-memorable = MemorableClient()
-
-# Sync existing memories (non-destructive)
-for mem in mem0.get_all(user_id="user-123"):
-    memorable.store(
-        user_id="user-123",
-        text=mem['memory'],
-        context={
-            'synced_from': 'mem0',
-            'original_id': mem['id'],
-            'created_at': mem['created_at']
-        }
-    )
-    # Update Mem0 with salience score
-    mem0.update(mem['id'], metadata={'salience_synced': True})
-
-print("Memories synced with salience enrichment")
-```
-
----
-
 ## Deployment
 
 ### Local Development
@@ -1476,7 +1426,7 @@ npx tsx scripts/test_salience.ts
 memorable/
 ├── src/services/
 │   ├── mcp_server/              # MCP server for Claude Code
-│   │   └── index.ts             # 18 MCP tools
+│   │   └── index.ts             # 35 MCP tools
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
 │   │   ├── anticipation_service.ts  # Predictive memory (21-day learning)
