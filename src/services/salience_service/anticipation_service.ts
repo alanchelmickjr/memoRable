@@ -1,17 +1,16 @@
 /**
  * Anticipation Service - Predictive Memory Surfacing
  *
- * Based on legacy research (confidenceService.js) with 21-day pattern formation:
- * - Patterns require 21 days of data before predictions become reliable
- * - Confidence ramps from 0.4 → 0.6 → 0.8 as occurrences accumulate
- * - Post-21 days, confidence = consistency (occurrences / days)
- * - Attention decay with exponential falloff
+ * @deprecated Use PredictiveAnticipationService from './predictive_anticipation'
+ * which implements the full 3×7 temporal model with FFT pattern detection.
  *
- * Integrates with:
- * - Context frames (location, people, activity)
- * - Calendar events (recurring patterns)
- * - Memory access logs (what got used vs ignored)
- * - Salience scores (what mattered)
+ * This legacy service uses simple 21-day logic. The new service uses:
+ * - 3×7 = 21 days: Patterns emerge
+ * - 3×7×3 = 63 days: Patterns stable
+ * - FFT-based periodicity detection
+ * - Engram-style context gating
+ *
+ * Kept for backwards compatibility.
  */
 
 import { Db, ObjectId } from 'mongodb';
@@ -539,7 +538,7 @@ export async function generateDayAnticipation(
   const insights: string[] = [];
 
   if (!stats.readyForPrediction) {
-    insights.push(`Still learning your patterns (${stats.dataCollectionDays}/21 days). Predictions improve with more data.`);
+    insights.push(`Still learning your patterns (${stats.dataCollectionDays}/63 days). Predictions stabilize over time.`);
   } else {
     insights.push(`Tracking ${stats.formedPatterns} established patterns with ${Math.round(stats.averageConfidence * 100)}% average confidence.`);
   }

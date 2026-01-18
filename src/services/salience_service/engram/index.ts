@@ -13,10 +13,10 @@
  *    - Threshold approximation for MVP
  *    - Neural gating for production quality
  *
- * 3. TEMPORAL PATTERN DETECTION (66-day, NOT 21-day)
+ * 3. TEMPORAL PATTERN DETECTION (3×7 Model: 21→63 days)
  *    - FFT-based O(n log n) autocorrelation
  *    - Daily, weekly, monthly pattern detection
- *    - Research-backed: Lally et al 2009 (UCL) median = 66 days
+ *    - 3×7=21 days emerge, 3×7×3=63 days stable (~Lally et al 2009 median)
  *
  * 4. ZIPFIAN CACHE HIERARCHY
  *    - Hot (Redis, <1ms), Warm (MongoDB, ~5ms), Cold (S3, ~100ms)
@@ -177,7 +177,7 @@ export function getEngramStatus(): EngramStatus {
     config: {
       hashHeads: 8,
       embeddingDim: 64,
-      temporalWindowDays: 66, // Research-backed, NOT 21
+      temporalWindowDays: 63, // 3×7×3 model (~Lally research median)
       replayBufferSize: 5000,
     },
   };

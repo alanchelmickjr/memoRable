@@ -1,16 +1,16 @@
 /**
  * Temporal Pattern Detection with FFT-Based Autocorrelation
  *
- * RESEARCH CORRECTION:
- * The "21-day habit formation" is a MYTH.
+ * RESEARCH NOTE: The "21-day habit formation" is a MYTH.
+ * Lally et al. (2009) UCL: Median = 66 days (range 18-254)
  *
- * Lally et al. (2009) UCL Study "How are habits formed":
- * - Median: 66 days
- * - Range: 18-254 days
- * - Complexity dependent
+ * We use the 3×7 model for mathematical elegance:
+ * - 3×7 = 21 days: Patterns emerge
+ * - 3×7×3 = 63 days: Patterns stable (~research median)
+ * - 3×7×4 = 84 days: Max rolling window
  *
  * This module detects daily, weekly, and monthly patterns using O(n log n)
- * FFT-based autocorrelation, with learning windows based on actual research.
+ * FFT-based autocorrelation with the 3×7 temporal model.
  */
 
 import type {
