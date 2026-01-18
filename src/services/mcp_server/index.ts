@@ -1865,6 +1865,48 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      {
+        name: 'correct_emotion',
+        description:
+          'Correct or override the emotional tagging on a memory. Use when automated detection got it wrong - sarcasm tagged as anger, playful banter as contempt, etc. Preserves original for audit trail.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memory_id: {
+              type: 'string',
+              description: 'Memory ID to correct',
+            },
+            corrected_emotions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', description: 'Emotion name' },
+                  confidence: { type: 'number', description: 'Confidence 0.0-1.0' },
+                },
+              },
+              description: 'Corrected emotion tags',
+            },
+            reason: {
+              type: 'string',
+              description: 'Why the correction was made (e.g., "was sarcasm not anger")',
+            },
+            clear_all: {
+              type: 'boolean',
+              description: 'Clear all emotion tags (set to neutral)',
+              default: false,
+            },
+          },
+          required: ['memory_id'],
+        },
+        annotations: {
+          title: 'Correct Emotion Tags',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -3371,6 +3413,81 @@ function createServer(): Server {
                 query: { emotions, min_confidence },
                 count: formattedMemories.length,
                 memories: formattedMemories,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'correct_emotion': {
+          const { memory_id, corrected_emotions, reason, clear_all = false } = args as {
+            memory_id: string;
+            corrected_emotions?: Array<{ name: string; confidence: number }>;
+            reason?: string;
+            clear_all?: boolean;
+          };
+
+          if (!memory_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'memory_id is required');
+          }
+
+          const db = getDb();
+          const redis = getRedisClient();
+
+          // Get the existing memory
+          const memory = await db.collection('memories').findOne({ id: memory_id });
+          if (!memory) {
+            throw new McpError(ErrorCode.InvalidParams, `Memory ${memory_id} not found`);
+          }
+
+          // Preserve original emotions for audit trail
+          const originalEmotions = memory.metadata?.emotions || [];
+          const correctionRecord = {
+            timestamp: new Date().toISOString(),
+            originalEmotions,
+            correctedEmotions: clear_all ? [{ name: 'neutral', confidence: 1.0 }] : corrected_emotions,
+            reason: reason || 'User correction',
+            correctedBy: CONFIG.defaultUserId,
+          };
+
+          // Build the new emotions
+          const newEmotions = clear_all
+            ? [{ name: 'neutral', confidence: 1.0 }]
+            : corrected_emotions || originalEmotions;
+
+          // Update the memory with corrected emotions
+          await db.collection('memories').updateOne(
+            { id: memory_id },
+            {
+              $set: {
+                'metadata.emotions': newEmotions,
+                'metadata.emotionsCorrected': true,
+                'metadata.lastEmotionCorrection': correctionRecord.timestamp,
+              },
+              $push: {
+                'metadata.emotionCorrectionHistory': correctionRecord,
+              },
+            }
+          );
+
+          // Update Redis cache if exists
+          const cachedEmotions = await redis.hGet(`memory:${memory_id}`, 'emotions');
+          if (cachedEmotions) {
+            await redis.hSet(`memory:${memory_id}`, 'emotions', JSON.stringify(newEmotions));
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                memory_id,
+                original: originalEmotions,
+                corrected: newEmotions,
+                reason: correctionRecord.reason,
+                message: clear_all
+                  ? 'Emotion tags cleared. Memory marked as neutral.'
+                  : `Emotion tags corrected. Original preserved in audit trail.`,
+                note: '"Don\'t think about it, it wasn\'t meant that way" - context corrected.',
               }, null, 2),
             }],
           };
