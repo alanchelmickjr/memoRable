@@ -21,8 +21,13 @@ export type DeviceType =
   | 'api'
   | 'mcp'
   | 'wearable'      // Smartwatch, fitness tracker
-  | 'smartglasses'  // AR glasses, smart glasses with LIDAR
+  | 'smartglasses'  // AR glasses, Omi glasses
   | 'smarthome'     // Smart speakers, IoT sensors
+  | 'companion'     // Companion robots/dolls (Raspi + audio + servo)
+  | 'pendant'       // Wearable pendants (Buddi, etc.)
+  | 'robot'         // Full robots with mobility
+  | 'toy'           // Interactive toys with memory (Omni corp toys)
+  | 'vehicle'       // Car, bike with sensors
   | 'unknown';
 
 export interface DeviceInfo {
@@ -447,8 +452,13 @@ export const STALENESS_CONFIG = {
     api: 60 * 60 * 1000,         // 1 hour - APIs are persistent
     mcp: 30 * 60 * 1000,         // 30 minutes
     wearable: 2 * 60 * 1000,     // 2 minutes - constant heartbeat
-    smartglasses: 1 * 60 * 1000, // 1 minute - real-time visual
+    smartglasses: 1 * 60 * 1000, // 1 minute - real-time visual (Omi glasses)
     smarthome: 30 * 60 * 1000,   // 30 minutes - ambient sensors
+    companion: 5 * 60 * 1000,    // 5 minutes - always-on companion (Betty's doll)
+    pendant: 2 * 60 * 1000,      // 2 minutes - body-worn, constant (Buddi)
+    robot: 1 * 60 * 1000,        // 1 minute - mobile robot, real-time
+    toy: 10 * 60 * 1000,         // 10 minutes - interactive toys
+    vehicle: 1 * 60 * 1000,      // 1 minute - car sensors, real-time
     unknown: 10 * 60 * 1000,
   },
 

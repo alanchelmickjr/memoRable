@@ -952,6 +952,19 @@ function createServer(): Server {
                 people: { type: 'array', items: { type: 'string' }, description: 'Who was present' },
               },
             },
+            deviceId: {
+              type: 'string',
+              description: 'Device ID that captured this memory (e.g., "betty_doll_001", "omi_glasses_alan")',
+            },
+            deviceType: {
+              type: 'string',
+              enum: ['mobile', 'desktop', 'web', 'api', 'mcp', 'wearable', 'smartglasses', 'smarthome', 'companion', 'pendant', 'robot', 'toy', 'vehicle', 'unknown'],
+              description: 'Type of device. companion=dolls/robots, pendant=Buddi, smartglasses=Omi, toy=Omni corp gadgets',
+            },
+            deviceName: {
+              type: 'string',
+              description: 'Human-readable device name (e.g., "Betty\'s Companion", "Alan\'s Omi Glasses")',
+            },
             useLLM: {
               type: 'boolean',
               description: 'Use LLM for richer feature extraction (default: true if available)',
@@ -1962,9 +1975,20 @@ function createServer(): Server {
     try {
       switch (name) {
         case 'store_memory': {
-          const { text, context, useLLM = true, securityTier = 'Tier2_Personal' } = args as {
+          const {
+            text,
+            context,
+            deviceId,
+            deviceType,
+            deviceName,
+            useLLM = true,
+            securityTier = 'Tier2_Personal'
+          } = args as {
             text: string;
             context?: { location?: string; activity?: string; mood?: string; people?: string[] };
+            deviceId?: string;
+            deviceType?: string;
+            deviceName?: string;
             useLLM?: boolean;
             securityTier?: SecurityTier;
           };
@@ -2021,7 +2045,7 @@ function createServer(): Server {
           const isEncrypted = shouldEncryptMemory(tier);
 
           // Store the memory document in MongoDB
-          // IMPORTANT: Capture ALL factors - time, emotion, location, context
+          // IMPORTANT: Capture ALL factors - time, emotion, location, context, device
           const memoryDoc: MemoryDocument = {
             memoryId,
             userId: CONFIG.defaultUserId,
@@ -2039,6 +2063,13 @@ function createServer(): Server {
             captureContext: result.salience?.captureContext,
             // User-provided context (location, activity, mood)
             userContext: context,
+            // DEVICE SOURCE - which sensor captured this memory
+            // Essential for multi-device sensor net (dolls, glasses, pendants, toys)
+            device: deviceId || deviceType ? {
+              deviceId: deviceId || `${deviceType || 'mcp'}_${Date.now().toString(36)}`,
+              deviceType: deviceType || 'mcp',
+              deviceName: deviceName,
+            } : undefined,
             // Open loops tracking
             hasOpenLoops: (result.openLoopsCreated?.length || 0) > 0,
             openLoopIds: result.openLoopsCreated?.map(l => l.id),
@@ -2074,6 +2105,8 @@ function createServer(): Server {
                     securityTier: tier,
                     encrypted: isEncrypted,
                     vectorStored: !shouldSkipVectorStorage(tier),
+                    // Device source
+                    device: memoryDoc.device,
                     // Salience
                     salience: result.salience?.score,
                     components: result.salience?.components,  // Fixed: was .factors
