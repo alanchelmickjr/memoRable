@@ -1,5 +1,7 @@
 # MemoRable
 
+> **PRE-RELEASE SOFTWARE** - This project is under active development and not yet ready for production use. APIs may change, features may be incomplete, and data migrations are not guaranteed. Star the repo and watch for v1.0 release.
+
 ### Enterprise Context Intelligence for Mem0
 
 [![Mem0 Extension](https://img.shields.io/badge/Mem0-Extension-purple?style=for-the-badge)](https://mem0.ai)
@@ -15,9 +17,11 @@
 
 ## Deploy Your Own Memory Stack in 15 Minutes
 
+> **Note:** One-click deploy is for **development/testing only** until v1.0 release.
+
 [![Deploy to AWS](https://img.shields.io/badge/🚀_Deploy_to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
 
-**Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration. Full production stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
+**Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration. Full stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
 
 ---
 
@@ -333,14 +337,37 @@ docker logs -f memorable_mcp_server
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Verify Integration
+
+After startup, verify MemoRable connected to your Mem0 data:
+
+```bash
+# Check health and connection
+curl http://localhost:3000/health
+# → {"status":"ok","services":{"mongodb":"connected"},"mem0":{"synced":true,"memories":1247}}
+
+# Check sync status
+curl http://localhost:3000/api/sync/status
+# → {"synced":1247,"pending":0,"lastSync":"2026-01-18T10:30:00Z"}
+
+# Query your memories with salience
+curl "http://localhost:3000/api/memory?query=sarah&limit=5"
+# → Returns memories with salience scores attached
+```
+
 ### Instant Results
 
-After sync completes, try these immediately:
+After sync completes, try these via the API or MCP tools:
 
-```
-"What do I owe people?"           → Lists commitments from your history
-"I'm meeting with Sarah"          → Briefing from past interactions
-"What's important about Project X?" → High-salience memories surfaced
+```bash
+# What do I owe people?
+curl "http://localhost:3000/api/loops?owner=you"
+
+# Briefing before meeting Sarah
+curl "http://localhost:3000/api/briefing?person=Sarah"
+
+# High-salience memories about Project X
+curl "http://localhost:3000/api/memory?query=Project%20X&minSalience=70"
 ```
 
 ### What Gets Created
@@ -613,6 +640,7 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 | `restore` | Bring back a forgotten memory |
 | `reassociate` | Re-link memory to different people/topics/projects |
 | `export_memories` | Export for backup or portability |
+| `import_memories` | Import memories from backup |
 
 ### Commitment Tracking
 | Tool | Description |
@@ -628,6 +656,43 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 | `day_outlook` | Morning briefing with predicted context switches |
 | `pattern_stats` | Check learning progress (X/21 days) |
 | `memory_feedback` | RL feedback: was the surfaced memory useful? |
+
+### Energy-Aware Tasks
+| Tool | Description |
+|------|-------------|
+| `get_energy_tasks` | Tasks matched to your current energy level |
+| `quick_wins` | Low-effort, high-reward tasks for depleted energy |
+| `deep_work` | Focus tasks for peak energy periods |
+| `triage_task` | Classify a task by energy requirements |
+
+### Emotion & Prosody
+| Tool | Description |
+|------|-------------|
+| `analyze_emotion` | Analyze emotional content of text or memory (Hume.ai) |
+| `get_emotional_context` | Real-time emotion state from active streams |
+| `set_emotion_filter` | Configure emotion-based content filtering |
+| `get_emotion_filters` | View active emotion filters |
+| `get_memories_by_emotion` | Search memories by emotional content |
+| `correct_emotion` | Override wrong emotion detection (sarcasm ≠ anger) |
+| `clarify_intent` | Annotate what was meant vs what was said |
+
+### Relationship Intelligence
+| Tool | Description |
+|------|-------------|
+| `get_relationship` | Synthesize relationship from shared memories (no stored graph) |
+| `get_entity_pressure` | Butterfly → Hurricane early warning - track emotional pressure |
+| `get_predictions` | Surface memories BEFORE you ask based on context |
+| `record_prediction_feedback` | Teach the system what predictions are useful |
+| `set_care_circle` | Set who gets alerted when entity pressure is concerning |
+
+### Behavioral Identity
+| Tool | Description |
+|------|-------------|
+| `identify_user` | Identify user by behavioral/stylometry patterns |
+| `behavioral_metrics` | Dashboard with learning progress and accuracy |
+| `behavioral_feedback` | Mark identification as correct/incorrect for learning |
+
+*Full API documentation: [docs/api-reference.md](./docs/api-reference.md)*
 
 ---
 

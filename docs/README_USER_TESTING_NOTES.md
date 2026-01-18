@@ -143,15 +143,15 @@
 
 ## Summary of Critical Issues
 
-| Issue | Affects Users | Fix Priority |
-|-------|--------------|--------------|
-| **SDKs not published (npm/PyPI)** | 1, 2, 3 | CRITICAL - Either publish or remove claims |
-| **Claude Code setup missing prereqs** | 3 | HIGH - Add "Prerequisites" section |
-| **Fresh install "Option B" incomplete** | 2 | HIGH - Add verification steps |
-| **Mem0 integration verification unclear** | 1 | HIGH - How to test it worked |
-| **Hybrid client code has bug** | 1 | MEDIUM - Fix None handling |
-| **MCP tools reference incomplete** | 3 | MEDIUM - Only shows 19 of 35 tools |
-| **Project structure shows "18 MCP tools"** | ALL | LOW - Should be 35 (line 1381) |
+| Issue | Affects Users | Fix Priority | Status |
+|-------|--------------|--------------|--------|
+| **SDKs not published (npm/PyPI)** | 1, 2, 3 | CRITICAL | ✅ FIXED - Added "Coming Soon" badges |
+| **Claude Code setup missing prereqs** | 3 | HIGH | ✅ FIXED - Added Prerequisites section |
+| **Fresh install "Option B" incomplete** | 2 | HIGH | ✅ FIXED - Added verification steps |
+| **Mem0 integration verification unclear** | 1 | HIGH | ✅ FIXED - Added curl verification examples |
+| **Hybrid client code has bug** | 1 | MEDIUM | ✅ FIXED - `**(metadata or {})` |
+| **MCP tools reference incomplete** | 3 | MEDIUM | ✅ FIXED - All 35 tools now listed |
+| **Project structure shows "18 MCP tools"** | ALL | LOW | ✅ FIXED - Updated to 35 |
 
 ---
 
