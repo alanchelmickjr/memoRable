@@ -1830,19 +1830,19 @@ function createServer(): Server {
       {
         name: 'get_memories_by_emotion',
         description:
-          'Search memories by emotional content. Find memories tagged with specific emotions.',
+          'Search memories by emotional content. Queries extractedFeatures.emotionalKeywords from salience pipeline.',
         inputSchema: {
           type: 'object',
           properties: {
             emotions: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Emotions to search for (e.g., ["joy", "gratitude", "love"])',
+              description: 'Emotion keywords to search for (e.g., ["love", "angry", "worried", "excited"])',
             },
-            min_confidence: {
+            min_intensity: {
               type: 'number',
-              description: 'Minimum emotion confidence (0.0-1.0)',
-              default: 0.5,
+              description: 'Minimum sentiment intensity (0.0-1.0)',
+              default: 0.3,
             },
             limit: {
               type: 'integer',
@@ -1851,7 +1851,7 @@ function createServer(): Server {
             },
             exclude_suppressed: {
               type: 'boolean',
-              description: 'Exclude suppressed/filtered memories',
+              description: 'Exclude suppressed memories',
               default: true,
             },
           },
@@ -3229,64 +3229,77 @@ function createServer(): Server {
             throw new McpError(ErrorCode.InvalidParams, 'Either text or memory_id is required');
           }
 
-          const redis = getRedisClient();
-          let emotions: Array<{ name: string; confidence: number; vector?: number[] }> = [];
+          // Use the existing feature extractor - no duplicate logic
+          const { extractFeaturesHeuristic } = await import('../salience_service/feature_extractor.js');
+
+          let result: {
+            emotionalKeywords: string[];
+            sentimentScore: number;
+            sentimentIntensity: number;
+            conflictPresent: boolean;
+            intimacySignals: boolean;
+            source: string;
+          };
 
           if (memory_id) {
-            // Look up existing emotion data for this memory
-            const memoryData = await redis.hGet(`memory:${memory_id}`, 'emotions');
-            if (memoryData) {
-              emotions = JSON.parse(memoryData);
+            // Look up existing extractedFeatures for this memory (already computed at ingest)
+            const db = getDb();
+            const memory = await db.collection('memories').findOne({ id: memory_id });
+
+            if (memory?.extractedFeatures) {
+              // Use already-extracted features from salience pipeline
+              const ef = memory.extractedFeatures;
+              result = {
+                emotionalKeywords: ef.emotionalKeywords || [],
+                sentimentScore: ef.sentimentScore || 0,
+                sentimentIntensity: ef.sentimentIntensity || 0,
+                conflictPresent: ef.conflictPresent || false,
+                intimacySignals: ef.intimacySignals || false,
+                source: 'stored_features',
+              };
             } else {
-              // Try to get from MongoDB
-              const db = getDb();
-              const memory = await db.collection('memories').findOne({ id: memory_id });
-              if (memory?.metadata?.emotions) {
-                emotions = memory.metadata.emotions;
-              }
+              // Fallback: extract from memory text if features missing
+              const memoryText = memory?.text || '';
+              const features = extractFeaturesHeuristic(memoryText);
+              result = {
+                emotionalKeywords: features.emotionalKeywords,
+                sentimentScore: features.sentimentScore,
+                sentimentIntensity: features.sentimentIntensity,
+                conflictPresent: features.conflictPresent,
+                intimacySignals: features.intimacySignals,
+                source: 'extracted_now',
+              };
             }
-          } else if (text) {
-            // Analyze text for emotional content using simple heuristics
-            // (Full Hume analysis requires WebSocket connection with audio/video)
-            const { emotionToVector } = await import('../constants/emotions.js');
-
-            // Simple keyword-based emotion detection for text
-            const emotionKeywords: Record<string, string[]> = {
-              joy: ['happy', 'glad', 'excited', 'wonderful', 'great', 'love', 'amazing'],
-              sadness: ['sad', 'unhappy', 'disappointed', 'sorry', 'miss', 'grief'],
-              anger: ['angry', 'furious', 'annoyed', 'frustrated', 'mad', 'hate'],
-              fear: ['afraid', 'scared', 'worried', 'anxious', 'nervous', 'terrified'],
-              surprise: ['surprised', 'shocked', 'amazed', 'unexpected', 'wow'],
-              disgust: ['disgusted', 'gross', 'revolting', 'awful', 'terrible'],
-              contempt: ['contempt', 'disdain', 'scorn', 'dismissive'],
-              gratitude: ['thank', 'grateful', 'appreciate', 'thankful'],
+          } else {
+            // Analyze provided text using the SAME heuristic as salience pipeline
+            const features = extractFeaturesHeuristic(text!);
+            result = {
+              emotionalKeywords: features.emotionalKeywords,
+              sentimentScore: features.sentimentScore,
+              sentimentIntensity: features.sentimentIntensity,
+              conflictPresent: features.conflictPresent,
+              intimacySignals: features.intimacySignals,
+              source: 'analyzed',
             };
-
-            const textLower = text.toLowerCase();
-            for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
-              const matches = keywords.filter(kw => textLower.includes(kw)).length;
-              if (matches > 0) {
-                emotions.push({
-                  name: emotion,
-                  confidence: Math.min(0.3 + (matches * 0.2), 0.9),
-                  vector: emotionToVector(emotion),
-                });
-              }
-            }
-
-            // Sort by confidence
-            emotions.sort((a, b) => b.confidence - a.confidence);
           }
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
-                emotions: emotions.slice(0, 5),
-                dominant: emotions[0]?.name || 'neutral',
-                confidence: emotions[0]?.confidence || 0,
-                source: memory_id ? 'stored' : 'analyzed',
-                note: text ? 'Text analysis uses keyword detection. Full prosody analysis requires audio/video input.' : undefined,
+                emotionalKeywords: result.emotionalKeywords,
+                sentiment: {
+                  score: result.sentimentScore,
+                  intensity: result.sentimentIntensity,
+                  label: result.sentimentScore > 0.3 ? 'positive' :
+                         result.sentimentScore < -0.3 ? 'negative' : 'neutral',
+                },
+                signals: {
+                  conflict: result.conflictPresent,
+                  intimacy: result.intimacySignals,
+                },
+                source: result.source,
+                note: 'Uses same extraction as salience pipeline. Full prosody requires Hume audio/video.',
               }, null, 2),
             }],
           };
@@ -3406,57 +3419,71 @@ function createServer(): Server {
         }
 
         case 'get_memories_by_emotion': {
-          const { emotions, min_confidence = 0.5, limit = 10, exclude_suppressed = true } = args as {
+          const { emotions, min_intensity = 0.3, limit = 10, exclude_suppressed = true } = args as {
             emotions: string[];
-            min_confidence?: number;
+            min_intensity?: number;
             limit?: number;
             exclude_suppressed?: boolean;
           };
 
           if (!emotions || !Array.isArray(emotions) || emotions.length === 0) {
-            throw new McpError(ErrorCode.InvalidParams, 'emotions array is required');
+            throw new McpError(ErrorCode.InvalidParams, 'emotions array is required (e.g., ["love", "angry", "worried"])');
           }
 
           const db = getDb();
 
-          // Build query for memories with matching emotions
+          // Query extractedFeatures.emotionalKeywords (where salience pipeline stores emotions)
+          // emotionalKeywords is an array of strings like ["love", "excited", "worried"]
           const query: Record<string, unknown> = {
             userId: CONFIG.defaultUserId,
-            'metadata.emotions': {
-              $elemMatch: {
-                name: { $in: emotions },
-                confidence: { $gte: min_confidence },
-              },
-            },
+            'extractedFeatures.emotionalKeywords': { $in: emotions },
+            'extractedFeatures.sentimentIntensity': { $gte: min_intensity },
           };
 
           if (exclude_suppressed) {
-            query['metadata.status'] = { $ne: 'suppressed' };
+            query['state'] = { $ne: 'suppressed' };
           }
 
           const memories = await db.collection('memories')
             .find(query)
-            .sort({ createdAt: -1 })
+            .sort({ 'extractedFeatures.sentimentIntensity': -1, createdAt: -1 })
             .limit(limit)
             .toArray();
 
-          const formattedMemories = memories.map((m: Record<string, unknown>) => ({
-            id: m.id,
-            text: typeof m.text === 'string' ? m.text.slice(0, 200) : '',
-            emotions: (m.metadata as { emotions?: Array<{ name: string; confidence: number }> })?.emotions?.filter(
-              (e: { name: string; confidence: number }) => emotions.includes(e.name) && e.confidence >= min_confidence
-            ),
-            createdAt: m.createdAt,
-            status: (m.metadata as { status?: string })?.status || 'active',
-          }));
+          const formattedMemories = memories.map((m: Record<string, unknown>) => {
+            const ef = m.extractedFeatures as {
+              emotionalKeywords?: string[];
+              sentimentScore?: number;
+              sentimentIntensity?: number;
+              conflictPresent?: boolean;
+              intimacySignals?: boolean;
+            } | undefined;
+
+            return {
+              id: m.memoryId || m.id,
+              text: typeof m.text === 'string' ? m.text.slice(0, 200) : '',
+              emotionalKeywords: ef?.emotionalKeywords?.filter(k => emotions.includes(k)) || [],
+              sentiment: {
+                score: ef?.sentimentScore || 0,
+                intensity: ef?.sentimentIntensity || 0,
+              },
+              signals: {
+                conflict: ef?.conflictPresent || false,
+                intimacy: ef?.intimacySignals || false,
+              },
+              createdAt: m.createdAt,
+              state: m.state || 'active',
+            };
+          });
 
           return {
             content: [{
               type: 'text',
               text: JSON.stringify({
-                query: { emotions, min_confidence },
+                query: { emotions, min_intensity },
                 count: formattedMemories.length,
                 memories: formattedMemories,
+                note: 'Queries extractedFeatures from salience pipeline (computed at ingest).',
               }, null, 2),
             }],
           };
