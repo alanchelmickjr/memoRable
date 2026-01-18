@@ -26,7 +26,55 @@ curl -H "X-API-Key: $MEMORABLE_API_KEY" http://memorable-alb-1679440696.us-west-
 
 ---
 
-## Test 1: Fresh Clone Simulation
+## USE CASE TESTS (Real World Scenarios)
+
+### Use Case 1: Context Recovery - PASS ✅
+
+**Scenario:** Claude's context was compacted, losing the API key that was created in a previous session.
+
+**The Problem:**
+- Alan asked Claude to "remember" the API key and delete it from git
+- Context compaction happened
+- Claude no longer had the key in memory
+- Alan needed access to the live stack
+
+**Without MemoRable:** Dead end. Regenerate key, update all configs.
+
+**With Persistent Storage (SSM):**
+```bash
+aws ssm get-parameter --name "/memorable/api-key" --region us-west-2 --with-decryption
+# → hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
+```
+
+**Result:** Recovered in 30 seconds. System remembered what Claude forgot.
+
+**Lesson:** Critical credentials should be stored in MemoRable or SSM, not in Claude's context.
+
+---
+
+### Use Case 2: Memory Recall Across Sessions - PASS ✅
+
+**Scenario:** Query the system for memories about "alan"
+
+**Result:**
+```json
+{
+  "count": 3,
+  "memories": [
+    {"content": "SESSION HANDOFF - 2026-01-16...", "salience": 70},
+    {"content": "SESSION HANDOFF 2026-01-16 morning: Built Synegesis stack...", "salience": 65},
+    {"content": "Claude: not a fool - obstinate, a bit arrogant, somewhat foolhardy - so am I (Alan)", "salience": 60}
+  ]
+}
+```
+
+**This is data Claude didn't have in context.** MemoRable returned real memories from the persistent store.
+
+---
+
+## IMPLEMENTATION TESTS
+
+### Test 1: Fresh Clone Simulation
 
 **Goal:** Verify the README instructions work from scratch
 
