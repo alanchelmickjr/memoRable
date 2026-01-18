@@ -82,8 +82,8 @@ interface ContentFilter {
 ---
 
 ### 1. Automatic Prosody Tagging at Ingest
-**Files:** `humeService.js`, `emotionalContextService.js`, `ingestion_service/`
-**Status:** PARTIALLY BUILT - integration NOT wired up
+**Files:** `humeService.js`, `emotionalContextService.js`, `ingestion_service/`, `mcp_server/index.ts`
+**Status:** PARTIALLY BUILT - MCP tools added, auto-ingest still needed
 
 ```
 What EXISTS:
@@ -92,23 +92,31 @@ What EXISTS:
 - Multi-modal emotion fusion (EVI 50%, video 30%, voice 20%)
 - Emotional context buffering (5 second windows)
 - Custom model weights per user
+- ✅ MCP tools for emotion analysis (2026-01-17):
+  - analyze_emotion: Analyze text or memory
+  - get_emotional_context: Real-time emotion state
+  - set_emotion_filter: Configure filtering rules
+  - get_emotion_filters: View active filters
+  - get_memories_by_emotion: Search by emotion
 
-What's MISSING:
+What's STILL MISSING:
 - Automatic prosody enrichment at memory ingest time
 - Pipeline: memory → Hume analysis → enriched memory
 - Real-time tagging as memories hit the stack
 ```
 
-**This is an IMPLEMENTATION gap - the pieces exist but aren't connected.**
+**This is an IMPLEMENTATION gap - MCP exposure done, auto-ingest wiring still needed.**
 
 **Action Required:**
+- [x] MCP tools for emotion analysis
+- [x] MCP tools for emotion filtering
 - [ ] Wire Hume service into ingestion pipeline
 - [ ] Auto-tag memories with emotional prosody at store time
 - [ ] Add prosody fields to memory schema
 - [ ] Document the enriched memory format
 
 **Documentation Also Needed:**
-- [ ] API reference for emotion endpoints
+- [x] API reference for emotion endpoints (MCP tools documented in code)
 - [ ] Hume.ai setup guide
 - [ ] Emotion vector format specification
 - [ ] Privacy considerations for biometric data
@@ -315,6 +323,13 @@ Features:
 21. `quick_wins` - Low-effort tasks
 22. `deep_work` - Focus tasks
 23. `triage_task` - Classify task
+
+### Prosody & Emotion Tools (NEW - implemented 2026-01-17)
+24. `analyze_emotion` - Analyze emotional content of text or memory
+25. `get_emotional_context` - Get real-time emotion from active streams
+26. `set_emotion_filter` - Configure emotion-based content filtering
+27. `get_emotion_filters` - Get configured emotion filters
+28. `get_memories_by_emotion` - Search memories by emotional content
 
 ---
 

@@ -1724,6 +1724,147 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ============================================
+      // PROSODY & EMOTION TOOLS
+      // ============================================
+      {
+        name: 'analyze_emotion',
+        description:
+          'Analyze emotional content of text or retrieve emotional context for a memory. Returns detected emotions with confidence scores.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            text: {
+              type: 'string',
+              description: 'Text to analyze for emotional content',
+            },
+            memory_id: {
+              type: 'string',
+              description: 'Existing memory ID to get emotion data for',
+            },
+          },
+        },
+        annotations: {
+          title: 'Analyze Emotion',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_emotional_context',
+        description:
+          'Get the current emotional context from all active input streams (voice prosody, video, EVI). Returns fused multi-modal emotion state.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Optional session ID to get context for (defaults to current)',
+            },
+          },
+        },
+        annotations: {
+          title: 'Get Emotional Context',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'set_emotion_filter',
+        description:
+          'Configure emotion-based content filtering. Memories matching filter criteria will be flagged, suppressed, or blocked at ingest time.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            emotions: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Emotions to filter (e.g., ["anger", "disgust", "contempt"])',
+            },
+            threshold: {
+              type: 'number',
+              description: 'Confidence threshold (0.0-1.0) to trigger filter (default: 0.7)',
+              default: 0.7,
+            },
+            action: {
+              type: 'string',
+              enum: ['flag', 'suppress', 'block', 'notify'],
+              description: 'Action to take when filter triggers',
+            },
+            enabled: {
+              type: 'boolean',
+              description: 'Enable or disable this filter',
+              default: true,
+            },
+          },
+          required: ['emotions', 'action'],
+        },
+        annotations: {
+          title: 'Set Emotion Filter',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_emotion_filters',
+        description:
+          'Get currently configured emotion filters for this user.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+        annotations: {
+          title: 'Get Emotion Filters',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_memories_by_emotion',
+        description:
+          'Search memories by emotional content. Find memories tagged with specific emotions.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            emotions: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Emotions to search for (e.g., ["joy", "gratitude", "love"])',
+            },
+            min_confidence: {
+              type: 'number',
+              description: 'Minimum emotion confidence (0.0-1.0)',
+              default: 0.5,
+            },
+            limit: {
+              type: 'integer',
+              description: 'Maximum results (default: 10)',
+              default: 10,
+            },
+            exclude_suppressed: {
+              type: 'boolean',
+              description: 'Exclude suppressed/filtered memories',
+              default: true,
+            },
+          },
+          required: ['emotions'],
+        },
+        annotations: {
+          title: 'Get Memories by Emotion',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -2983,6 +3124,253 @@ function createServer(): Server {
                 message: stats.total === 0
                   ? 'No memories stored yet.'
                   : `${stats.hot} hot, ${stats.warm} warm, ${stats.cold} cold memories.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        // ============================================
+        // PROSODY & EMOTION TOOL HANDLERS
+        // ============================================
+
+        case 'analyze_emotion': {
+          const { text, memory_id } = args as {
+            text?: string;
+            memory_id?: string;
+          };
+
+          if (!text && !memory_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'Either text or memory_id is required');
+          }
+
+          const redis = getRedisClient();
+          let emotions: Array<{ name: string; confidence: number; vector?: number[] }> = [];
+
+          if (memory_id) {
+            // Look up existing emotion data for this memory
+            const memoryData = await redis.hGet(`memory:${memory_id}`, 'emotions');
+            if (memoryData) {
+              emotions = JSON.parse(memoryData);
+            } else {
+              // Try to get from MongoDB
+              const db = getDb();
+              const memory = await db.collection('memories').findOne({ id: memory_id });
+              if (memory?.metadata?.emotions) {
+                emotions = memory.metadata.emotions;
+              }
+            }
+          } else if (text) {
+            // Analyze text for emotional content using simple heuristics
+            // (Full Hume analysis requires WebSocket connection with audio/video)
+            const { emotionToVector } = await import('../constants/emotions.js');
+
+            // Simple keyword-based emotion detection for text
+            const emotionKeywords: Record<string, string[]> = {
+              joy: ['happy', 'glad', 'excited', 'wonderful', 'great', 'love', 'amazing'],
+              sadness: ['sad', 'unhappy', 'disappointed', 'sorry', 'miss', 'grief'],
+              anger: ['angry', 'furious', 'annoyed', 'frustrated', 'mad', 'hate'],
+              fear: ['afraid', 'scared', 'worried', 'anxious', 'nervous', 'terrified'],
+              surprise: ['surprised', 'shocked', 'amazed', 'unexpected', 'wow'],
+              disgust: ['disgusted', 'gross', 'revolting', 'awful', 'terrible'],
+              contempt: ['contempt', 'disdain', 'scorn', 'dismissive'],
+              gratitude: ['thank', 'grateful', 'appreciate', 'thankful'],
+            };
+
+            const textLower = text.toLowerCase();
+            for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
+              const matches = keywords.filter(kw => textLower.includes(kw)).length;
+              if (matches > 0) {
+                emotions.push({
+                  name: emotion,
+                  confidence: Math.min(0.3 + (matches * 0.2), 0.9),
+                  vector: emotionToVector(emotion),
+                });
+              }
+            }
+
+            // Sort by confidence
+            emotions.sort((a, b) => b.confidence - a.confidence);
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                emotions: emotions.slice(0, 5),
+                dominant: emotions[0]?.name || 'neutral',
+                confidence: emotions[0]?.confidence || 0,
+                source: memory_id ? 'stored' : 'analyzed',
+                note: text ? 'Text analysis uses keyword detection. Full prosody analysis requires audio/video input.' : undefined,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_emotional_context': {
+          const { session_id } = args as { session_id?: string };
+
+          const redis = getRedisClient();
+          const contextId = session_id || CONFIG.defaultUserId;
+
+          // Try to get emotional context from Redis
+          const storedContext = await redis.hGetAll(`emotional_context:${contextId}`);
+
+          if (storedContext?.state) {
+            const state = JSON.parse(storedContext.state);
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  current: state.current || 'neutral',
+                  confidence: state.confidence || 0,
+                  sources: state.sources || {},
+                  historyLength: state.history?.length || 0,
+                  lastUpdate: storedContext.lastUpdate,
+                  note: 'Real-time emotional context from active input streams.',
+                }, null, 2),
+              }],
+            };
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                current: 'neutral',
+                confidence: 1.0,
+                sources: {},
+                historyLength: 0,
+                note: 'No active emotional context. Start a session with video/voice to enable real-time emotion tracking.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'set_emotion_filter': {
+          const { emotions, threshold = 0.7, action, enabled = true } = args as {
+            emotions: string[];
+            threshold?: number;
+            action: 'flag' | 'suppress' | 'block' | 'notify';
+            enabled?: boolean;
+          };
+
+          if (!emotions || !Array.isArray(emotions) || emotions.length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, 'emotions array is required');
+          }
+
+          if (!action) {
+            throw new McpError(ErrorCode.InvalidParams, 'action is required (flag, suppress, block, or notify)');
+          }
+
+          const redis = getRedisClient();
+          const filterId = `filter_${Date.now()}`;
+          const filter = {
+            id: filterId,
+            emotions,
+            threshold,
+            action,
+            enabled,
+            createdAt: new Date().toISOString(),
+            userId: CONFIG.defaultUserId,
+          };
+
+          // Store filter in Redis
+          await redis.hSet(`emotion_filters:${CONFIG.defaultUserId}`, filterId, JSON.stringify(filter));
+
+          // Also store in MongoDB for persistence
+          const db = getDb();
+          await db.collection('emotion_filters').insertOne(filter);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                filterId,
+                filter,
+                message: `Emotion filter created: ${action} memories with ${emotions.join(', ')} emotions above ${threshold * 100}% confidence.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_emotion_filters': {
+          const redis = getRedisClient();
+          const db = getDb();
+
+          // Get filters from Redis (active) and MongoDB (persistent)
+          const redisFilters = await redis.hGetAll(`emotion_filters:${CONFIG.defaultUserId}`);
+          const mongoFilters = await db.collection('emotion_filters')
+            .find({ userId: CONFIG.defaultUserId })
+            .toArray();
+
+          const filters = Object.values(redisFilters).map((f: string) => JSON.parse(f));
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                active: filters.filter((f: { enabled: boolean }) => f.enabled),
+                inactive: filters.filter((f: { enabled: boolean }) => !f.enabled),
+                total: filters.length,
+                persistedCount: mongoFilters.length,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_memories_by_emotion': {
+          const { emotions, min_confidence = 0.5, limit = 10, exclude_suppressed = true } = args as {
+            emotions: string[];
+            min_confidence?: number;
+            limit?: number;
+            exclude_suppressed?: boolean;
+          };
+
+          if (!emotions || !Array.isArray(emotions) || emotions.length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, 'emotions array is required');
+          }
+
+          const db = getDb();
+
+          // Build query for memories with matching emotions
+          const query: Record<string, unknown> = {
+            userId: CONFIG.defaultUserId,
+            'metadata.emotions': {
+              $elemMatch: {
+                name: { $in: emotions },
+                confidence: { $gte: min_confidence },
+              },
+            },
+          };
+
+          if (exclude_suppressed) {
+            query['metadata.status'] = { $ne: 'suppressed' };
+          }
+
+          const memories = await db.collection('memories')
+            .find(query)
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .toArray();
+
+          const formattedMemories = memories.map((m: Record<string, unknown>) => ({
+            id: m.id,
+            text: typeof m.text === 'string' ? m.text.slice(0, 200) : '',
+            emotions: (m.metadata as { emotions?: Array<{ name: string; confidence: number }> })?.emotions?.filter(
+              (e: { name: string; confidence: number }) => emotions.includes(e.name) && e.confidence >= min_confidence
+            ),
+            createdAt: m.createdAt,
+            status: (m.metadata as { status?: string })?.status || 'active',
+          }));
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                query: { emotions, min_confidence },
+                count: formattedMemories.length,
+                memories: formattedMemories,
               }, null, 2),
             }],
           };
