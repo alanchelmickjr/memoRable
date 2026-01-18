@@ -1907,6 +1907,50 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      {
+        name: 'clarify_intent',
+        description:
+          'Annotate a memory with what was actually meant vs what was said. Humans often can\'t say what they mean - "I\'m fine" when hurt, deflecting with jokes, stumbling over big feelings. This creates a layer of truth beneath the words.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memory_id: {
+              type: 'string',
+              description: 'Memory ID to annotate',
+            },
+            what_i_said: {
+              type: 'string',
+              description: 'What was actually said/recorded (optional, for context)',
+            },
+            what_i_meant: {
+              type: 'string',
+              description: 'The truth beneath the words - what was actually meant',
+            },
+            why_the_gap: {
+              type: 'string',
+              description: 'Why couldn\'t you say it? (e.g., "conflict avoidance", "protecting feelings", "couldn\'t find words")',
+            },
+            pattern: {
+              type: 'string',
+              description: 'Is this a recurring pattern? (e.g., "I always deflect when vulnerable")',
+            },
+            visibility: {
+              type: 'string',
+              enum: ['private', 'therapist', 'trusted', 'open'],
+              description: 'Who can see this clarification? Default: private (only you)',
+              default: 'private',
+            },
+          },
+          required: ['memory_id', 'what_i_meant'],
+        },
+        annotations: {
+          title: 'Clarify Intent',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -3488,6 +3532,107 @@ function createServer(): Server {
                   ? 'Emotion tags cleared. Memory marked as neutral.'
                   : `Emotion tags corrected. Original preserved in audit trail.`,
                 note: '"Don\'t think about it, it wasn\'t meant that way" - context corrected.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'clarify_intent': {
+          const {
+            memory_id,
+            what_i_said,
+            what_i_meant,
+            why_the_gap,
+            pattern,
+            visibility = 'private',
+          } = args as {
+            memory_id: string;
+            what_i_said?: string;
+            what_i_meant: string;
+            why_the_gap?: string;
+            pattern?: string;
+            visibility?: 'private' | 'therapist' | 'trusted' | 'open';
+          };
+
+          if (!memory_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'memory_id is required');
+          }
+          if (!what_i_meant) {
+            throw new McpError(ErrorCode.InvalidParams, 'what_i_meant is required - the truth beneath the words');
+          }
+
+          const db = getDb();
+
+          // Get the existing memory
+          const memory = await db.collection('memories').findOne({ id: memory_id });
+          if (!memory) {
+            throw new McpError(ErrorCode.InvalidParams, `Memory ${memory_id} not found`);
+          }
+
+          // Create the intent clarification record
+          const clarification = {
+            timestamp: new Date().toISOString(),
+            whatISaid: what_i_said || memory.text?.slice(0, 500),
+            whatIMeant: what_i_meant,
+            whyTheGap: why_the_gap,
+            pattern: pattern,
+            visibility: visibility,
+            clarifiedBy: CONFIG.defaultUserId,
+          };
+
+          // SECURITY: Encrypt the clarification if it's personal (it almost always is)
+          // This is the most vulnerable data - the truth someone couldn't speak
+          const encryptedClarification = shouldEncryptMemory('Tier3_Vault')
+            ? {
+                ...clarification,
+                whatIMeant: encryptMemoryContent(what_i_meant),
+                whyTheGap: why_the_gap ? encryptMemoryContent(why_the_gap) : undefined,
+                pattern: pattern ? encryptMemoryContent(pattern) : undefined,
+                encrypted: true,
+              }
+            : clarification;
+
+          // Update the memory with the intent clarification
+          await db.collection('memories').updateOne(
+            { id: memory_id },
+            {
+              $set: {
+                'metadata.hasIntentClarification': true,
+                'metadata.lastIntentClarification': clarification.timestamp,
+              },
+              $push: {
+                'metadata.intentClarifications': encryptedClarification,
+              },
+            }
+          );
+
+          // Also store in a separate collection for pattern analysis
+          // (e.g., finding all times user deflected when vulnerable)
+          if (pattern) {
+            await db.collection('intent_patterns').insertOne({
+              memoryId: memory_id,
+              userId: CONFIG.defaultUserId,
+              pattern: pattern,
+              timestamp: clarification.timestamp,
+              visibility: visibility,
+            });
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                memory_id,
+                clarification: {
+                  whatISaid: what_i_said ? what_i_said.slice(0, 100) + '...' : '[from memory]',
+                  whatIMeant: what_i_meant.slice(0, 100) + (what_i_meant.length > 100 ? '...' : ''),
+                  whyTheGap: why_the_gap,
+                  pattern: pattern,
+                  visibility: visibility,
+                },
+                message: 'Intent clarified. The truth beneath the words is now preserved.',
+                note: 'This clarification is encrypted at Tier3_Vault level - your deepest truths are protected.',
               }, null, 2),
             }],
           };
