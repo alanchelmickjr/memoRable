@@ -944,11 +944,12 @@ function createServer(): Server {
             },
             context: {
               type: 'object',
-              description: 'Optional context (location, activity, mood)',
+              description: 'Capture context for this memory. Auto-captures time/day, but location/activity/mood enhance recall.',
               properties: {
-                location: { type: 'string' },
-                activity: { type: 'string' },
-                mood: { type: 'string' },
+                location: { type: 'string', description: 'Where this happened (e.g., "office", "home", "coffee shop")' },
+                activity: { type: 'string', description: 'What you were doing (e.g., "meeting", "coding", "dinner")' },
+                mood: { type: 'string', description: 'How you felt (e.g., "stressed", "happy", "focused")' },
+                people: { type: 'array', items: { type: 'string' }, description: 'Who was present' },
               },
             },
             useLLM: {
@@ -1963,7 +1964,7 @@ function createServer(): Server {
         case 'store_memory': {
           const { text, context, useLLM = true, securityTier = 'Tier2_Personal' } = args as {
             text: string;
-            context?: { location?: string; activity?: string; mood?: string };
+            context?: { location?: string; activity?: string; mood?: string; people?: string[] };
             useLLM?: boolean;
             securityTier?: SecurityTier;
           };
@@ -2020,6 +2021,7 @@ function createServer(): Server {
           const isEncrypted = shouldEncryptMemory(tier);
 
           // Store the memory document in MongoDB
+          // IMPORTANT: Capture ALL factors - time, emotion, location, context
           const memoryDoc: MemoryDocument = {
             memoryId,
             userId: CONFIG.defaultUserId,
@@ -2027,10 +2029,21 @@ function createServer(): Server {
             createdAt: now,
             updatedAt: now,
             state: 'active',
+            // Salience scoring
             salienceScore: result.salience?.score,
-            salienceComponents: result.salience?.factors,
+            salienceComponents: result.salience?.components,  // Fixed: was .factors
+            weightsUsed: result.salience?.weightsUsed,
+            // Feature extraction (emotion, people, topics, etc.)
             extractedFeatures: result.extractedFeatures,
+            // Capture context (time, location, activity)
+            captureContext: result.salience?.captureContext,
+            // User-provided context (location, activity, mood)
+            userContext: context,
+            // Open loops tracking
             hasOpenLoops: (result.openLoopsCreated?.length || 0) > 0,
+            openLoopIds: result.openLoopsCreated?.map(l => l.id),
+            // Timeline events
+            timelineEventIds: result.timelineEventsCreated?.map(e => e.id),
             // Security classification
             securityTier: tier,
             encrypted: isEncrypted,
@@ -2061,8 +2074,20 @@ function createServer(): Server {
                     securityTier: tier,
                     encrypted: isEncrypted,
                     vectorStored: !shouldSkipVectorStorage(tier),
+                    // Salience
                     salience: result.salience?.score,
-                    factors: result.salience?.factors,
+                    components: result.salience?.components,  // Fixed: was .factors
+                    // Context captured
+                    captureContext: result.salience?.captureContext ? {
+                      location: result.salience.captureContext.location,
+                      timeOfDay: result.salience.captureContext.timeOfDay,
+                      dayOfWeek: result.salience.captureContext.dayOfWeek,
+                      timeBucket: result.salience.captureContext.timeBucket,
+                    } : undefined,
+                    // Emotion extracted
+                    emotionalKeywords: result.extractedFeatures?.emotionalKeywords,
+                    sentimentScore: result.extractedFeatures?.sentimentScore,
+                    // Tracking
                     openLoopsCreated: result.openLoopsCreated?.length || 0,
                     timelineEventsCreated: result.timelineEventsCreated?.length || 0,
                   },
