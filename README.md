@@ -13,6 +13,14 @@
 
 ---
 
+## Deploy Your Own Memory Stack in 15 Minutes
+
+[![Deploy to AWS](https://img.shields.io/badge/🚀_Deploy_to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
+
+**Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration. Full production stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
+
+---
+
 **MemoRable extends Mem0 with context intelligence and enterprise-grade security.** Salience scoring, commitment tracking, relationship awareness, and predictive memory - with data protection suitable for regulated industries.
 
 ```
@@ -587,6 +595,31 @@ await memory_feedback({ patternId: "xxx", action: "dismissed" }); // -0.5 reward
 ```
 
 Patterns with consistently negative feedback are down-weighted.
+
+### Research-Backed Architecture
+
+MemoRable's predictive memory system is built on peer-reviewed research, not heuristics.
+
+**From Mirzadeh et al. (2022) "Architecture Matters in Continual Learning":**
+- **Width > Depth**: Wider networks forget 63% less than deeper ones at equivalent parameter counts
+- **Remove GAP bottlenecks**: Removing Global Average Pooling from ResNet-18 alone outperforms Experience Replay with 1,000 stored examples
+- **Normalization matters**: RMSNorm/LayerNorm for shifting distributions, BatchNorm only for stable distributions
+
+**From the Engram Paper (2026):**
+- **O(1) pattern lookup**: K=8 multi-head hashing with prime moduli for collision resistance
+- **Context-aware gating**: α_t = σ(RMSNorm(h_t)ᵀ · RMSNorm(W_K·e_t) / √d) suppresses irrelevant retrieved memories
+- **Zipfian cache hierarchy**: ~20% of memories serve ~80% of requests
+
+**MemoRable's Implementation:**
+
+| Research Finding | Implementation | File |
+|-----------------|----------------|------|
+| FFT periodicity detection | Cooley-Tukey radix-2 autocorrelation | `pattern_detector.ts` |
+| Engram-style RMSNorm gating | Neural + threshold fallback gates | `context_gate.ts` |
+| Zipfian Hot/Warm/Cold tiers | Redis (1hr) → MongoDB (63d) → S3 | `tier_manager.ts` |
+| 3×7 temporal model | 21d emerge, 63d stable, 84d max window | `predictive_anticipation.ts` |
+
+See [docs/research/](./docs/research/) for the full papers and analysis.
 
 ### Example: Morning Briefing
 
@@ -1447,6 +1480,10 @@ memorable/
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
 │   │   ├── anticipation_service.ts  # Predictive memory (21-day learning)
+│   │   ├── pattern_detector.ts  # FFT-based periodicity detection (Cooley-Tukey)
+│   │   ├── context_gate.ts      # Engram-style RMSNorm gating
+│   │   ├── tier_manager.ts      # Zipfian Hot/Warm/Cold cache hierarchy
+│   │   ├── predictive_anticipation.ts # 3×7 temporal model
 │   │   ├── context_frame.ts     # Rolling context windows
 │   │   ├── memory_operations.ts # Forget/reassociate/export
 │   │   ├── feature_extractor.ts # LLM feature extraction
@@ -1464,6 +1501,10 @@ memorable/
 │   ├── setup.js                 # Auto-credential generation
 │   ├── aws-setup.sh             # AWS infrastructure setup
 │   └── test_salience.ts         # Unit tests
+├── docs/research/
+│   ├── continual-learning-architecture.md   # Mirzadeh et al. applied
+│   ├── engram-predictive-memory.md          # Engram implementation guide
+│   └── architecture-matters-in-continual-learning.pdf
 ├── .github/workflows/
 │   ├── ci.yml                   # CI pipeline
 │   └── deploy-aws.yml           # AWS deployment
