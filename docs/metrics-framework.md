@@ -2,22 +2,25 @@
 
 ## Focus
 
-ONE thing: Track metrics. Tune system. Learn patterns over 21-day cycles.
+ONE thing: Track metrics. Tune system. Learn patterns over the 3×7 temporal model.
 
 Everything else cascades from this.
 
 ---
 
-## The 21-Day Cycle
+## The 3×7 Temporal Model
 
 ```
-Day 1-21:   OBSERVE     → Collect baseline patterns
-Day 22-42:  TUNE        → Apply first adjustments
-Day 43-63:  VALIDATE    → Measure improvement
-Day 64+:    ITERATE     → Repeat with refinements
+Days 1-21:   OBSERVE    → Patterns EMERGE (3×7)
+Days 22-63:  TUNE       → Patterns STABILIZE (3×7×3)
+Days 64-84:  VALIDATE   → Max window reached (3×7×4)
+Day 85+:     ITERATE    → Rolling window, continuous learning
 ```
 
-21 days = enough time for weekly patterns to emerge (3 full weeks).
+**Research Note:** Lally et al. (2009) found habit formation median = 66 days.
+We use 63 (3×7×3) for mathematical elegance. Close enough.
+
+See `docs/research/testing-methodology.md` for full validation protocol.
 
 ---
 
@@ -50,7 +53,7 @@ Day 64+:    ITERATE     → Repeat with refinements
 | Metric | What It Measures | When |
 |--------|------------------|------|
 | `relevance.accuracy` | Did we surface right memory? | After user feedback loop |
-| `anticipation.accuracy` | Did prediction come true? | After 21-day patterns |
+| `anticipation.accuracy` | Did prediction come true? | After 63-day stabilization |
 | `trajectory.improvement` | Are users achieving goals? | After sufficient data |
 
 **Action:** Defer until Layer 1 & 2 are stable.
@@ -121,23 +124,27 @@ class MetricsRegistry {
 
 ---
 
-## First 21 Days: What to Watch
+## First 63 Days: What to Watch
 
-### Week 1: Baseline
+### Days 1-21: Baseline (Patterns Emerge)
 - What's normal latency?
 - What's normal traffic pattern?
 - When do errors happen?
 - When is load highest?
-
-### Week 2: Patterns
 - Daily patterns (morning vs evening)
 - Weekly patterns (weekday vs weekend)
-- Correlation patterns (high traffic → high latency?)
 
-### Week 3: Anomalies
-- What deviates from pattern?
+### Days 22-42: Patterns Solidify
+- Correlation patterns (high traffic → high latency?)
+- What deviates from emerging patterns?
 - What triggers deviations?
 - What's predictable vs random?
+
+### Days 43-63: Patterns Stabilize
+- Confidence scores should increase
+- Pattern variance should decrease
+- False positive rate should drop
+- Ready for production tuning
 
 ---
 
@@ -155,9 +162,9 @@ What can we actually adjust based on metrics?
 
 ### Manual First, Auto Later
 
-**First 21 days:** Watch metrics, tune MANUALLY.
-**After patterns emerge:** Build auto-tuning rules.
-**After auto-tuning works:** Train models to predict.
+**Days 1-21:** Watch metrics, collect baseline.
+**Days 22-63:** Tune MANUALLY as patterns stabilize.
+**Days 64+:** Build auto-tuning rules based on validated patterns.
 
 Don't automate what you don't understand yet.
 
@@ -252,4 +259,4 @@ One glance. Health or not. Done.
 
 Observe first. Tune second. Automate third. Model fourth.
 
-Step by step. 21 days at a time.
+Step by step. 3×7 at a time.
