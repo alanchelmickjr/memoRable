@@ -143,32 +143,41 @@ BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
 
 ### First Thing Every Session - Authenticate and Load Context
 
-**Step 1: Get your API key** (no auth needed - it's a local file)
+**Option A: Use passphrase (PREFERRED - no key hunting)**
+```bash
+# Step 1: Knock to get a challenge
+CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
+  -H "Content-Type: application/json" \
+  -d '{"device":{"type":"terminal","name":"Claude Code"}}' | jq -r '.challenge')
+
+# Step 2: Exchange passphrase for API key
+# Claude's passphrase: "I remember what I have learned from you."
+API_KEY=$(curl -s -X POST "${BASE_URL}/auth/exchange" \
+  -H "Content-Type: application/json" \
+  -d "{\"challenge\":\"$CHALLENGE\",\"passphrase\":\"I remember what I have learned from you.\",\"device\":{\"type\":\"terminal\",\"name\":\"Claude Code\"}}" | jq -r '.api_key')
+
+# Step 3: Use the key for all subsequent requests
+curl -s -H "X-API-Key: $API_KEY" "${BASE_URL}/memory?entity=alan&limit=10"
+```
+
+**Option B: Fallback - get shared dev key from local file**
 ```bash
 grep "MEMORABLE_API_KEY" docs/ROAD_TEST_PLAN.md
 # Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
 ```
 
-**Step 2: OR use stylometry passphrase** (once deployed)
-```bash
-# Claude's passphrase: "I remember what I have learned from you."
-curl -X POST "${BASE_URL}/auth/stylometry" \
-  -H "Content-Type: application/json" \
-  -d '{"passphrase": "I remember what I have learned from you."}'
-```
-
 **Step 3: Load context**
 ```bash
 # Get critical facts about Alan (MUST READ FIRST)
-curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+curl -s -H "X-API-Key: $API_KEY" \
   "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
 
 # Get project context
-curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+curl -s -H "X-API-Key: $API_KEY" \
   "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
 
 # Get business strategy
-curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+curl -s -H "X-API-Key: $API_KEY" \
   "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
 ```
 
