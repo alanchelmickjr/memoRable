@@ -173,3 +173,44 @@
 9. **Add video walkthrough link**
 10. **Tell Betty's story** in Memory Care section
 11. **Add troubleshooting FAQ**
+
+---
+
+## User 6: Multi-Device User Setting Up Authentication
+
+**Persona:** User with phone, laptop, and AR glasses wanting all devices to access their memories
+
+### Test Scenarios:
+
+| Scenario | Steps | Expected Result | Status |
+|----------|-------|-----------------|--------|
+| **First device auth** | 1. POST /auth/knock 2. POST /auth/exchange with passphrase | Get API key, device_id | ⬜ |
+| **Second device auth** | Same passphrase from different device | Get different API key, different device_id | ⬜ |
+| **Wrong passphrase** | POST /auth/exchange with bad passphrase | 401, attempts_remaining decremented | ⬜ |
+| **Lockout after 3 fails** | 3 bad passphrases | 429, locked for 15 min | ⬜ |
+| **List devices** | GET /auth/devices with valid key | See all registered devices | ⬜ |
+| **Revoke lost device** | POST /auth/revoke with device_id | Device can no longer access | ⬜ |
+| **Use revoked key** | Try to access /memory with revoked key | 401 Invalid API key | ⬜ |
+| **Challenge expiry** | Wait 5+ min after knock | Exchange should fail | ⬜ |
+| **Challenge reuse** | Try to exchange twice with same challenge | Second attempt fails | ⬜ |
+
+### Privacy Test Cases:
+
+| Scenario | Risk | Test | Expected |
+|----------|------|------|----------|
+| **Crush's name leak** | Memory about "I have a crush on Sarah" surfaces inappropriately | Query without context | Should NOT surface unless explicitly asked |
+| **Medical info leak** | "Doctor said blood pressure is high" | Query for general briefing | Should be Tier 2/3, not in general results |
+| **Location tracking** | AR glasses context reveals user location | Check what context is stored | Location should be generalizable/deletable |
+| **Device inventory** | GET /auth/devices reveals all user's devices | Check response | Should only show YOUR devices, not others |
+
+### What Could Go Wrong (Spider Scenarios):
+
+| Scenario | How it breaks | Prevention |
+|----------|--------------|------------|
+| **Instagram crush post** | Memory stored without tier, surfaces in briefing, AI posts it | Enforce Tier 2 for relationship content |
+| **Boss sees therapy notes** | Shared device, different user doesn't re-auth | Require re-auth on device switch |
+| **Stalker uses AR glasses** | Attacker gets physical access to glasses | Passphrase required, no stored creds |
+| **Replay attack** | Attacker captures knock/exchange and replays | Challenge nonces are single-use |
+| **Brute force passphrase** | Attacker tries many passphrases | Rate limiting + lockout |
+
+### Verdict: **TEST BEFORE LAUNCH** - Auth is critical path, must verify all scenarios

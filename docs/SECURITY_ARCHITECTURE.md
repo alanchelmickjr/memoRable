@@ -113,6 +113,52 @@ AUTHENTICATION_APIKEY_ALLOWED_KEYS=${WEAVIATE_API_KEY}
 
 ---
 
+### Passphrase-Based Key Exchange - IMPLEMENTED
+
+**Problem:** Sharing a single API key is insecure. Users need a way to authenticate new devices without exposing secrets.
+
+**Solution:** Knock → Phrase → Key flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              PASSPHRASE KEY EXCHANGE                         │
+│                                                              │
+│  ONE passphrase per user (human-memorable, changeable)      │
+│  ONE API key per device (machine-friendly, revocable)       │
+│                                                              │
+│  Flow:                                                       │
+│  1. POST /auth/knock → get challenge nonce (5 min TTL)      │
+│  2. POST /auth/exchange → passphrase + challenge → API key  │
+│  3. Use X-API-Key header forever (or until revoked)         │
+│                                                              │
+│  Lost a device? POST /auth/revoke → kill just that key      │
+│  Passphrase compromised? Change it, optionally revoke all   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Security Properties:**
+- Challenge nonces prevent replay attacks (single-use, 5 min TTL)
+- Passphrases hashed with SHA-256 + per-user salt (Argon2 TODO)
+- Rate limited: 3 attempts per 15 min, then lockout
+- Device keys are hashed in storage (only prefix stored for identification)
+- Each device tracked independently (last_used, issued_at)
+
+**Device Types Supported:**
+- `terminal` - CLI sessions (Claude Code, Portal)
+- `phone` - Mobile devices
+- `ar_glasses` - Augmented reality (Alzheimer's support)
+- `watch` - Wearables
+- `ring` - Smart rings
+- `robot` - Companion robots
+- `browser` - Web dashboard
+- `iot` - ESP32 sensors
+
+**Files modified:**
+- `src/server.js` - Auth endpoints and middleware
+- `docs/PASSPHRASE_AUTH_SPEC.md` - Full specification
+
+---
+
 ### Flaw 5: Stylometry as Unprotected Biometric
 
 **Problem:** `get_stylometric_profile` creates PII that can identify/impersonate users.

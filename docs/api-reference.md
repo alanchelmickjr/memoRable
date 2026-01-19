@@ -98,14 +98,48 @@ MemoRable provides two API surfaces:
 
 ### Authentication
 
+**Option 1: API Key (simplest)**
+```http
+X-API-Key: your_api_key_here
+```
+
+**Option 2: Passphrase Exchange (recommended for new devices)**
+
+```bash
+# Step 1: Knock - get a challenge nonce
+POST /auth/knock
+{
+  "device": {
+    "type": "phone",           # terminal, phone, ar_glasses, watch, ring, robot
+    "name": "Alan's iPhone",
+    "fingerprint": "device-uuid"
+  }
+}
+# Response: { "challenge": "nonce_abc123", "expires_in": 300 }
+
+# Step 2: Exchange - trade passphrase for API key
+POST /auth/exchange
+{
+  "challenge": "nonce_abc123",
+  "passphrase": "your memorable phrase here",
+  "device": { "type": "phone", "name": "Alan's iPhone" }
+}
+# Response: { "api_key": "memorable_phone_xxx...", "device_id": "dev_phone_xxx" }
+```
+
+**Option 3: Bearer Token**
 ```http
 Authorization: Bearer <jwt_token>
 ```
 
-Or for OAuth 2.0:
-```http
-Authorization: Bearer <access_token>
-```
+### Auth Management Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| POST | `/auth/knock` | No | Get challenge nonce (5 min TTL) |
+| POST | `/auth/exchange` | No | Trade passphrase + challenge for API key |
+| GET | `/auth/devices` | Yes | List all your device keys |
+| POST | `/auth/revoke` | Yes | Revoke a device's API key |
 
 ### Health Endpoints
 

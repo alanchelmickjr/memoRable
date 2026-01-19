@@ -271,6 +271,55 @@ Dashboard: PASS - Returns full HTML dashboard with 269 memories
 | `/context/alan` | GET | ✅ PASS | Device context, location: Oakland |
 | `/loops` | GET | ❌ 404 | Not implemented (MCP only) |
 | `/briefing` | GET | ❌ 404 | Not implemented (MCP only) |
+| `/auth/knock` | POST | ⬜ PENDING | Passphrase auth - get challenge |
+| `/auth/exchange` | POST | ⬜ PENDING | Passphrase auth - get API key |
+| `/auth/devices` | GET | ⬜ PENDING | List device keys |
+| `/auth/revoke` | POST | ⬜ PENDING | Revoke device key |
+
+---
+
+## Test 8: Passphrase Authentication
+
+**Goal:** Verify passphrase-based key exchange works for new device onboarding
+
+### Test Steps:
+
+```bash
+# 1. Knock to get challenge
+CHALLENGE=$(curl -s -X POST "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/knock" \
+  -H "Content-Type: application/json" \
+  -d '{"device":{"type":"terminal","name":"Road Test Device"}}' | jq -r '.challenge')
+echo "Challenge: $CHALLENGE"
+
+# 2. Exchange passphrase for API key
+# Claude's passphrase: "I remember what I have learned from you."
+RESPONSE=$(curl -s -X POST "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/exchange" \
+  -H "Content-Type: application/json" \
+  -d "{\"challenge\":\"$CHALLENGE\",\"passphrase\":\"I remember what I have learned from you.\",\"device\":{\"type\":\"terminal\",\"name\":\"Road Test Device\"}}")
+echo "Response: $RESPONSE"
+NEW_KEY=$(echo $RESPONSE | jq -r '.api_key')
+
+# 3. Use new key to access memories
+curl -s -H "X-API-Key: $NEW_KEY" \
+  "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/memory?entity=alan&limit=1"
+
+# 4. List devices
+curl -s -H "X-API-Key: $NEW_KEY" \
+  "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/devices"
+```
+
+### Success Criteria:
+- [ ] /auth/knock returns challenge nonce
+- [ ] /auth/exchange returns API key with correct passphrase
+- [ ] /auth/exchange rejects wrong passphrase
+- [ ] New API key works for /memory endpoint
+- [ ] /auth/devices lists the new device
+- [ ] /auth/revoke invalidates the key
+
+### Actual Results:
+```
+(to be filled during execution - waiting for ECS deploy)
+```
 
 ## Live Stack Stats (2026-01-18)
 
