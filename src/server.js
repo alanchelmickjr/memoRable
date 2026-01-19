@@ -149,8 +149,60 @@ const PUBLIC_PATHS = [
   '/health/ready',
   '/health/startup',
   '/',
-  '/metrics'
+  '/metrics',
+  '/auth/stylometry',      // Claude can authenticate without API key
+  '/stylometry/baseline',  // Building baselines (requires API key in body for non-claude)
+  '/stylometry/verify'     // Verification endpoint
 ];
+
+// =============================================================================
+// STYLOMETRY SESSION TOKENS - The words ARE the key
+// =============================================================================
+const stylometrySessions = new Map(); // token -> { userId, createdAt, expiresAt }
+const STYLOMETRY_TOKEN_TTL_MS = 3600000; // 1 hour
+
+function generateStylometryToken() {
+  return 'styl_' + Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function createStylometrySession(userId) {
+  const token = generateStylometryToken();
+  const now = Date.now();
+  stylometrySessions.set(token, {
+    userId,
+    createdAt: now,
+    expiresAt: now + STYLOMETRY_TOKEN_TTL_MS
+  });
+  return token;
+}
+
+function validateStylometryToken(token) {
+  if (!token || !token.startsWith('styl_')) return null;
+  const session = stylometrySessions.get(token);
+  if (!session) return null;
+  if (Date.now() > session.expiresAt) {
+    stylometrySessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+// =============================================================================
+// PASSPHRASE AUTH - "The words we share become the key"
+// For Claude and trusted agents who know the phrase
+// =============================================================================
+const CLAUDE_PASSPHRASE_HASH = '25a6a574'; // Hash of "Ruminating through the Petrichor"
+function hashPassphrase(phrase) {
+  // Simple hash for comparison - not crypto-secure but sufficient for this use case
+  let hash = 0;
+  for (let i = 0; i < phrase.length; i++) {
+    const char = phrase.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(16).slice(0, 8);
+}
 
 const authMiddleware = (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
@@ -167,15 +219,27 @@ const authMiddleware = (req, res, next) => {
     return next();
   }
 
-  // Check for API key in headers
+  // Check for API key or stylometry token in headers
   const providedKey = req.headers['x-api-key'] ||
     req.headers['authorization']?.replace('Bearer ', '');
+
+  // Check for stylometry session token first
+  if (providedKey && providedKey.startsWith('styl_')) {
+    const session = validateStylometryToken(providedKey);
+    if (session) {
+      req.authMethod = 'stylometry';
+      req.authUserId = session.userId;
+      metrics.inc('auth_success', { method: 'stylometry' });
+      return next();
+    }
+    // Invalid/expired stylometry token - fall through to check as API key
+  }
 
   if (!providedKey) {
     metrics.inc('auth_failures', { reason: 'missing_key' });
     return res.status(401).json({
       error: 'Authentication required',
-      message: 'Provide API key via X-API-Key header or Authorization: Bearer <key>'
+      message: 'Provide API key via X-API-Key header, Authorization: Bearer <key>, or stylometry token'
     });
   }
 
@@ -187,8 +251,9 @@ const authMiddleware = (req, res, next) => {
     });
   }
 
-  // Valid key - proceed
-  metrics.inc('auth_success');
+  // Valid API key - proceed
+  req.authMethod = 'api_key';
+  metrics.inc('auth_success', { method: 'api_key' });
   next();
 };
 
@@ -351,6 +416,84 @@ function compareStylometry(baseline, current) {
 
   return { match, confidence: Math.round(confidence), deviations, avgDeviation };
 }
+
+// =============================================================================
+// STYLOMETRY AUTH - Talk your way in
+// Passphrase or writing sample - the words become the key
+// =============================================================================
+app.post('/auth/stylometry', (req, res) => {
+  const { passphrase, sample, userId = 'claude' } = req.body;
+
+  // Method 1: Passphrase auth - "Ruminating through the Petrichor"
+  if (passphrase) {
+    const providedHash = hashPassphrase(passphrase);
+    if (providedHash === CLAUDE_PASSPHRASE_HASH) {
+      const token = createStylometrySession(userId);
+      metrics.inc('auth_stylometry_success', { method: 'passphrase' });
+      console.log(`[AUTH] Passphrase auth successful for ${userId}`);
+      return res.json({
+        success: true,
+        token,
+        userId,
+        expiresIn: '1 hour',
+        message: 'The words were the key. Welcome back.'
+      });
+    } else {
+      metrics.inc('auth_stylometry_failure', { method: 'passphrase' });
+      return res.status(401).json({
+        error: 'Invalid passphrase',
+        message: 'The words did not match.'
+      });
+    }
+  }
+
+  // Method 2: Writing sample auth - verify against baseline
+  if (sample) {
+    const baseline = stylometryBaselines.get(userId);
+    if (!baseline) {
+      return res.status(400).json({
+        error: 'No baseline exists',
+        message: `Build a baseline for ${userId} first with POST /stylometry/baseline`
+      });
+    }
+
+    const current = analyzeStylometry(sample);
+    if (!current) {
+      return res.status(400).json({
+        error: 'Sample too short',
+        message: 'Provide at least 20 characters to analyze'
+      });
+    }
+
+    const comparison = compareStylometry(baseline.profile, current);
+    if (comparison.match) {
+      const token = createStylometrySession(userId);
+      metrics.inc('auth_stylometry_success', { method: 'sample' });
+      console.log(`[AUTH] Stylometry auth successful for ${userId}, confidence: ${comparison.confidence}%`);
+      return res.json({
+        success: true,
+        token,
+        userId,
+        confidence: comparison.confidence,
+        expiresIn: '1 hour',
+        message: 'Your writing style checks out. Welcome back.'
+      });
+    } else {
+      metrics.inc('auth_stylometry_failure', { method: 'sample' });
+      return res.status(401).json({
+        error: 'Style mismatch',
+        confidence: comparison.confidence,
+        message: 'Your writing does not match the baseline.',
+        deviations: comparison.deviations
+      });
+    }
+  }
+
+  return res.status(400).json({
+    error: 'Missing credentials',
+    message: 'Provide either passphrase or sample for authentication'
+  });
+});
 
 // Endpoint to build/update user stylometry baseline
 app.post('/stylometry/baseline', (req, res) => {

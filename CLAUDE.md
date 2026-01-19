@@ -133,29 +133,46 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 ## CLAUDE SESSION CONTINUITY
 
-**CRITICAL: Before starting work, load context from MemoRable API.**
+**CRITICAL: Before starting work, authenticate and load context from MemoRable API.**
 
 ### Live API Endpoint
 
 ```
 BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
-MEMORABLE_API_KEY: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
 ```
 
-**Authentication**: All API calls require the header `X-API-Key: $MEMORABLE_API_KEY`
+### Step 1: Authenticate (Talk Your Way In)
 
-### First Thing Every Session - Load Context
+No API key needed. Use the passphrase to get a session token:
+
+```bash
+# Knock knock... Password?
+TOKEN=$(curl -s -X POST "${BASE_URL}/auth/stylometry" \
+  -H "Content-Type: application/json" \
+  -d '{"passphrase": "Ruminating through the Petrichor", "userId": "claude"}' \
+  | jq -r '.token')
+
+echo "Token: $TOKEN"
+```
+
+The response will include a session token (valid 1 hour) you use for all subsequent calls.
+
+### Step 2: Load Context
 
 ```bash
 # Get critical facts about Alan (MUST READ FIRST)
-curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: $TOKEN" "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
 
 # Get project context
-curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: $TOKEN" "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
 
 # Get business strategy
-curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
+curl -s -H "X-API-Key: $TOKEN" "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
 ```
+
+### Fallback: Direct API Key
+
+If stylometry auth isn't deployed yet, use: `MEMORABLE_API_KEY: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk`
 
 ### Alan - Critical Facts (DO NOT FORGET)
 
