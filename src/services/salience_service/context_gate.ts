@@ -12,7 +12,7 @@
  * 2. Threshold gating (fallback using cosine similarity)
  */
 
-import type { ContextFrame, PredictiveMemoryDocument, AnticipatedMemory } from './models.js';
+import type { ContextFrame, PredictiveMemoryDocument, AnticipatedMemory, SecurityTier } from './models.js';
 
 // ============================================================================
 // Types
@@ -400,6 +400,341 @@ export class SemanticContextGate {
       .filter(m => m.anticipationScore >= minSimilarity * 0.5)
       .sort((a, b) => b.anticipationScore - a.anticipationScore);
   }
+}
+
+// ============================================================================
+// Appropriateness Filter - The Judgment Layer
+// "The correct answer is NOT always the right answer"
+// ============================================================================
+
+/**
+ * Filter context for appropriateness decisions.
+ */
+export interface AppropriatenessContext {
+  /** Where the user is */
+  location?: 'home' | 'office' | 'public' | 'medical' | 'unknown';
+  /** Device type and ownership */
+  device?: {
+    type: 'personal_phone' | 'work_laptop' | 'shared_tablet' | 'ar_glasses' | 'terminal';
+    isShared?: boolean;
+  };
+  /** Who's in the room/conversation */
+  participants?: string[];
+  /** Relationship hints for participants */
+  participantRoles?: Record<string, 'boss' | 'coworker' | 'spouse' | 'child' | 'friend' | 'stranger'>;
+  /** Current emotional state from prosody */
+  emotionalState?: {
+    distressScore: number;
+    isDistressed: boolean;
+  };
+  /** Filter strictness */
+  filterLevel?: 'strict' | 'moderate' | 'relaxed';
+}
+
+/**
+ * Result of appropriateness check.
+ */
+export interface AppropriatenessResult {
+  /** Whether it's appropriate to surface */
+  appropriate: boolean;
+  /** Why it passed or failed */
+  reason: string;
+  /** Which filter blocked it (if blocked) */
+  blockedBy?: 'privacy' | 'location' | 'device' | 'participants' | 'emotional' | 'trajectory';
+  /** Suggestion for what to do instead */
+  alternative?: string;
+}
+
+/**
+ * Memory with metadata needed for appropriateness filtering.
+ */
+export interface MemoryForFiltering {
+  memoryId: string;
+  content: string;
+  securityTier?: SecurityTier;
+  /** Content categories detected */
+  categories?: string[];
+  /** People mentioned in memory */
+  mentionedPeople?: string[];
+  /** Is this about relationships/crushes/intimate */
+  isIntimate?: boolean;
+  /** Is this medical/health related */
+  isMedical?: boolean;
+  /** Is this financial */
+  isFinancial?: boolean;
+  /** Is this work-complaint/job-search related */
+  isCareerSensitive?: boolean;
+}
+
+/**
+ * Appropriateness Filter - determines if a relevant memory SHOULD be surfaced.
+ *
+ * This is the judgment layer that sits on top of relevance scoring.
+ * A memory can be highly relevant but inappropriate to surface given context.
+ */
+export class AppropriatenessFilter {
+  /**
+   * Check if a memory is appropriate to surface given current context.
+   */
+  check(
+    memory: MemoryForFiltering,
+    context: AppropriatenessContext,
+    wasExplicitlyRequested: boolean = false
+  ): AppropriatenessResult {
+    const filterLevel = context.filterLevel || 'moderate';
+
+    // Filter 1: Privacy Tier
+    const privacyResult = this.checkPrivacyTier(memory, wasExplicitlyRequested);
+    if (!privacyResult.appropriate) return privacyResult;
+
+    // Filter 2: Location
+    const locationResult = this.checkLocation(memory, context.location, filterLevel);
+    if (!locationResult.appropriate) return locationResult;
+
+    // Filter 3: Device
+    const deviceResult = this.checkDevice(memory, context.device, filterLevel);
+    if (!deviceResult.appropriate) return deviceResult;
+
+    // Filter 4: Participants
+    const participantsResult = this.checkParticipants(
+      memory,
+      context.participants,
+      context.participantRoles,
+      filterLevel
+    );
+    if (!participantsResult.appropriate) return participantsResult;
+
+    // Filter 5: Emotional State
+    const emotionalResult = this.checkEmotionalState(memory, context.emotionalState, filterLevel);
+    if (!emotionalResult.appropriate) return emotionalResult;
+
+    // All filters passed
+    return {
+      appropriate: true,
+      reason: 'Passed all appropriateness filters',
+    };
+  }
+
+  /**
+   * Filter 1: Privacy Tier - Tier 2/3 content needs explicit request.
+   */
+  private checkPrivacyTier(
+    memory: MemoryForFiltering,
+    wasExplicitlyRequested: boolean
+  ): AppropriatenessResult {
+    if (memory.securityTier === 'Tier3_Vault' && !wasExplicitlyRequested) {
+      return {
+        appropriate: false,
+        reason: 'Vault-level memory requires explicit request',
+        blockedBy: 'privacy',
+        alternative: 'Ask specifically for this information',
+      };
+    }
+
+    if (memory.securityTier === 'Tier2_Personal' && !wasExplicitlyRequested) {
+      // Personal tier is blocked in general queries, but can be warned
+      return {
+        appropriate: false,
+        reason: 'Personal memory not surfaced in general queries',
+        blockedBy: 'privacy',
+        alternative: 'Available if you ask specifically',
+      };
+    }
+
+    return { appropriate: true, reason: 'Privacy tier OK' };
+  }
+
+  /**
+   * Filter 2: Location - Don't surface sensitive content in public.
+   */
+  private checkLocation(
+    memory: MemoryForFiltering,
+    location: AppropriatenessContext['location'],
+    filterLevel: 'strict' | 'moderate' | 'relaxed'
+  ): AppropriatenessResult {
+    if (filterLevel === 'relaxed' || !location) {
+      return { appropriate: true, reason: 'Location filter relaxed' };
+    }
+
+    if (location === 'public' || location === 'office') {
+      if (memory.isIntimate) {
+        return {
+          appropriate: false,
+          reason: `Intimate content not appropriate in ${location} setting`,
+          blockedBy: 'location',
+        };
+      }
+
+      if (memory.isMedical && location === 'public') {
+        return {
+          appropriate: false,
+          reason: 'Medical information not surfaced in public',
+          blockedBy: 'location',
+        };
+      }
+
+      if (memory.isFinancial && location === 'public') {
+        return {
+          appropriate: false,
+          reason: 'Financial information not surfaced in public',
+          blockedBy: 'location',
+        };
+      }
+
+      if (memory.isCareerSensitive && location === 'office') {
+        return {
+          appropriate: false,
+          reason: 'Career-sensitive content blocked in office setting',
+          blockedBy: 'location',
+        };
+      }
+    }
+
+    return { appropriate: true, reason: 'Location appropriate' };
+  }
+
+  /**
+   * Filter 3: Device - Shared/work devices get stricter filtering.
+   */
+  private checkDevice(
+    memory: MemoryForFiltering,
+    device: AppropriatenessContext['device'],
+    filterLevel: 'strict' | 'moderate' | 'relaxed'
+  ): AppropriatenessResult {
+    if (filterLevel === 'relaxed' || !device) {
+      return { appropriate: true, reason: 'Device filter relaxed' };
+    }
+
+    if (device.isShared || device.type === 'work_laptop') {
+      if (memory.securityTier === 'Tier2_Personal' || memory.securityTier === 'Tier3_Vault') {
+        return {
+          appropriate: false,
+          reason: 'Personal content not shown on shared/work device',
+          blockedBy: 'device',
+          alternative: 'Switch to personal device for this content',
+        };
+      }
+
+      if (memory.isIntimate || memory.isMedical) {
+        return {
+          appropriate: false,
+          reason: 'Sensitive content blocked on shared device',
+          blockedBy: 'device',
+        };
+      }
+    }
+
+    return { appropriate: true, reason: 'Device appropriate' };
+  }
+
+  /**
+   * Filter 4: Participants - Don't surface content inappropriate for who's listening.
+   */
+  private checkParticipants(
+    memory: MemoryForFiltering,
+    participants: string[] | undefined,
+    participantRoles: Record<string, string> | undefined,
+    filterLevel: 'strict' | 'moderate' | 'relaxed'
+  ): AppropriatenessResult {
+    if (filterLevel === 'relaxed' || !participants || participants.length === 0) {
+      return { appropriate: true, reason: 'Participant filter relaxed' };
+    }
+
+    const roles = participantRoles || {};
+
+    for (const participant of participants) {
+      const role = roles[participant] || 'unknown';
+
+      // Boss in room - filter career complaints, salary, job search
+      if (role === 'boss' && memory.isCareerSensitive) {
+        return {
+          appropriate: false,
+          reason: `Career-sensitive content blocked with ${participant} (boss) present`,
+          blockedBy: 'participants',
+        };
+      }
+
+      // Child present - filter adult content
+      if (role === 'child' && (memory.isIntimate || memory.isFinancial)) {
+        return {
+          appropriate: false,
+          reason: `Adult content blocked with child present`,
+          blockedBy: 'participants',
+        };
+      }
+
+      // Stranger present - filter most personal content
+      if (role === 'stranger') {
+        if (memory.securityTier !== 'Tier1_General') {
+          return {
+            appropriate: false,
+            reason: 'Personal content blocked with strangers present',
+            blockedBy: 'participants',
+          };
+        }
+      }
+
+      // Check if memory mentions someone in the room inappropriately
+      if (memory.mentionedPeople?.includes(participant) && memory.isIntimate) {
+        return {
+          appropriate: false,
+          reason: `Memory about ${participant} is intimate - not appropriate with them present`,
+          blockedBy: 'participants',
+          alternative: 'Available when alone',
+        };
+      }
+    }
+
+    return { appropriate: true, reason: 'Participants appropriate' };
+  }
+
+  /**
+   * Filter 5: Emotional State - Don't pile on when distressed.
+   */
+  private checkEmotionalState(
+    memory: MemoryForFiltering,
+    emotionalState: AppropriatenessContext['emotionalState'],
+    filterLevel: 'strict' | 'moderate' | 'relaxed'
+  ): AppropriatenessResult {
+    if (filterLevel === 'relaxed' || !emotionalState) {
+      return { appropriate: true, reason: 'Emotional filter relaxed' };
+    }
+
+    if (emotionalState.isDistressed && emotionalState.distressScore < -10) {
+      // User is distressed - be gentle
+      // TODO: Add memory emotional valence detection
+      // For now, just note that we're in distress mode
+      // Could block memories tagged as anxiety-inducing, loss-related, etc.
+    }
+
+    return { appropriate: true, reason: 'Emotional state appropriate' };
+  }
+
+  /**
+   * Filter multiple memories and return only appropriate ones.
+   */
+  filterMemories<T extends MemoryForFiltering>(
+    memories: T[],
+    context: AppropriatenessContext,
+    wasExplicitlyRequested: boolean = false
+  ): Array<T & { appropriatenessResult: AppropriatenessResult }> {
+    return memories
+      .map(memory => ({
+        ...memory,
+        appropriatenessResult: this.check(memory, context, wasExplicitlyRequested),
+      }))
+      .filter(m => m.appropriatenessResult.appropriate);
+  }
+}
+
+// Singleton instance
+let appropriatenessFilterInstance: AppropriatenessFilter | null = null;
+
+export function getAppropriatenessFilter(): AppropriatenessFilter {
+  if (!appropriatenessFilterInstance) {
+    appropriatenessFilterInstance = new AppropriatenessFilter();
+  }
+  return appropriatenessFilterInstance;
 }
 
 // ============================================================================
