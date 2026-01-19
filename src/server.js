@@ -2891,6 +2891,668 @@ app.get('/dashboard/json', (_req, res) => {
   });
 });
 
+// =============================================================================
+// USER SETTINGS - Phase 2: Self-service user management
+// =============================================================================
+
+// Common styles for user settings pages
+const userSettingsStyles = `
+  :root {
+    --bg-dark: #0a0a0f;
+    --bg-panel: #0d1117;
+    --bg-card: #161b22;
+    --border: #30363d;
+    --cyan: #00ffff;
+    --magenta: #ff00ff;
+    --green: #00ff41;
+    --red: #ff0040;
+    --yellow: #ffff00;
+    --text: #c9d1d9;
+    --text-dim: #6e7681;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Share Tech Mono', monospace;
+    background: var(--bg-dark);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    color: var(--cyan);
+    text-shadow: 0 0 10px var(--cyan);
+  }
+  .nav { display: flex; gap: 15px; }
+  .nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .nav a:hover, .nav a.active {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+  }
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-group { margin-bottom: 20px; }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+  }
+  .form-group input:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+  }
+  .btn {
+    padding: 12px 24px;
+    border: 1px solid;
+    border-radius: 4px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+  }
+  .btn-primary {
+    color: var(--cyan);
+    border-color: var(--cyan);
+  }
+  .btn-primary:hover {
+    background: rgba(0, 255, 255, 0.1);
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+  }
+  .btn-danger {
+    color: var(--red);
+    border-color: var(--red);
+  }
+  .btn-danger:hover {
+    background: rgba(255, 0, 64, 0.1);
+    box-shadow: 0 0 20px rgba(255, 0, 64, 0.3);
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    padding: 15px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .stat-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 24px;
+    color: var(--cyan);
+  }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-top: 5px;
+  }
+  .device-list { list-style: none; }
+  .device-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: var(--bg-card);
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  .device-info h4 {
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 5px;
+  }
+  .device-info span {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .device-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .status-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .status-dot.inactive { background: var(--text-dim); }
+  .alert {
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    font-size: 13px;
+  }
+  .alert-success { background: rgba(0, 255, 65, 0.1); border: 1px solid var(--green); color: var(--green); }
+  .alert-error { background: rgba(255, 0, 64, 0.1); border: 1px solid var(--red); color: var(--red); }
+`;
+
+// GET /user/profile - View user profile
+app.get('/user/profile', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/auth/knock?redirect=/user/profile');
+  }
+
+  let user = null;
+  if (mongoConnected) {
+    user = await findUserById(userId);
+  }
+
+  // Fallback to in-memory
+  if (!user) {
+    const inMemUser = passphraseUsers.get(userId);
+    if (inMemUser) {
+      user = {
+        userId,
+        displayName: userId,
+        email: null,
+        tier: 'free',
+        status: 'active',
+        createdAt: inMemUser.created_at,
+        lastActiveAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  if (!user) {
+    return res.status(404).send('User not found');
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Profile - MemoRable</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${userSettingsStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMORABLE // USER SETTINGS</div>
+    <nav class="nav">
+      <a href="/user/profile" class="active">Profile</a>
+      <a href="/user/devices">Devices</a>
+      <a href="/user/preferences">Preferences</a>
+      <a href="/dashboard/mission-control">Dashboard</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Profile Overview</div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-value" style="font-size: 16px;">\${user.userId}</div>
+        <div class="stat-label">User ID</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--magenta);">\${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-label">Tier</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--green);">\${user.status?.toUpperCase() || 'ACTIVE'}</div>
+        <div class="stat-label">Status</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="font-size: 14px;">\${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</div>
+        <div class="stat-label">Member Since</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Edit Profile</div>
+    <form method="POST" action="/user/profile">
+      <div class="form-group">
+        <label>Display Name</label>
+        <input type="text" name="displayName" value="\${user.displayName || ''}" placeholder="Your display name">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" value="\${user.email || ''}" placeholder="your@email.com">
+      </div>
+      <button type="submit" class="btn btn-primary">Update Profile</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Security</div>
+    <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
+      Change your passphrase or manage authentication settings.
+    </p>
+    <a href="/user/passphrase" class="btn btn-primary">Change Passphrase</a>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /user/profile - Update profile
+app.post('/user/profile', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const { displayName, email } = req.body;
+
+  if (mongoConnected) {
+    const { updateUser } = await import('./models/index.ts');
+    await updateUser(userId, { displayName, email }, { performedBy: userId, auditAction: 'updated' });
+  }
+
+  res.redirect('/user/profile?updated=1');
+});
+
+// GET /user/devices - List devices
+app.get('/user/devices', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/auth/knock?redirect=/user/devices');
+  }
+
+  // Get devices from MongoDB or in-memory
+  let devices = [];
+  if (mongoConnected) {
+    const { listUserDevices } = await import('./models/index.ts');
+    devices = await listUserDevices(userId);
+  } else {
+    // In-memory fallback
+    for (const [keyHash, entry] of deviceKeys.entries()) {
+      if (entry.user_id === userId && !entry.revoked) {
+        devices.push({
+          deviceId: entry.device_id,
+          device: entry.device,
+          issuedAt: entry.issued_at,
+          lastUsed: entry.last_used,
+          status: 'active',
+        });
+      }
+    }
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Devices - MemoRable</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${userSettingsStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMORABLE // DEVICES</div>
+    <nav class="nav">
+      <a href="/user/profile">Profile</a>
+      <a href="/user/devices" class="active">Devices</a>
+      <a href="/user/preferences">Preferences</a>
+      <a href="/dashboard/mission-control">Dashboard</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Connected Devices</div>
+    <p style="color: var(--text-dim); margin-bottom: 20px; font-size: 13px;">
+      Manage devices that have access to your memories. Each device has its own API key.
+    </p>
+    <ul class="device-list">
+      \${devices.length === 0 ? '<li class="device-item"><span style="color: var(--text-dim);">No devices connected</span></li>' :
+        devices.map(d => \`
+        <li class="device-item">
+          <div class="device-info">
+            <h4>\${d.device?.name || d.deviceId}</h4>
+            <span>Type: \${d.device?.type || 'unknown'} • Added: \${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : 'N/A'}</span>
+          </div>
+          <div class="device-status">
+            <div class="status-dot \${d.status === 'active' ? 'active' : 'inactive'}"></div>
+            <span style="font-size: 11px; color: var(--text-dim);">\${d.status}</span>
+            <form method="POST" action="/user/devices/revoke" style="margin-left: 15px;">
+              <input type="hidden" name="deviceId" value="\${d.deviceId}">
+              <button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 10px;">Revoke</button>
+            </form>
+          </div>
+        </li>
+        \`).join('')}
+    </ul>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Add New Device</div>
+    <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
+      To add a new device, use the passphrase authentication flow from that device.
+    </p>
+    <code style="display: block; background: var(--bg-card); padding: 15px; border-radius: 4px; font-size: 12px; color: var(--green);">
+      curl -X POST /auth/knock -d '{"device":{"type":"phone","name":"My Phone"}}'
+    </code>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /user/devices/revoke - Revoke a device
+app.post('/user/devices/revoke', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const { deviceId } = req.body;
+
+  if (mongoConnected) {
+    const { revokeDevice } = await import('./models/index.ts');
+    await revokeDevice(deviceId, { performedBy: userId });
+  } else {
+    // In-memory revoke
+    for (const [keyHash, entry] of deviceKeys.entries()) {
+      if (entry.device_id === deviceId && entry.user_id === userId) {
+        entry.revoked = true;
+        entry.revoked_at = new Date().toISOString();
+        break;
+      }
+    }
+  }
+
+  res.redirect('/user/devices?revoked=1');
+});
+
+// GET /user/preferences - User preferences
+app.get('/user/preferences', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/auth/knock?redirect=/user/preferences');
+  }
+
+  let prefs = {};
+  if (mongoConnected) {
+    const { getAllPreferences } = await import('./models/index.ts');
+    prefs = await getAllPreferences(userId) || {};
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Preferences - MemoRable</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${userSettingsStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMORABLE // PREFERENCES</div>
+    <nav class="nav">
+      <a href="/user/profile">Profile</a>
+      <a href="/user/devices">Devices</a>
+      <a href="/user/preferences" class="active">Preferences</a>
+      <a href="/dashboard/mission-control">Dashboard</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Privacy Settings</div>
+    <form method="POST" action="/user/preferences">
+      <div class="form-group">
+        <label>Default Memory Security Tier</label>
+        <select name="defaultSecurityTier">
+          <option value="Tier1_General" \${prefs.defaultSecurityTier === 'Tier1_General' ? 'selected' : ''}>Tier 1 - General (External LLM OK)</option>
+          <option value="Tier2_Personal" \${prefs.defaultSecurityTier === 'Tier2_Personal' || !prefs.defaultSecurityTier ? 'selected' : ''}>Tier 2 - Personal (Local LLM Only)</option>
+          <option value="Tier3_Vault" \${prefs.defaultSecurityTier === 'Tier3_Vault' ? 'selected' : ''}>Tier 3 - Vault (Encrypted, No LLM)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Auto-forget after (days, 0 = never)</label>
+        <input type="number" name="autoForgetDays" value="\${prefs.autoForgetDays || 0}" min="0" max="365">
+      </div>
+      <button type="submit" class="btn btn-primary">Save Privacy Settings</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Salience Weights</div>
+    <p style="color: var(--text-dim); margin-bottom: 20px; font-size: 13px;">
+      Adjust how memories are scored. Higher weights = more important factor.
+    </p>
+    <form method="POST" action="/user/preferences">
+      <input type="hidden" name="section" value="salience">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+        <div class="form-group">
+          <label>Emotional Weight</label>
+          <input type="range" name="emotionWeight" min="0" max="100" value="\${prefs.emotionWeight || 30}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">\${prefs.emotionWeight || 30}%</span>
+        </div>
+        <div class="form-group">
+          <label>Novelty Weight</label>
+          <input type="range" name="noveltyWeight" min="0" max="100" value="\${prefs.noveltyWeight || 20}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">\${prefs.noveltyWeight || 20}%</span>
+        </div>
+        <div class="form-group">
+          <label>Relevance Weight</label>
+          <input type="range" name="relevanceWeight" min="0" max="100" value="\${prefs.relevanceWeight || 20}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">\${prefs.relevanceWeight || 20}%</span>
+        </div>
+        <div class="form-group">
+          <label>Social Weight</label>
+          <input type="range" name="socialWeight" min="0" max="100" value="\${prefs.socialWeight || 15}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">\${prefs.socialWeight || 15}%</span>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Salience Weights</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Data Export</div>
+    <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
+      Export all your data in a portable format. Your memories, preferences, and relationships.
+    </p>
+    <a href="/user/export" class="btn btn-primary">Export My Data</a>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /user/preferences - Update preferences
+app.post('/user/preferences', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  if (mongoConnected) {
+    const { setPreferences } = await import('./models/index.ts');
+    await setPreferences(userId, req.body);
+  }
+
+  res.redirect('/user/preferences?saved=1');
+});
+
+// GET /user/passphrase - Change passphrase form
+app.get('/user/passphrase', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/auth/knock?redirect=/user/passphrase');
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Change Passphrase - MemoRable</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${userSettingsStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMORABLE // SECURITY</div>
+    <nav class="nav">
+      <a href="/user/profile">Profile</a>
+      <a href="/user/devices">Devices</a>
+      <a href="/user/preferences">Preferences</a>
+      <a href="/dashboard/mission-control">Dashboard</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Change Passphrase</div>
+    <p style="color: var(--text-dim); margin-bottom: 20px; font-size: 13px;">
+      Your passphrase is hashed with Argon2id. We never store the plaintext.
+    </p>
+    <form method="POST" action="/user/passphrase">
+      <div class="form-group">
+        <label>Current Passphrase</label>
+        <input type="password" name="currentPassphrase" required placeholder="Enter current passphrase">
+      </div>
+      <div class="form-group">
+        <label>New Passphrase</label>
+        <input type="password" name="newPassphrase" required placeholder="Enter new passphrase" minlength="8">
+        <span style="font-size: 10px; color: var(--text-dim); margin-top: 5px; display: block;">
+          Minimum 8 characters. Use uppercase, lowercase, and numbers, OR 16+ characters.
+        </span>
+      </div>
+      <div class="form-group">
+        <label>Confirm New Passphrase</label>
+        <input type="password" name="confirmPassphrase" required placeholder="Confirm new passphrase">
+      </div>
+      <button type="submit" class="btn btn-primary">Update Passphrase</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Danger Zone</div>
+    <p style="color: var(--red); margin-bottom: 15px; font-size: 13px;">
+      Deleting your account will schedule all your data for permanent deletion after 30 days.
+    </p>
+    <form method="POST" action="/user/delete" onsubmit="return confirm('Are you sure? This will delete all your memories.');">
+      <button type="submit" class="btn btn-danger">Delete My Account</button>
+    </form>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /user/passphrase - Change passphrase
+app.post('/user/passphrase', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const { currentPassphrase, newPassphrase, confirmPassphrase } = req.body;
+
+  if (newPassphrase !== confirmPassphrase) {
+    return res.status(400).send('Passphrases do not match');
+  }
+
+  if (newPassphrase.length < 8) {
+    return res.status(400).send('Passphrase must be at least 8 characters');
+  }
+
+  // Verify current passphrase
+  let verified = false;
+  if (mongoConnected) {
+    const user = await findUserById(userId);
+    if (user) {
+      verified = await verifyPassphraseMongo(currentPassphrase, user.passphraseHash);
+    }
+  } else {
+    const user = passphraseUsers.get(userId);
+    if (user) {
+      verified = await verifyPassphrase(currentPassphrase, user.passphrase_hash);
+    }
+  }
+
+  if (!verified) {
+    return res.status(401).send('Current passphrase is incorrect');
+  }
+
+  // Update passphrase
+  const { hash } = await hashPassphrase(newPassphrase);
+
+  if (mongoConnected) {
+    const { updateUserPassphrase } = await import('./models/index.ts');
+    await updateUserPassphrase(userId, hash, { performedBy: userId });
+  } else {
+    const user = passphraseUsers.get(userId);
+    if (user) {
+      user.passphrase_hash = hash;
+    }
+  }
+
+  res.redirect('/user/profile?passphrase_changed=1');
+});
+
 // Pattern analysis from memory data
 // Circles within circles: 7 (week) → 21 (habit) → 28 (month) → 91 (season) → 365 (year)
 function analyzePatterns(memories) {

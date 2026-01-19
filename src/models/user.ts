@@ -1152,6 +1152,36 @@ export async function setAdminStatus(
   return result.modifiedCount > 0;
 }
 
+/**
+ * Update user's passphrase.
+ */
+export async function updateUserPassphrase(
+  userId: string,
+  newPassphraseHash: string,
+  options?: { performedBy?: string }
+): Promise<boolean> {
+  const result = await getUsersCollection().updateOne(
+    { userId, status: { $ne: 'deleted' } },
+    {
+      $set: {
+        passphraseHash: newPassphraseHash,
+        'auth.passwordChangedAt': new Date().toISOString(),
+        'auth.forcePasswordChange': false,
+        updatedAt: new Date().toISOString(),
+      },
+    }
+  );
+
+  if (result.modifiedCount > 0) {
+    await logAudit(userId, {
+      action: 'passphrase_changed',
+      performedBy: options?.performedBy || 'system',
+    });
+  }
+
+  return result.modifiedCount > 0;
+}
+
 // =============================================================================
 // BIOMETRIC AUTHENTICATION
 // =============================================================================
