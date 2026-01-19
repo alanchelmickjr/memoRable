@@ -3,6 +3,33 @@
 > One passphrase. One challenge. One key per device. Revoke independently.
 > No hardcoded keys. No HTTP. No shortcuts.
 
+## ⚠️ The Hobbit Path (Read This First!)
+
+The default passphrase is **public** (in this repo). This is **intentional** for:
+- Open source development
+- Claude Code integration (Claude reads CLAUDE.md)
+- Local testing
+
+**For production deployments:**
+
+```bash
+# Set your own secret passphrase
+export MEMORABLE_PASSPHRASE="your secret phrase that nobody knows"
+```
+
+Without this, anyone who reads the repo can authenticate.
+
+| Environment | Passphrase | Security |
+|-------------|------------|----------|
+| Development | Public default | Open (intentional) |
+| Staging | Set via env var | Restricted |
+| Production | **MUST set via env var** | Secure |
+
+The server warns on startup if using the default:
+```
+[AUTH] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!
+```
+
 ## The Gate
 
 ```

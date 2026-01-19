@@ -155,6 +155,7 @@ CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
   -d '{"device":{"type":"terminal","name":"Claude Code"}}' | jq -r '.challenge')
 
 # Step 2: Exchange passphrase for session API key
+# Dev passphrase (public) - production deploys override via MEMORABLE_PASSPHRASE env var
 # Passphrase: "I remember what I have learned from you."
 API_KEY=$(curl -s -X POST "${BASE_URL}/auth/exchange" \
   -H "Content-Type: application/json" \

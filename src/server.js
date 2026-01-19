@@ -197,8 +197,19 @@ function generateApiKey(deviceType) {
 
 // Initialize default users (Claude's passphrase)
 async function initPassphraseAuth() {
-  // Claude's passphrase - "I remember what I have learned from you."
-  const claudePhrase = "I remember what I have learned from you.";
+  // THE HOBBIT PATH: Passphrase is configurable via env var
+  // Default is public (for open source/dev) - production MUST override via env
+  //
+  // To secure your deployment:
+  //   export MEMORABLE_PASSPHRASE="your secret phrase here"
+  //
+  const claudePhrase = process.env.MEMORABLE_PASSPHRASE ||
+    "I remember what I have learned from you.";  // Public default for dev
+
+  if (!process.env.MEMORABLE_PASSPHRASE) {
+    console.warn('[AUTH] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!');
+  }
+
   const { hash } = await hashPassphrase(claudePhrase);
   passphraseUsers.set('claude', {
     user_id: 'claude',

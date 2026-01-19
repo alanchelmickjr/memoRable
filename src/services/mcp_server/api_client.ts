@@ -84,7 +84,10 @@ export class ApiClient {
 
     this.baseUrl = url;
     this.apiKey = config.apiKey || null;
-    this.passphrase = config.passphrase || 'I remember what I have learned from you.';
+    // Passphrase from config > env var > public default (dev only)
+    this.passphrase = config.passphrase ||
+      process.env.MEMORABLE_PASSPHRASE ||
+      'I remember what I have learned from you.';  // Public default for dev
     this.deviceType = config.deviceType || 'mcp';
     this.deviceName = config.deviceName || 'Claude Code MCP';
   }
