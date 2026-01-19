@@ -74,6 +74,8 @@
     "node-webcam": "^0.8.1",
     "ollama": "^0.5.14",
     "redis": ">=4.6.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
     "uuid": "^11.1.0",
     "weaviate-client": ">=2.14.0",
     "winston": "^3.10.0",

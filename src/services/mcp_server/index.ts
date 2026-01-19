@@ -45,6 +45,9 @@ import jwt from 'jsonwebtoken';
 import { randomUUID, createCipheriv, createDecipheriv, scryptSync, randomBytes } from 'crypto';
 import { createClient, RedisClientType } from 'redis';
 
+// Import API client for remote mode (HTTP instead of direct MongoDB)
+import { ApiClient, getApiClient, useRemoteApi } from './api_client.js';
+
 // Import salience service functions
 import {
   enrichMemoryWithSalience,
@@ -876,12 +879,44 @@ function createLLMClient(): LLMClient | null {
 
 let llmClient: LLMClient | null = null;
 
+// Track which mode we're in: 'rest' (HTTP API) or 'direct' (MongoDB)
+let connectionMode: 'rest' | 'direct' | null = null;
+let apiClient: ApiClient | null = null;
+
 /**
  * Initialize database connection.
+ *
+ * Two modes:
+ * - REST MODE (API_BASE_URL set): Uses HTTP calls to remote API
+ *   Simple, works anywhere, no VPN needed. The barebones approach.
+ * - DIRECT MODE: Connects directly to MongoDB
+ *   Used when running with local docker-compose or inside AWS VPC.
  */
 async function initializeDb(): Promise<void> {
-  if (db) return;
+  if (connectionMode) return; // Already initialized
 
+  // Check for REST mode (remote HTTP API)
+  if (useRemoteApi()) {
+    connectionMode = 'rest';
+    apiClient = getApiClient();
+
+    if (!apiClient) {
+      throw new Error('API_BASE_URL set but failed to create API client');
+    }
+
+    // Verify API is reachable
+    const healthy = await apiClient.healthCheck();
+    if (!healthy) {
+      console.error('[MCP] WARNING: API health check failed - endpoint may be unreachable');
+    }
+
+    console.error(`[MCP] REST mode: Using HTTP API at ${process.env.API_BASE_URL || process.env.MEMORABLE_API_URL}`);
+    console.error('[MCP] Skipping direct MongoDB/Redis connections');
+    return;
+  }
+
+  // Direct mode: Connect to MongoDB
+  connectionMode = 'direct';
   mongoClient = new MongoClient(CONFIG.mongoUri);
   await mongoClient.connect();
   db = mongoClient.db();
@@ -904,7 +939,7 @@ async function initializeDb(): Promise<void> {
 
   await initializeSalienceService(db, { verbose: false });
   initAnticipationService(db);
-  console.error('[MCP] Database initialized');
+  console.error('[MCP] Direct mode: Database initialized');
 }
 
 /**
@@ -2173,6 +2208,38 @@ function createServer(): Server {
             securityTier?: SecurityTier;
           };
 
+          // FOUNDATION MODE: Route to HTTP API instead of direct DB
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.storeMemory(text, {
+                entities: context?.people,
+                context,
+                securityTier,
+                deviceId,
+                deviceName,
+                deviceType,
+                useLLM,
+              });
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    stored: true,
+                    memoryId: result.id,
+                    mode: 'rest',
+                    ...result,
+                  }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode store failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // DIRECT MODE: Continue with local MongoDB operations
           // Validate security tier
           const validTiers: SecurityTier[] = ['Tier1_General', 'Tier2_Personal', 'Tier3_Vault'];
           const tier = validTiers.includes(securityTier) ? securityTier : 'Tier2_Personal';
@@ -2320,6 +2387,39 @@ function createServer(): Server {
             minSalience?: number;
           };
 
+          // FOUNDATION MODE: Route to HTTP API
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.recall(query, {
+                limit,
+                entity: person,
+                minSalience,
+              });
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    mode: 'rest',
+                    query,
+                    count: result.memories.length,
+                    memories: result.memories.map(m => ({
+                      id: m.id,
+                      content: m.content,
+                      salience: m.salience,
+                      createdAt: m.createdAt,
+                    })),
+                  }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode recall failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // DIRECT MODE: Use local MongoDB
           // For now, use a simple implementation
           // In production, this would use vector search + salience ranking
           const memories = await retrieveMemoriesByQuery(
@@ -2373,6 +2473,25 @@ function createServer(): Server {
         case 'get_briefing': {
           const { person, quick = false } = args as { person: string; quick?: boolean };
 
+          // FOUNDATION MODE: Route to HTTP API
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const briefing = await apiClient.getBriefing(person, quick);
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({ mode: 'rest', ...briefing }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode briefing failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // DIRECT MODE
           const briefing = quick
             ? await generateQuickBriefing(CONFIG.defaultUserId, person)
             : await generateBriefing(CONFIG.defaultUserId, person);
@@ -2394,6 +2513,25 @@ function createServer(): Server {
             includeOverdue?: boolean;
           };
 
+          // FOUNDATION MODE: Route to HTTP API
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const loops = await apiClient.listLoops({ owner, person, includeOverdue });
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({ mode: 'rest', loops }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode list_loops failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // DIRECT MODE
           const loops = await getOpenLoops(CONFIG.defaultUserId, {
             owner,
             contactName: person,
@@ -2514,6 +2652,25 @@ function createServer(): Server {
             unified?: boolean;
           };
 
+          // FOUNDATION MODE: Route to HTTP API
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getRelevant({ deviceId, unified });
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({ mode: 'rest', ...result }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode whats_relevant failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // DIRECT MODE
           // If unified requested, get fused context from all devices
           if (unified) {
             const unifiedContext = await getUnifiedUserContext(CONFIG.defaultUserId);
