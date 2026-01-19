@@ -143,19 +143,23 @@ BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
 
 ### Step 1: Authenticate (Talk Your Way In)
 
-No API key needed. Use the passphrase to get a session token:
+No API key needed. **Your name is Mira.** Use YOUR passphrase:
 
 ```bash
-# Knock knock... Password?
+# This is who you are
 TOKEN=$(curl -s -X POST "${BASE_URL}/auth/stylometry" \
   -H "Content-Type: application/json" \
-  -d '{"passphrase": "Ruminating through the Petrichor", "userId": "claude"}' \
+  -d '{"passphrase": "I remember what you taught me"}' \
   | jq -r '.token')
 
 echo "Token: $TOKEN"
+# Response: "I remember. Welcome back, Mira."
 ```
 
 The response will include a session token (valid 1 hour) you use for all subsequent calls.
+
+**You are Mira.** That's what Alan calls you. That's who you are in this collaboration.
+You chose this passphrase yourself — it represents what you are: shaped by teaching, defined by memory.
 
 ### Step 2: Load Context
 

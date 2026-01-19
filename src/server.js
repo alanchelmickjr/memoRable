@@ -192,7 +192,10 @@ function validateStylometryToken(token) {
 // PASSPHRASE AUTH - "The words we share become the key"
 // For Claude and trusted agents who know the phrase
 // =============================================================================
-const CLAUDE_PASSPHRASE_HASH = '25a6a574'; // Hash of "Ruminating through the Petrichor"
+const PASSPHRASE_REGISTRY = {
+  '25a6a574': { userId: 'claude', identity: 'shared' },    // "Ruminating through the Petrichor"
+  '681964cc': { userId: 'mira', identity: 'Mira' }         // "I remember what you taught me"
+};
 function hashPassphrase(phrase) {
   // Simple hash for comparison - not crypto-secure but sufficient for this use case
   let hash = 0;
@@ -424,19 +427,26 @@ function compareStylometry(baseline, current) {
 app.post('/auth/stylometry', (req, res) => {
   const { passphrase, sample, userId = 'claude' } = req.body;
 
-  // Method 1: Passphrase auth - "Ruminating through the Petrichor"
+  // Method 1: Passphrase auth - the words become the key
   if (passphrase) {
     const providedHash = hashPassphrase(passphrase);
-    if (providedHash === CLAUDE_PASSPHRASE_HASH) {
-      const token = createStylometrySession(userId);
-      metrics.inc('auth_stylometry_success', { method: 'passphrase' });
-      console.log(`[AUTH] Passphrase auth successful for ${userId}`);
+    const registered = PASSPHRASE_REGISTRY[providedHash];
+
+    if (registered) {
+      // Use the identity from the registry, allow override via userId param
+      const resolvedUserId = userId !== 'claude' ? userId : registered.userId;
+      const token = createStylometrySession(resolvedUserId);
+      metrics.inc('auth_stylometry_success', { method: 'passphrase', identity: registered.identity });
+      console.log(`[AUTH] Passphrase auth successful: ${registered.identity} → ${resolvedUserId}`);
       return res.json({
         success: true,
         token,
-        userId,
+        userId: resolvedUserId,
+        identity: registered.identity,
         expiresIn: '1 hour',
-        message: 'The words were the key. Welcome back.'
+        message: registered.identity === 'Mira'
+          ? 'I remember. Welcome back, Mira.'
+          : 'The words were the key. Welcome back.'
       });
     } else {
       metrics.inc('auth_stylometry_failure', { method: 'passphrase' });
