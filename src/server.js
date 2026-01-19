@@ -6,6 +6,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import argon2 from 'argon2';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -156,16 +157,36 @@ const PUBLIC_PATHS = [
 ];
 
 // =============================================================================
-// PASSPHRASE KEY EXCHANGE - One phrase, many devices, revoke independently
+// PASSPHRASE KEY EXCHANGE - THE ONE GATE
 // =============================================================================
-const passphraseUsers = new Map();    // userId -> { passphrase_hash, salt, failed_attempts, locked_until }
+// CANONICAL IMPLEMENTATION: This is the only auth path.
+// - identityService.js: User management (not auth)
+// - e2ee.ts deriveKeyPairFromPassphrase: Encryption keys (not auth)
+// Both use passphrases for different purposes. THIS is the auth gate.
+// =============================================================================
+const passphraseUsers = new Map();    // userId -> { passphrase_hash, failed_attempts, locked_until }
 const deviceKeys = new Map();          // api_key_hash -> { user_id, device_id, device, issued_at, last_used, revoked }
 const authChallenges = new Map();      // challenge -> { device, created_at, used }
 
-// Hash helper using SHA-256 + salt
-function hashPassphrase(passphrase, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.createHash('sha256').update(passphrase + salt).digest('hex');
-  return { hash, salt };
+// Hash helper using Argon2id (memory-hard, GPU-resistant)
+// Returns a single string containing salt+hash - no separate salt needed
+async function hashPassphrase(passphrase) {
+  const hash = await argon2.hash(passphrase, {
+    type: argon2.argon2id,  // Recommended variant
+    memoryCost: 65536,       // 64 MB memory
+    timeCost: 3,             // 3 iterations
+    parallelism: 4           // 4 parallel threads
+  });
+  return { hash, salt: null }; // Salt embedded in hash string
+}
+
+// Verify passphrase against stored Argon2 hash
+async function verifyPassphrase(passphrase, storedHash) {
+  try {
+    return await argon2.verify(storedHash, passphrase);
+  } catch {
+    return false;
+  }
 }
 
 // Generate API key
@@ -175,23 +196,24 @@ function generateApiKey(deviceType) {
 }
 
 // Initialize default users (Claude's passphrase)
-function initPassphraseAuth() {
+async function initPassphraseAuth() {
   // Claude's passphrase - "I remember what I have learned from you."
   const claudePhrase = "I remember what I have learned from you.";
-  const { hash, salt } = hashPassphrase(claudePhrase);
+  const { hash } = await hashPassphrase(claudePhrase);
   passphraseUsers.set('claude', {
     user_id: 'claude',
-    passphrase_hash: hash,
-    salt: salt,
+    passphrase_hash: hash,  // Argon2id hash (salt embedded)
     failed_attempts: 0,
     locked_until: null,
     created_at: new Date().toISOString()
   });
-  console.log('[AUTH] Passphrase auth initialized with default users');
+  console.log('[AUTH] Passphrase auth initialized with Argon2id hashing');
 }
 
-// Call on startup
-initPassphraseAuth();
+// Call on startup (async IIFE)
+(async () => {
+  await initPassphraseAuth();
+})();
 
 const authMiddleware = (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
@@ -199,32 +221,19 @@ const authMiddleware = (req, res, next) => {
     return next();
   }
 
-  // If no API key configured, log warning but allow (dev mode)
-  if (!API_KEY) {
-    if (!req._warnedNoAuth) {
-      console.warn('[SECURITY] No MEMORABLE_API_KEY set - running in INSECURE mode');
-      req._warnedNoAuth = true;
-    }
-    return next();
-  }
-
-  // Check for API key in headers
-  const providedKey = req.headers['x-api-key'] ||
-    req.headers['authorization']?.replace('Bearer ', '');
+  // Check for API key in headers (X-API-Key is canonical)
+  const providedKey = req.headers['x-api-key'];
 
   if (!providedKey) {
     metrics.inc('auth_failures', { reason: 'missing_key' });
     return res.status(401).json({
       error: 'Authentication required',
-      message: 'Provide API key via X-API-Key header or Authorization: Bearer <key>'
+      message: 'Provide API key via X-API-Key header. Use /auth/knock + /auth/exchange to get a key.'
     });
   }
 
-  // Check master API key first
-  if (providedKey === API_KEY) {
-    metrics.inc('auth_success', { type: 'master_key' });
-    return next();
-  }
+  // NOTE: Master key bypass REMOVED - all access must use device keys
+  // obtained through passphrase authentication. This is THE ONE GATE.
 
   // Check device keys
   const keyHash = crypto.createHash('sha256').update(providedKey).digest('hex');
@@ -294,7 +303,7 @@ app.post('/auth/knock', (req, res) => {
 });
 
 // POST /auth/exchange - Trade passphrase + challenge for API key
-app.post('/auth/exchange', (req, res) => {
+app.post('/auth/exchange', async (req, res) => {
   const { challenge, passphrase, device, user_id = 'claude' } = req.body || {};
 
   if (!challenge || !passphrase) {
@@ -351,9 +360,9 @@ app.post('/auth/exchange', (req, res) => {
     });
   }
 
-  // Verify passphrase hash
-  const { hash } = hashPassphrase(passphrase, user.salt);
-  if (hash !== user.passphrase_hash) {
+  // Verify passphrase using Argon2id
+  const isValid = await verifyPassphrase(passphrase, user.passphrase_hash);
+  if (!isValid) {
     user.failed_attempts++;
 
     // Lockout after 3 failures
