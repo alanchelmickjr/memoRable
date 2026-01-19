@@ -139,19 +139,22 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 ```
 BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+MEMORABLE_API_KEY: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
 ```
+
+**Authentication**: All API calls require the header `X-API-Key: $MEMORABLE_API_KEY`
 
 ### First Thing Every Session - Load Context
 
 ```bash
 # Get critical facts about Alan (MUST READ FIRST)
-curl -s "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
 
 # Get project context
-curl -s "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
 
 # Get business strategy
-curl -s "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
+curl -s -H "X-API-Key: $MEMORABLE_API_KEY" "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
 ```
 
 ### Alan - Critical Facts (DO NOT FORGET)
@@ -186,11 +189,13 @@ These are stored in the API but also documented here as backup:
 # Store verbatim (exact quote from Alan)
 curl -X POST "${BASE_URL}/memory/verbatim" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MEMORABLE_API_KEY" \
   -d '{"content": "exact words here", "source": "alan"}'
 
 # Store with multiple entities (who was involved)
 curl -X POST "${BASE_URL}/memory" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MEMORABLE_API_KEY" \
   -d '{"content": "what happened", "entities": ["alan", "claude", "memorable_project"]}'
 ```
 
