@@ -1,12 +1,28 @@
 /**
  * Main server entry point for Docker/ECS deployment.
  * Express server with health endpoints and metrics tracking.
+ *
+ * User System: MongoDB-backed multi-user support for families and teams.
  */
 
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import argon2 from 'argon2';
+
+// Database and user models
+import { setupDatabase, getDatabase } from './config/database.js';
+import {
+  setupUserModels,
+  bootstrapClaudeUser,
+  validateApiKey,
+  findUserById,
+  recordLoginAttempt,
+  isUserLocked,
+  issueDeviceKey,
+  registerUser,
+  verifyPassphrase as verifyPassphraseMongo,
+} from './models/index.ts';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -226,7 +242,7 @@ async function initPassphraseAuth() {
   await initPassphraseAuth();
 })();
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
   if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health'))) {
     return next();
@@ -246,7 +262,25 @@ const authMiddleware = (req, res, next) => {
   // NOTE: Master key bypass REMOVED - all access must use device keys
   // obtained through passphrase authentication. This is THE ONE GATE.
 
-  // Check device keys
+  // Try MongoDB auth first (if connected), then fall back to in-memory
+  if (mongoConnected) {
+    try {
+      const authResult = await validateApiKey(providedKey);
+      if (authResult && authResult.valid) {
+        req.auth = {
+          user_id: authResult.userId,
+          device_id: authResult.deviceId,
+          device: authResult.device
+        };
+        metrics.inc('auth_success', { type: 'device_key_mongo' });
+        return next();
+      }
+    } catch (dbError) {
+      console.warn('[Auth] MongoDB auth check failed, falling back:', dbError.message);
+    }
+  }
+
+  // Fallback: Check in-memory device keys
   const keyHash = crypto.createHash('sha256').update(providedKey).digest('hex');
   const deviceEntry = deviceKeys.get(keyHash);
 
@@ -352,7 +386,78 @@ app.post('/auth/exchange', async (req, res) => {
     });
   }
 
-  // Verify passphrase
+  // Prepare device info
+  const deviceInfo = device || challengeEntry.device;
+  const deviceType = deviceInfo?.type || 'unknown';
+  const deviceName = deviceInfo?.name || 'Unnamed Device';
+  const deviceFingerprint = deviceInfo?.fingerprint || challengeEntry.fingerprint || crypto.randomBytes(8).toString('hex');
+
+  // Try MongoDB auth first (if connected)
+  if (mongoConnected) {
+    try {
+      // Check lockout via MongoDB
+      const lockStatus = await isUserLocked(user_id);
+      if (lockStatus.locked) {
+        const remaining = Math.ceil(lockStatus.remaining / 60);
+        return res.status(429).json({
+          error: 'Account locked',
+          message: `Too many failed attempts. Try again in ${remaining} minutes.`
+        });
+      }
+
+      // Find user and verify passphrase via MongoDB
+      const mongoUser = await findUserById(user_id);
+      if (mongoUser) {
+        const isValid = await verifyPassphraseMongo(passphrase, mongoUser.passphraseHash);
+        if (isValid) {
+          // Success! Record login and issue device key
+          await recordLoginAttempt(user_id, true);
+
+          // Mark challenge as used
+          challengeEntry.used = true;
+
+          // Issue device key via MongoDB
+          const { apiKey, deviceId } = await issueDeviceKey(user_id, {
+            type: deviceType,
+            name: deviceName,
+            fingerprint: deviceFingerprint,
+          });
+
+          console.log(`[AUTH] Issued device key (MongoDB): ${deviceId} for user: ${user_id}`);
+          metrics.inc('auth_exchange_success', { user_id, device_type: deviceType, storage: 'mongo' });
+
+          return res.json({
+            success: true,
+            api_key: apiKey,
+            device_id: deviceId,
+            user: user_id,
+            issued_at: new Date().toISOString(),
+            expires_at: null,
+            revoke_endpoint: `/auth/revoke/${deviceId}`
+          });
+        } else {
+          // Invalid passphrase - record failed attempt
+          const { locked, lockedUntil } = await recordLoginAttempt(user_id, false);
+          metrics.inc('auth_exchange_fail', { reason: 'invalid_passphrase', storage: 'mongo' });
+
+          if (locked) {
+            metrics.inc('auth_lockout', { user_id });
+          }
+
+          return res.status(401).json({
+            error: 'Invalid passphrase',
+            message: 'Passphrase not recognized',
+            attempts_remaining: locked ? 0 : undefined
+          });
+        }
+      }
+      // User not in MongoDB, fall through to in-memory
+    } catch (dbError) {
+      console.warn('[Auth] MongoDB exchange failed, falling back:', dbError.message);
+    }
+  }
+
+  // Fallback: In-memory auth
   const user = passphraseUsers.get(user_id);
   if (!user) {
     metrics.inc('auth_exchange_fail', { reason: 'unknown_user' });
@@ -371,7 +476,7 @@ app.post('/auth/exchange', async (req, res) => {
     });
   }
 
-  // Verify passphrase using Argon2id
+  // Verify passphrase using Argon2id (in-memory)
   const isValid = await verifyPassphrase(passphrase, user.passphrase_hash);
   if (!isValid) {
     user.failed_attempts++;
@@ -397,12 +502,7 @@ app.post('/auth/exchange', async (req, res) => {
   user.failed_attempts = 0;
   user.locked_until = null;
 
-  // Generate device key
-  const deviceInfo = device || challengeEntry.device;
-  const deviceType = deviceInfo?.type || 'unknown';
-  const deviceName = deviceInfo?.name || 'Unnamed Device';
-  const deviceFingerprint = deviceInfo?.fingerprint || challengeEntry.fingerprint || crypto.randomBytes(8).toString('hex');
-
+  // Generate device key (in-memory)
   const apiKey = generateApiKey(deviceType);
   const deviceId = `dev_${deviceType}_${deviceFingerprint}_${Date.now()}`;
   const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
@@ -436,10 +536,107 @@ app.post('/auth/exchange', async (req, res) => {
   });
 });
 
+// POST /auth/register - Register a new user (requires MongoDB)
+app.post('/auth/register', async (req, res) => {
+  const { user_id, passphrase, email, display_name } = req.body || {};
+
+  if (!user_id || !passphrase) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      message: 'Provide user_id and passphrase'
+    });
+  }
+
+  // Validate user_id format (alphanumeric, underscores, 3-32 chars)
+  if (!/^[a-zA-Z0-9_]{3,32}$/.test(user_id)) {
+    return res.status(400).json({
+      error: 'Invalid user_id',
+      message: 'user_id must be 3-32 alphanumeric characters or underscores'
+    });
+  }
+
+  // Validate passphrase length (min 8 chars)
+  if (passphrase.length < 8) {
+    return res.status(400).json({
+      error: 'Passphrase too short',
+      message: 'Passphrase must be at least 8 characters'
+    });
+  }
+
+  // MongoDB required for registration
+  if (!mongoConnected) {
+    return res.status(503).json({
+      error: 'Registration unavailable',
+      message: 'MongoDB not connected. Registration requires database.'
+    });
+  }
+
+  try {
+    // Check if user already exists
+    const existing = await findUserById(user_id);
+    if (existing) {
+      return res.status(409).json({
+        error: 'User already exists',
+        message: 'A user with this ID already exists'
+      });
+    }
+
+    // Register the user
+    const user = await registerUser(user_id, passphrase, {
+      email,
+      displayName: display_name,
+    });
+
+    console.log(`[AUTH] Registered new user: ${user_id}`);
+    metrics.inc('auth_register_success', { user_id });
+
+    res.status(201).json({
+      success: true,
+      user: {
+        user_id: user.userId,
+        email: user.email,
+        display_name: user.displayName,
+        tier: user.tier,
+        created_at: user.createdAt,
+      },
+      message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
+    });
+  } catch (error) {
+    console.error('[AUTH] Registration failed:', error);
+    metrics.inc('auth_register_fail', { reason: error.message });
+    return res.status(500).json({
+      error: 'Registration failed',
+      message: error.message
+    });
+  }
+});
+
 // GET /auth/devices - List all devices (requires auth)
-app.get('/auth/devices', (req, res) => {
+app.get('/auth/devices', async (req, res) => {
   const userId = req.auth?.user_id || 'claude';
 
+  // Try MongoDB first
+  if (mongoConnected) {
+    try {
+      const { listUserDevices } = await import('./models/device.js');
+      const mongoDevices = await listUserDevices(userId);
+      return res.json({
+        user: userId,
+        devices: mongoDevices.map(d => ({
+          device_id: d.deviceId,
+          type: d.device.type,
+          name: d.device.name,
+          issued_at: d.issuedAt,
+          last_used: d.lastUsed,
+          active: d.status === 'active'
+        }))
+      });
+    } catch (dbError) {
+      console.warn('[Auth] MongoDB devices list failed, falling back:', dbError.message);
+    }
+  }
+
+  // Fallback: in-memory
   const devices = [];
   for (const [, entry] of deviceKeys) {
     if (entry.user_id === userId && !entry.revoked) {
@@ -3736,14 +3933,37 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
+// Track if MongoDB is connected
+let mongoConnected = false;
+
 // Start server
 async function start() {
   try {
     console.log('[Server] Starting MemoRable...');
 
+    // Try to connect to MongoDB for user system
+    // Falls back to in-memory auth if MongoDB unavailable
+    try {
+      if (process.env.MONGODB_URI) {
+        console.log('[Server] Connecting to MongoDB...');
+        await setupDatabase();
+        const db = getDatabase();
+        await setupUserModels(db);
+        await bootstrapClaudeUser();
+        mongoConnected = true;
+        console.log('[Server] MongoDB user system initialized');
+      } else {
+        console.log('[Server] No MONGODB_URI - using in-memory auth (dev mode)');
+      }
+    } catch (dbError) {
+      console.warn('[Server] MongoDB connection failed, using in-memory auth:', dbError.message);
+      mongoConnected = false;
+    }
+
     app.listen(PORT, () => {
       console.log(`[Server] MemoRable listening on port ${PORT}`);
       console.log(`[Server] Health check: http://localhost:${PORT}/health`);
+      console.log(`[Server] Auth mode: ${mongoConnected ? 'MongoDB' : 'In-Memory'}`);
 
       // Mark as ready after server starts
       isReady = true;

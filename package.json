@@ -18,6 +18,8 @@
     "LICENSE"
   ],
   "scripts": {
+    "start": "tsx src/server.js",
+    "start:watch": "tsx watch src/server.js",
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "test": "jest",
@@ -106,7 +108,8 @@
     "prettier": "^2.8.8",
     "rollup": "^2.79.1",
     "ts-jest": "^29.3.2",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0"
   },
   "peerDependencies": {
     "@tensorflow/tfjs-node": ">=4.22.0",

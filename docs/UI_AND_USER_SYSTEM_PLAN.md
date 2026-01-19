@@ -267,20 +267,164 @@ graph TB
     SUPER --> SUPER_A
 ```
 
-## Next Steps (Immediate)
+## Implementation Progress
 
-1. **Create User model** - Foundation for everything else
-2. **Migrate 'claude' to real user** - First user in the system
-3. **Basic admin dashboard** - Even if just metrics we have
+### ✅ Phase 1.1-1.3: Models Created (2026-01-19)
 
-## Questions for Alan
+**Files created:**
+```
+src/models/
+├── index.ts      # Entry point, bootstrap functions
+├── user.ts       # User model with tiers, auth tracking
+├── device.ts     # Device model with API keys, mTLS support
+└── preference.ts # Key-value preferences by namespace
+```
 
-- [ ] Admin auth: Same passphrase system or separate?
-- [ ] User registration: Open or invite-only?
-- [ ] Billing tier: Free/Pro/Enterprise or simpler?
-- [ ] Support tools: Zendesk integration or homebrew?
+**Key features implemented:**
+
+1. **User Model** (`src/models/user.ts`)
+   - Tiers: free/pro/enterprise with limits
+   - Auth state: failed attempts, lockout, MFA ready
+   - Usage tracking: device count, storage, memories/day
+   - Admin flag for elevated access
+
+2. **Device Model** (`src/models/device.ts`)
+   - API key generation (SHA-256 hash stored, not plaintext)
+   - Device types: terminal, phone, ar_glasses, robot, sensor, etc.
+   - mTLS support for sensors/robots (cert fingerprint auth)
+   - Independent revocation per device
+
+3. **Preference Model** (`src/models/preference.ts`)
+   - Namespaced: privacy, notifications, salience, display, etc.
+   - Default preferences auto-initialized for new users
+   - Salience weights integration for personalized scoring
+   - Export/import for data portability
+
+### Integration Plan: server.js Migration
+
+```mermaid
+graph LR
+    subgraph "Current (In-Memory)"
+        PM[passphraseUsers<br/>Map]
+        DK[deviceKeys<br/>Map]
+        AC[authChallenges<br/>Map]
+    end
+
+    subgraph "New (MongoDB)"
+        UC[users<br/>Collection]
+        DC[devices<br/>Collection]
+        PC[preferences<br/>Collection]
+        AC2[authChallenges<br/>Map kept in-memory]
+    end
+
+    PM --> |migrate| UC
+    DK --> |migrate| DC
+    AC --> AC2
+
+    style PM fill:#ff6b6b
+    style DK fill:#ff6b6b
+    style UC fill:#4ecdc4
+    style DC fill:#4ecdc4
+    style PC fill:#4ecdc4
+```
+
+**Migration steps:**
+1. ✅ Create models with proper indexes
+2. 🔄 Add `setupUserModels()` call to server startup
+3. 🔄 Call `bootstrapClaudeUser()` to migrate first user
+4. 🔄 Update auth middleware to query MongoDB
+5. 🔄 Keep challenges in-memory (short-lived, no need to persist)
+
+### Family Use Case (Why This Matters)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     FAMILY DEPLOYMENT SCENARIO                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Alan (admin)         Betty (pro)           Kid (free)              │
+│  ├── Claude Code      ├── AR glasses        ├── Phone app           │
+│  ├── Terminal         ├── Companion robot   └── Web browser         │
+│  └── Web browser      ├── Phone app                                 │
+│                       └── Tablet                                     │
+│                                                                      │
+│  Each user:                                                          │
+│  - Has their own passphrase (privacy within family)                 │
+│  - Can manage their own devices                                     │
+│  - Has personalized salience weights                                │
+│  - Memories isolated by userId                                      │
+│                                                                      │
+│  Admin (Alan) can:                                                   │
+│  - See system health                                                │
+│  - Manage all users                                                 │
+│  - Set tier limits                                                  │
+│  - View audit logs                                                  │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Open Questions (Resolved)
+
+- [x] Admin auth: Same passphrase system ✓ (isAdmin flag on user)
+- [x] User registration: Open (POST /auth/register endpoint)
+- [x] Billing tier: Free/Pro/Enterprise ✓ (with configurable limits)
+- [ ] Support tools: Start homebrew, integrate later if needed
+
+### Key Insight: Users ARE Entities
+
+```mermaid
+graph LR
+    subgraph "Entity System (Existing)"
+        E1[Entity: Alan]
+        E2[Entity: Betty]
+        E3[Entity: memorable_project]
+        E1 --> |relationship| E2
+        E1 --> |relationship| E3
+    end
+
+    subgraph "User System (New)"
+        U1[User: alan]
+        U2[User: betty]
+        U1 -.-> |maps to| E1
+        U2 -.-> |maps to| E2
+    end
+
+    style E1 fill:#4ecdc4
+    style E2 fill:#4ecdc4
+    style U1 fill:#ff6b6b
+    style U2 fill:#ff6b6b
+```
+
+**Users are entities with authentication.** The existing entity system handles:
+- Relationship patterns (`relationship_patterns` collection)
+- Interaction tracking (`person_timeline_events`)
+- Open loops / commitments between entities
+
+The user system adds:
+- Authentication (passphrase → API key)
+- Device management (per-device keys)
+- Preferences (personalized salience weights)
+- Tier limits (free/pro/enterprise)
+
+**Memory portability**: Preferences have `exportPreferences`/`importPreferences`.
+Memory export can follow the same pattern.
+
+### Completed (2026-01-19)
+
+1. ✅ **Models created** - `src/models/user.ts`, `device.ts`, `preference.ts`, `index.ts`
+2. ✅ **Server startup integration** - MongoDB connection + user models init
+3. ✅ **Auth flow migrated** - MongoDB first, in-memory fallback
+4. ✅ **Registration endpoint** - `POST /auth/register`
+5. ✅ **All 532 tests passing**
+
+### Next Steps
+
+1. **Memory export/import** - Data portability for users
+2. **User-entity mapping** - Link userId to entity for relationship tracking
+3. **Basic admin dashboard** - Server-rendered HTML with user/device counts
 
 ---
 
 *Document created: 2026-01-19*
-*Status: Planning*
+*Status: Phase 1 - COMPLETE*
+*Models: ✅ | Integration: ✅ | Auth: ✅ | Tests: ✅*

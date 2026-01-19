@@ -24,6 +24,9 @@ COPY package*.json ./
 # Install app dependencies (skip prepare/husky hooks)
 RUN npm install --ignore-scripts
 
+# Install tsx for TypeScript execution
+RUN npm install -g tsx
+
 # Copy app source
 COPY . .
 
@@ -50,5 +53,5 @@ chmod +x /usr/local/bin/health.sh
 # Expose port
 EXPOSE 3000
 
-# Start the application server
-CMD ["node", "src/server.js"]
+# Start the application server (tsx handles TypeScript imports)
+CMD ["tsx", "src/server.js"]
