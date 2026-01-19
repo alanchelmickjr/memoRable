@@ -6,10 +6,9 @@
  * - Context-aware gating formula: α_t = σ(RMSNorm(h_t)ᵀ · RMSNorm(W_K·e_t) / √d)
  * - Zipfian cache hierarchies (Hot/Warm/Cold)
  *
- * Temporal model (3×7):
- * - 21 days: Patterns emerge (3×7)
- * - 63 days: Patterns stable (3×7×3, ~Lally et al median of 66)
- * - 84 days: Max window (3×7×4)
+ * Research corrections:
+ * - 66-day habit formation (NOT 21 days - that's a myth)
+ * - Per Lally et al 2009 (UCL): 18-254 day range, 66 day median
  */
 
 // ============================================================================
@@ -95,27 +94,26 @@ export interface GatingResult {
 }
 
 // ============================================================================
-// Temporal Pattern Detection (3×7 Model)
+// Temporal Pattern Detection (66-Day Window)
 // ============================================================================
 
 /**
- * RESEARCH NOTE: 21 days is a MYTH
+ * RESEARCH CORRECTION: 21 days is a MYTH
  *
  * Lally et al. (2009) UCL Study "How are habits formed":
- * - Median: 66 days (range: 18-254 days)
+ * - Median: 66 days
+ * - Range: 18-254 days
+ * - Complexity dependent
  *
- * We use the 3×7 model for mathematical elegance:
- * - 3×7 = 21 days: Patterns emerge
- * - 3×7×3 = 63 days: Patterns stable (close to 66 median)
- * - 3×7×4 = 84 days: Max rolling window
+ * Our learning windows reflect this research.
  */
 export const TEMPORAL_WINDOWS = {
-  /** Pattern detection starts (3×7) */
+  /** Pattern detection starts (initial signal) */
   initial: 21,
-  /** Stable habit formation (3×7×3, ~research median) */
-  stable: 63,
-  /** Maximum rolling window cap (3×7×4) */
-  max: 84,
+  /** Stable habit formation (research median) */
+  stable: 66,
+  /** Maximum rolling window cap */
+  max: 90,
 } as const;
 
 export const PERIOD_TYPES = {
@@ -143,8 +141,8 @@ export interface UserTemporalPatterns {
   patterns: Record<PeriodType, TemporalPattern | null>;
   dataStartDate: Date;
   dataPointCount: number;
-  isReady: boolean; // Has 21+ days of data (3×7)
-  isStable: boolean; // Has 63+ days of data (3×7×3)
+  isReady: boolean; // Has 21+ days of data
+  isStable: boolean; // Has 66+ days of data
 }
 
 // ============================================================================
@@ -340,7 +338,7 @@ export interface GetAnticipatedContextOutput {
  *
  * 1. TRUE ANTICIPATORY SURFACING
  *    - No competitor proactively predicts needed context
- *    - Uses temporal behavior patterns over 63-day window (3×7×3)
+ *    - Uses temporal behavior patterns over 66-day window
  *
  * 2. O(1) ENGRAM-STYLE LOOKUP
  *    - All competitors rely on O(log n) or O(n) vector search
