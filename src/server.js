@@ -3553,6 +3553,567 @@ app.post('/user/passphrase', async (req, res) => {
   res.redirect('/user/profile?passphrase_changed=1');
 });
 
+// =============================================================================
+// ADMIN PANEL - Phase 3: System administration
+// =============================================================================
+
+// Admin middleware - requires isAdmin flag
+const adminMiddleware = async (req, res, next) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.status(401).send('Authentication required');
+  }
+
+  let isAdmin = false;
+  if (mongoConnected) {
+    const user = await findUserById(userId);
+    isAdmin = user?.isAdmin || user?.isSuperAdmin;
+  } else {
+    // In dev mode, claude is admin
+    isAdmin = userId === 'claude';
+  }
+
+  if (!isAdmin) {
+    return res.status(403).send('Admin access required');
+  }
+
+  req.isAdmin = true;
+  req.isSuperAdmin = mongoConnected ? (await findUserById(userId))?.isSuperAdmin : false;
+  next();
+};
+
+// Admin styles (extends user settings styles)
+const adminStyles = userSettingsStyles + `
+  .admin-header {
+    background: linear-gradient(135deg, var(--bg-panel) 0%, #1a0a1a 100%);
+    border-color: var(--magenta);
+  }
+  .admin-header .logo { color: var(--magenta); text-shadow: 0 0 10px var(--magenta); }
+  .admin-stat { border-left: 3px solid var(--magenta); }
+  .user-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .user-table th, .user-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .user-table th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    background: var(--bg-card);
+  }
+  .user-table tr:hover { background: rgba(255, 0, 255, 0.05); }
+  .tier-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .tier-free { background: rgba(108, 117, 125, 0.2); color: #6c757d; }
+  .tier-pro { background: rgba(0, 255, 255, 0.2); color: var(--cyan); }
+  .tier-enterprise { background: rgba(255, 215, 0, 0.2); color: #ffd700; }
+  .status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+  .status-active { background: rgba(0, 255, 65, 0.2); color: var(--green); }
+  .status-suspended { background: rgba(255, 136, 0, 0.2); color: var(--orange); }
+  .status-deleted { background: rgba(255, 0, 64, 0.2); color: var(--red); }
+  .log-entry {
+    padding: 8px 12px;
+    border-left: 3px solid var(--border);
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .log-entry.warn { border-color: var(--yellow); }
+  .log-entry.error { border-color: var(--red); }
+  .log-entry.success { border-color: var(--green); }
+`;
+
+// GET /admin/dashboard - Admin overview
+app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
+  const memories = Array.from(memoryStore.values());
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+  // Get user and device counts
+  let userCount = 1; // Default claude user
+  let deviceCount = deviceKeys.size;
+  let recentUsers = [];
+
+  if (mongoConnected) {
+    const { listUsers, listUserDevices } = await import('./models/index.ts');
+    const result = await listUsers({ limit: 5 });
+    userCount = result.total;
+    recentUsers = result.users;
+
+    // Count all devices
+    deviceCount = 0;
+    for (const user of result.users) {
+      const devices = await listUserDevices(user.userId);
+      deviceCount += devices.length;
+    }
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Dashboard - MemoRable</title>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="30">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${adminStyles}</style>
+</head>
+<body>
+  <div class="header admin-header">
+    <div class="logo">MEMORABLE // ADMIN</div>
+    <nav class="nav">
+      <a href="/admin/dashboard" class="active">Dashboard</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/devices">Devices</a>
+      <a href="/admin/settings">Settings</a>
+      <a href="/dashboard/mission-control" style="border-color: var(--cyan);">Mission Control</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">System Overview</div>
+    <div class="stat-grid">
+      <div class="stat-card admin-stat">
+        <div class="stat-value">\${userCount}</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-card admin-stat">
+        <div class="stat-value">\${deviceCount}</div>
+        <div class="stat-label">Connected Devices</div>
+      </div>
+      <div class="stat-card admin-stat">
+        <div class="stat-value">\${memories.length}</div>
+        <div class="stat-label">Memories Stored</div>
+      </div>
+      <div class="stat-card admin-stat">
+        <div class="stat-value">\${Math.floor(uptimeSeconds / 3600)}h</div>
+        <div class="stat-label">Uptime</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="panel">
+      <div class="panel-title">Recent Users</div>
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Tier</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          \${recentUsers.length === 0 ?
+            '<tr><td colspan="3" style="color: var(--text-dim);">No users in database</td></tr>' :
+            recentUsers.map(u => \`
+              <tr>
+                <td>\${u.userId}</td>
+                <td><span class="tier-badge tier-\${u.tier}">\${u.tier}</span></td>
+                <td><span class="status-badge status-\${u.status}">\${u.status}</span></td>
+              </tr>
+            \`).join('')}
+        </tbody>
+      </table>
+      <a href="/admin/users" style="display: block; text-align: center; margin-top: 15px; color: var(--cyan); font-size: 12px;">View All Users →</a>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">System Logs</div>
+      <div class="log-entry success">[SYSTEM] Server started - \${new Date(startTime).toISOString()}</div>
+      <div class="log-entry">[AUTH] MongoDB mode: \${mongoConnected ? 'Connected' : 'In-Memory Fallback'}</div>
+      <div class="log-entry">[METRICS] \${memories.length} memories in store</div>
+      <div class="log-entry">[DEVICES] \${deviceCount} active device keys</div>
+      \${!mongoConnected ? '<div class="log-entry warn">[WARN] Running without MongoDB - data is ephemeral</div>' : ''}
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Quick Actions</div>
+    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+      <a href="/admin/users" class="btn btn-primary">Manage Users</a>
+      <a href="/admin/devices" class="btn btn-primary">Manage Devices</a>
+      <a href="/admin/settings" class="btn btn-primary">System Settings</a>
+      <a href="/metrics/dashboard" class="btn btn-primary">View Metrics</a>
+    </div>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// GET /admin/users - User management
+app.get('/admin/users', adminMiddleware, async (req, res) => {
+  let users = [];
+  let total = 0;
+  const page = parseInt(req.query.page) || 1;
+  const limit = 20;
+  const skip = (page - 1) * limit;
+
+  if (mongoConnected) {
+    const { listUsers } = await import('./models/index.ts');
+    const result = await listUsers({ skip, limit, includeDeleted: true });
+    users = result.users;
+    total = result.total;
+  } else {
+    // In-memory users
+    users = Array.from(passphraseUsers.entries()).map(([id, data]) => ({
+      userId: id,
+      tier: 'free',
+      status: 'active',
+      createdAt: data.created_at,
+      isAdmin: id === 'claude',
+    }));
+    total = users.length;
+  }
+
+  const totalPages = Math.ceil(total / limit);
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Management - MemoRable Admin</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${adminStyles}</style>
+</head>
+<body>
+  <div class="header admin-header">
+    <div class="logo">MEMORABLE // USERS</div>
+    <nav class="nav">
+      <a href="/admin/dashboard">Dashboard</a>
+      <a href="/admin/users" class="active">Users</a>
+      <a href="/admin/devices">Devices</a>
+      <a href="/admin/settings">Settings</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">All Users (\${total})</div>
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>User ID</th>
+          <th>Email</th>
+          <th>Tier</th>
+          <th>Status</th>
+          <th>Admin</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        \${users.map(u => \`
+          <tr>
+            <td>\${u.userId}</td>
+            <td>\${u.email || '-'}</td>
+            <td><span class="tier-badge tier-\${u.tier}">\${u.tier}</span></td>
+            <td><span class="status-badge status-\${u.status}">\${u.status}</span></td>
+            <td>\${u.isAdmin ? '✓' : '-'}</td>
+            <td>\${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+            <td>
+              <form method="POST" action="/admin/users/\${u.userId}/action" style="display: inline;">
+                <select name="action" style="padding: 4px; font-size: 11px; background: var(--bg-card); color: var(--text); border: 1px solid var(--border);">
+                  <option value="">Actions...</option>
+                  \${u.status === 'active' ? '<option value="suspend">Suspend</option>' : '<option value="activate">Activate</option>'}
+                  \${u.isAdmin ? '<option value="revoke_admin">Revoke Admin</option>' : '<option value="grant_admin">Grant Admin</option>'}
+                  <option value="change_tier">Change Tier</option>
+                  \${u.status !== 'deleted' ? '<option value="delete">Delete</option>' : '<option value="restore">Restore</option>'}
+                </select>
+                <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 10px; margin-left: 5px;">Go</button>
+              </form>
+            </td>
+          </tr>
+        \`).join('')}
+      </tbody>
+    </table>
+
+    \${totalPages > 1 ? \`
+      <div style="margin-top: 20px; text-align: center;">
+        \${page > 1 ? \`<a href="/admin/users?page=\${page - 1}" class="btn btn-primary" style="padding: 6px 12px;">← Prev</a>\` : ''}
+        <span style="margin: 0 15px; color: var(--text-dim);">Page \${page} of \${totalPages}</span>
+        \${page < totalPages ? \`<a href="/admin/users?page=\${page + 1}" class="btn btn-primary" style="padding: 6px 12px;">Next →</a>\` : ''}
+      </div>
+    \` : ''}
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /admin/users/:userId/action - Perform admin action on user
+app.post('/admin/users/:userId/action', adminMiddleware, async (req, res) => {
+  const { userId } = req.params;
+  const { action, tier } = req.body;
+  const performedBy = req.auth?.user_id;
+
+  if (mongoConnected) {
+    const { updateUser, setAdminStatus, changeUserTier, deleteUser, restoreUser } = await import('./models/index.ts');
+
+    switch (action) {
+      case 'suspend':
+        await updateUser(userId, { status: 'suspended' }, { performedBy, auditAction: 'status_changed' });
+        break;
+      case 'activate':
+        await updateUser(userId, { status: 'active' }, { performedBy, auditAction: 'status_changed' });
+        break;
+      case 'grant_admin':
+        await setAdminStatus(userId, true, { performedBy });
+        break;
+      case 'revoke_admin':
+        await setAdminStatus(userId, false, { performedBy });
+        break;
+      case 'change_tier':
+        if (tier) await changeUserTier(userId, tier, { performedBy });
+        break;
+      case 'delete':
+        await deleteUser(userId, { performedBy });
+        break;
+      case 'restore':
+        await restoreUser(userId, { performedBy });
+        break;
+    }
+  }
+
+  res.redirect('/admin/users');
+});
+
+// GET /admin/devices - Device management
+app.get('/admin/devices', adminMiddleware, async (req, res) => {
+  let allDevices = [];
+
+  if (mongoConnected) {
+    const { listUsers, listUserDevices } = await import('./models/index.ts');
+    const { users } = await listUsers({ limit: 100 });
+    for (const user of users) {
+      const devices = await listUserDevices(user.userId);
+      allDevices.push(...devices.map(d => ({ ...d, userDisplayName: user.displayName || user.userId })));
+    }
+  } else {
+    // In-memory devices
+    for (const [keyHash, entry] of deviceKeys.entries()) {
+      allDevices.push({
+        deviceId: entry.device_id,
+        userId: entry.user_id,
+        userDisplayName: entry.user_id,
+        device: entry.device,
+        issuedAt: entry.issued_at,
+        lastUsed: entry.last_used,
+        status: entry.revoked ? 'revoked' : 'active',
+      });
+    }
+  }
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Device Management - MemoRable Admin</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${adminStyles}</style>
+</head>
+<body>
+  <div class="header admin-header">
+    <div class="logo">MEMORABLE // DEVICES</div>
+    <nav class="nav">
+      <a href="/admin/dashboard">Dashboard</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/devices" class="active">Devices</a>
+      <a href="/admin/settings">Settings</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">All Devices (\${allDevices.length})</div>
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>Device</th>
+          <th>Type</th>
+          <th>User</th>
+          <th>Status</th>
+          <th>Issued</th>
+          <th>Last Used</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        \${allDevices.length === 0 ?
+          '<tr><td colspan="7" style="color: var(--text-dim);">No devices found</td></tr>' :
+          allDevices.map(d => \`
+            <tr>
+              <td>\${d.device?.name || d.deviceId}</td>
+              <td>\${d.device?.type || 'unknown'}</td>
+              <td>\${d.userDisplayName || d.userId}</td>
+              <td><span class="status-badge status-\${d.status}">\${d.status}</span></td>
+              <td>\${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : '-'}</td>
+              <td>\${d.lastUsed ? new Date(d.lastUsed).toLocaleString() : 'Never'}</td>
+              <td>
+                \${d.status === 'active' ? \`
+                  <form method="POST" action="/admin/devices/\${d.deviceId}/revoke" style="display: inline;">
+                    <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 10px;">Revoke</button>
+                  </form>
+                \` : '<span style="color: var(--text-dim);">Revoked</span>'}
+              </td>
+            </tr>
+          \`).join('')}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /admin/devices/:deviceId/revoke
+app.post('/admin/devices/:deviceId/revoke', adminMiddleware, async (req, res) => {
+  const { deviceId } = req.params;
+
+  if (mongoConnected) {
+    const { revokeDevice } = await import('./models/index.ts');
+    await revokeDevice(deviceId, { performedBy: req.auth?.user_id, reason: 'Admin revocation' });
+  } else {
+    // In-memory revoke
+    for (const [keyHash, entry] of deviceKeys.entries()) {
+      if (entry.device_id === deviceId) {
+        entry.revoked = true;
+        entry.revoked_at = new Date().toISOString();
+        break;
+      }
+    }
+  }
+
+  res.redirect('/admin/devices');
+});
+
+// GET /admin/settings - System settings
+app.get('/admin/settings', adminMiddleware, async (req, res) => {
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>System Settings - MemoRable Admin</title>
+  <meta charset="utf-8">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>\${adminStyles}</style>
+</head>
+<body>
+  <div class="header admin-header">
+    <div class="logo">MEMORABLE // SETTINGS</div>
+    <nav class="nav">
+      <a href="/admin/dashboard">Dashboard</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/devices">Devices</a>
+      <a href="/admin/settings" class="active">Settings</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Environment</div>
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; font-size: 13px;">
+      <div style="color: var(--text-dim);">Node Version</div>
+      <div>\${process.version}</div>
+      <div style="color: var(--text-dim);">Environment</div>
+      <div>\${process.env.NODE_ENV || 'development'}</div>
+      <div style="color: var(--text-dim);">MongoDB</div>
+      <div style="color: \${mongoConnected ? 'var(--green)' : 'var(--yellow)'}">\${mongoConnected ? 'Connected' : 'Not Connected (In-Memory Mode)'}</div>
+      <div style="color: var(--text-dim);">Port</div>
+      <div>\${process.env.PORT || 3000}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Default Tier Limits</div>
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Max Devices</th>
+          <th>Memories/Day</th>
+          <th>Storage</th>
+          <th>API/Min</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tier-badge tier-free">Free</span></td>
+          <td>3</td>
+          <td>100</td>
+          <td>100 MB</td>
+          <td>30</td>
+        </tr>
+        <tr>
+          <td><span class="tier-badge tier-pro">Pro</span></td>
+          <td>10</td>
+          <td>1,000</td>
+          <td>1 GB</td>
+          <td>100</td>
+        </tr>
+        <tr>
+          <td><span class="tier-badge tier-enterprise">Enterprise</span></td>
+          <td>100</td>
+          <td>10,000</td>
+          <td>10 GB</td>
+          <td>500</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Security Configuration</div>
+    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; font-size: 13px;">
+      <div style="color: var(--text-dim);">Password Hashing</div>
+      <div>Argon2id (64MB memory, 3 iterations)</div>
+      <div style="color: var(--text-dim);">Lockout Threshold</div>
+      <div>5 failed attempts</div>
+      <div style="color: var(--text-dim);">Lockout Duration</div>
+      <div>15 minutes (progressive)</div>
+      <div style="color: var(--text-dim);">API Key Format</div>
+      <div>memorable_{type}_{48-char-hex}</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Danger Zone</div>
+    <p style="color: var(--red); margin-bottom: 15px; font-size: 13px;">
+      These actions are irreversible. Use with extreme caution.
+    </p>
+    <div style="display: flex; gap: 15px;">
+      <button class="btn btn-danger" onclick="alert('This would clear all memories. Not implemented in UI for safety.')">Clear All Memories</button>
+      <button class="btn btn-danger" onclick="alert('This would revoke all devices. Not implemented in UI for safety.')">Revoke All Devices</button>
+    </div>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // Pattern analysis from memory data
 // Circles within circles: 7 (week) → 21 (habit) → 28 (month) → 91 (season) → 365 (year)
 function analyzePatterns(memories) {
