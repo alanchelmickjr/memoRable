@@ -233,6 +233,338 @@ export async function forgetPerson(
   };
 }
 
+// ============================================================================
+// SELECTIVE FORGETTING - Granular control for healthy trajectories
+// "Keep the lessons. Forget the pain."
+// ============================================================================
+
+export interface SelectiveForgetOptions {
+  /** Entity (person, project, topic) to selectively forget */
+  entity?: string;
+
+  /** Temporal filters */
+  before?: string;  // ISO date - forget memories before this
+  after?: string;   // ISO date - forget memories after this
+
+  /** Content filters */
+  topic?: string;           // Only memories matching this topic/query
+  emotionThreshold?: number; // Only memories above this emotion intensity (0-1)
+  salienceBelow?: number;   // Only memories below this salience score
+
+  /** Protective filters - DON'T forget these */
+  keepPositive?: boolean;   // Preserve positive-emotion memories
+  keepLessons?: boolean;    // Preserve memories tagged as lessons/insights
+  keepMilestones?: boolean; // Preserve milestone/achievement memories
+
+  /** How to forget */
+  mode: 'suppress' | 'archive' | 'delete' | 'fade' | 'redact' | 'blur';
+
+  /** Fade-specific: reduce salience by this factor (0-1) */
+  fadeFactor?: number;
+
+  /** Reason for audit trail */
+  reason?: string;
+
+  /** Who requested: user, system, or trajectory algorithm */
+  requestedBy?: 'user' | 'system' | 'trajectory';
+}
+
+export interface SelectiveForgetResult {
+  success: boolean;
+  memoriesAffected: number;
+  memoriesProtected: number;
+  mode: string;
+  filters: {
+    entity?: string;
+    temporal?: { before?: string; after?: string };
+    topic?: string;
+    emotion?: number;
+    salience?: number;
+  };
+  protections: string[];
+  recommendation?: string;
+}
+
+/**
+ * Selectively forget memories based on granular criteria.
+ *
+ * This is the healthy forgetting engine - not nuclear deletion,
+ * but therapeutic removal of what doesn't serve your best trajectory.
+ *
+ * "The best you. 66 days at a time."
+ */
+export async function forgetSelective(
+  userId: string,
+  options: SelectiveForgetOptions
+): Promise<SelectiveForgetResult> {
+  const {
+    entity,
+    before,
+    after,
+    topic,
+    emotionThreshold,
+    salienceBelow,
+    keepPositive = true,
+    keepLessons = true,
+    keepMilestones = true,
+    mode = 'fade',
+    fadeFactor = 0.5,
+    reason,
+    requestedBy = 'user',
+  } = options;
+
+  // Build the query
+  const query: Record<string, unknown> = { userId };
+
+  // Entity filter (person, project, etc.)
+  if (entity) {
+    query.$or = [
+      { 'extractedFeatures.peopleMentioned': { $regex: new RegExp(entity, 'i') } },
+      { entities: { $regex: new RegExp(entity, 'i') } },
+      { content: { $regex: new RegExp(entity, 'i') } },
+    ];
+  }
+
+  // Temporal filters
+  if (before || after) {
+    query.timestamp = {};
+    if (before) (query.timestamp as Record<string, string>).$lt = before;
+    if (after) (query.timestamp as Record<string, string>).$gt = after;
+  }
+
+  // Topic filter (content search)
+  if (topic) {
+    query.content = { $regex: new RegExp(topic, 'i') };
+  }
+
+  // Emotion threshold (high-emotion memories only)
+  if (emotionThreshold !== undefined) {
+    query['extractedFeatures.emotionalIntensity'] = { $gte: emotionThreshold };
+  }
+
+  // Low salience filter
+  if (salienceBelow !== undefined) {
+    query.salience = { $lt: salienceBelow };
+  }
+
+  // Find matching memories
+  const candidates = await collections.memories().find(query).toArray();
+
+  // Apply protective filters
+  const protections: string[] = [];
+  const toForget: typeof candidates = [];
+  let protectedCount = 0;
+
+  for (const memory of candidates) {
+    const features = memory.extractedFeatures as ExtractedFeatures | undefined;
+    let protect = false;
+
+    // Keep positive memories
+    if (keepPositive && features?.emotionalValence === 'positive') {
+      protect = true;
+      if (!protections.includes('positive')) protections.push('positive');
+    }
+
+    // Keep lessons/insights
+    if (keepLessons && (
+      memory.content?.toLowerCase().includes('learned') ||
+      memory.content?.toLowerCase().includes('lesson') ||
+      memory.content?.toLowerCase().includes('insight') ||
+      memory.content?.toLowerCase().includes('realized')
+    )) {
+      protect = true;
+      if (!protections.includes('lessons')) protections.push('lessons');
+    }
+
+    // Keep milestones
+    if (keepMilestones && (
+      memory.content?.toLowerCase().includes('milestone') ||
+      memory.content?.toLowerCase().includes('achieved') ||
+      memory.content?.toLowerCase().includes('first time') ||
+      memory.content?.toLowerCase().includes('accomplished')
+    )) {
+      protect = true;
+      if (!protections.includes('milestones')) protections.push('milestones');
+    }
+
+    if (protect) {
+      protectedCount++;
+    } else {
+      toForget.push(memory);
+    }
+  }
+
+  // Apply the forgetting based on mode
+  let affected = 0;
+
+  for (const memory of toForget) {
+    const update: Record<string, unknown> = {
+      stateChangedAt: new Date().toISOString(),
+      stateChangeReason: reason || `Selective forget: ${mode}`,
+      stateChangeRequestedBy: requestedBy,
+    };
+
+    switch (mode) {
+      case 'suppress':
+        update.state = 'suppressed';
+        break;
+
+      case 'archive':
+        update.state = 'archived';
+        break;
+
+      case 'delete':
+        update.state = 'deleted';
+        update.deleteScheduledFor = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        break;
+
+      case 'fade':
+        // Don't change state, just reduce salience
+        const currentSalience = memory.salience || 50;
+        update.salience = Math.max(1, Math.floor(currentSalience * fadeFactor));
+        update.fadedAt = new Date().toISOString();
+        update.fadedReason = reason || 'Trajectory optimization';
+        break;
+
+      case 'redact':
+        // Keep structure, remove sensitive content
+        update.originalContent = memory.content;
+        update.content = '[REDACTED]';
+        update.redactedAt = new Date().toISOString();
+        break;
+
+      case 'blur':
+        // Keep general shape, remove specifics
+        update.originalContent = memory.content;
+        update.content = blurContent(memory.content || '');
+        update.blurredAt = new Date().toISOString();
+        break;
+    }
+
+    await collections.memories().updateOne(
+      { memoryId: memory.memoryId, userId },
+      { $set: update }
+    );
+    affected++;
+  }
+
+  console.log(`[SelectiveForget] ${requestedBy} forgot ${affected} memories (protected ${protectedCount}) via ${mode}`);
+
+  return {
+    success: true,
+    memoriesAffected: affected,
+    memoriesProtected: protectedCount,
+    mode,
+    filters: {
+      entity,
+      temporal: (before || after) ? { before, after } : undefined,
+      topic,
+      emotion: emotionThreshold,
+      salience: salienceBelow,
+    },
+    protections,
+    recommendation: affected > 0
+      ? `Faded ${affected} memories. Kept ${protectedCount} positive/lesson memories. The path forward is clearer.`
+      : 'No memories matched your criteria, or all were protected.',
+  };
+}
+
+/**
+ * Blur content - keep structure, remove specifics
+ */
+function blurContent(content: string): string {
+  // Replace names with [PERSON]
+  let blurred = content.replace(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g, '[PERSON]');
+  // Replace numbers with [NUMBER]
+  blurred = blurred.replace(/\b\d+\b/g, '[NUMBER]');
+  // Replace dates with [DATE]
+  blurred = blurred.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, '[DATE]');
+  blurred = blurred.replace(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:,?\s+\d{4})?\b/gi, '[DATE]');
+  return blurred;
+}
+
+// ============================================================================
+// TRAJECTORY-AWARE FORGETTING - The healthy algorithm prescribes
+// ============================================================================
+
+export interface TrajectoryForgetRecommendation {
+  memoryId: string;
+  content: string;
+  reason: string;
+  distressScore: number;
+  goalAlignment: number;
+  recommendedAction: 'fade' | 'archive' | 'keep';
+  confidence: number;
+}
+
+/**
+ * Analyze memories and recommend what to forget for optimal trajectory.
+ *
+ * This is the "healthy algorithm" - it looks at patterns and suggests
+ * what to let go of to support your best self.
+ */
+export async function recommendTrajectoryForgetting(
+  userId: string,
+  options: {
+    lookbackDays?: number;
+    minDistressScore?: number;
+    maxGoalAlignment?: number;
+  } = {}
+): Promise<{
+  recommendations: TrajectoryForgetRecommendation[];
+  summary: string;
+}> {
+  const {
+    lookbackDays = 66,  // Habit formation window
+    minDistressScore = 0.6,
+    maxGoalAlignment = 0.3,
+  } = options;
+
+  const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Find memories that consistently cause distress
+  const memories = await collections.memories().find({
+    userId,
+    timestamp: { $gte: since },
+    state: { $ne: 'deleted' },
+    'metadata.prosody.distressScore': { $gte: minDistressScore * 100 },
+  }).toArray();
+
+  const recommendations: TrajectoryForgetRecommendation[] = [];
+
+  for (const memory of memories) {
+    const prosody = memory.metadata?.prosody;
+    const distressScore = (prosody?.distressScore || 0) / 100;
+
+    // Simple goal alignment check - memories about current projects/goals score higher
+    // This would be more sophisticated with actual goal tracking
+    const goalAlignment = memory.salience ? memory.salience / 100 : 0.5;
+
+    if (distressScore >= minDistressScore && goalAlignment <= maxGoalAlignment) {
+      recommendations.push({
+        memoryId: memory.memoryId,
+        content: memory.content?.substring(0, 100) + '...',
+        reason: prosody?.distressSignals?.map((s: { category: string }) => s.category).join(', ') || 'High distress',
+        distressScore,
+        goalAlignment,
+        recommendedAction: distressScore > 0.8 ? 'archive' : 'fade',
+        confidence: Math.min(0.95, distressScore * (1 - goalAlignment)),
+      });
+    }
+  }
+
+  // Sort by confidence
+  recommendations.sort((a, b) => b.confidence - a.confidence);
+
+  const summary = recommendations.length > 0
+    ? `Found ${recommendations.length} memories that may be holding you back. ` +
+      `These show distress patterns without contributing to your current goals. ` +
+      `Consider fading them to clear your path forward.`
+    : `Your memory landscape looks healthy. No recommendations at this time.`;
+
+  return { recommendations, summary };
+}
+
 /**
  * Restore a forgotten memory.
  */
