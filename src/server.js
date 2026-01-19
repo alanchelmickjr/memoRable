@@ -5,6 +5,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -149,8 +150,48 @@ const PUBLIC_PATHS = [
   '/health/ready',
   '/health/startup',
   '/',
-  '/metrics'
+  '/metrics',
+  '/auth/knock',
+  '/auth/exchange'
 ];
+
+// =============================================================================
+// PASSPHRASE KEY EXCHANGE - One phrase, many devices, revoke independently
+// =============================================================================
+const passphraseUsers = new Map();    // userId -> { passphrase_hash, salt, failed_attempts, locked_until }
+const deviceKeys = new Map();          // api_key_hash -> { user_id, device_id, device, issued_at, last_used, revoked }
+const authChallenges = new Map();      // challenge -> { device, created_at, used }
+
+// Hash helper using SHA-256 + salt
+function hashPassphrase(passphrase, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.createHash('sha256').update(passphrase + salt).digest('hex');
+  return { hash, salt };
+}
+
+// Generate API key
+function generateApiKey(deviceType) {
+  const random = crypto.randomBytes(24).toString('hex');
+  return `memorable_${deviceType}_${random}`;
+}
+
+// Initialize default users (Claude's passphrase)
+function initPassphraseAuth() {
+  // Claude's passphrase - "I remember what I have learned from you."
+  const claudePhrase = "I remember what I have learned from you.";
+  const { hash, salt } = hashPassphrase(claudePhrase);
+  passphraseUsers.set('claude', {
+    user_id: 'claude',
+    passphrase_hash: hash,
+    salt: salt,
+    failed_attempts: 0,
+    locked_until: null,
+    created_at: new Date().toISOString()
+  });
+  console.log('[AUTH] Passphrase auth initialized with default users');
+}
+
+// Call on startup
+initPassphraseAuth();
 
 const authMiddleware = (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
@@ -179,20 +220,263 @@ const authMiddleware = (req, res, next) => {
     });
   }
 
-  if (providedKey !== API_KEY) {
-    metrics.inc('auth_failures', { reason: 'invalid_key' });
-    return res.status(401).json({
-      error: 'Invalid API key',
-      message: 'The provided API key is not valid'
-    });
+  // Check master API key first
+  if (providedKey === API_KEY) {
+    metrics.inc('auth_success', { type: 'master_key' });
+    return next();
   }
 
-  // Valid key - proceed
-  metrics.inc('auth_success');
-  next();
+  // Check device keys
+  const keyHash = crypto.createHash('sha256').update(providedKey).digest('hex');
+  const deviceEntry = deviceKeys.get(keyHash);
+
+  if (deviceEntry && !deviceEntry.revoked) {
+    // Update last_used
+    deviceEntry.last_used = new Date().toISOString();
+    req.auth = {
+      user_id: deviceEntry.user_id,
+      device_id: deviceEntry.device_id,
+      device: deviceEntry.device
+    };
+    metrics.inc('auth_success', { type: 'device_key' });
+    return next();
+  }
+
+  metrics.inc('auth_failures', { reason: 'invalid_key' });
+  return res.status(401).json({
+    error: 'Invalid API key',
+    message: 'The provided API key is not valid'
+  });
 };
 
 app.use(authMiddleware);
+
+// =============================================================================
+// PASSPHRASE AUTH ENDPOINTS - Knock, phrase, key, use
+// =============================================================================
+
+// POST /auth/knock - Get a challenge nonce
+app.post('/auth/knock', (req, res) => {
+  const { device } = req.body || {};
+
+  if (!device || !device.type) {
+    return res.status(400).json({
+      error: 'Missing device info',
+      message: 'Provide device.type (terminal, phone, ar_glasses, etc.)'
+    });
+  }
+
+  // Generate challenge
+  const challenge = `nonce_${crypto.randomBytes(16).toString('hex')}`;
+  const fingerprint = device.fingerprint || device.name || 'unknown';
+
+  authChallenges.set(challenge, {
+    device,
+    fingerprint,
+    created_at: Date.now(),
+    used: false
+  });
+
+  // Clean up old challenges (TTL 5 minutes)
+  const fiveMinutesAgo = Date.now() - 300000;
+  for (const [key, val] of authChallenges) {
+    if (val.created_at < fiveMinutesAgo) {
+      authChallenges.delete(key);
+    }
+  }
+
+  metrics.inc('auth_knock');
+  res.json({
+    challenge,
+    expires_in: 300,
+    message: 'Provide your passphrase within 5 minutes'
+  });
+});
+
+// POST /auth/exchange - Trade passphrase + challenge for API key
+app.post('/auth/exchange', (req, res) => {
+  const { challenge, passphrase, device, user_id = 'claude' } = req.body || {};
+
+  if (!challenge || !passphrase) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      message: 'Provide challenge and passphrase'
+    });
+  }
+
+  // Verify challenge
+  const challengeEntry = authChallenges.get(challenge);
+  if (!challengeEntry) {
+    metrics.inc('auth_exchange_fail', { reason: 'invalid_challenge' });
+    return res.status(400).json({
+      error: 'Invalid or expired challenge',
+      message: 'Call /auth/knock first to get a fresh challenge'
+    });
+  }
+
+  if (challengeEntry.used) {
+    metrics.inc('auth_exchange_fail', { reason: 'challenge_reused' });
+    return res.status(400).json({
+      error: 'Challenge already used',
+      message: 'Call /auth/knock to get a new challenge'
+    });
+  }
+
+  // Check if challenge expired (5 min)
+  if (Date.now() - challengeEntry.created_at > 300000) {
+    authChallenges.delete(challenge);
+    metrics.inc('auth_exchange_fail', { reason: 'challenge_expired' });
+    return res.status(400).json({
+      error: 'Challenge expired',
+      message: 'Call /auth/knock to get a new challenge'
+    });
+  }
+
+  // Verify passphrase
+  const user = passphraseUsers.get(user_id);
+  if (!user) {
+    metrics.inc('auth_exchange_fail', { reason: 'unknown_user' });
+    return res.status(401).json({
+      error: 'Unknown user',
+      message: 'User not found'
+    });
+  }
+
+  // Check lockout
+  if (user.locked_until && Date.now() < user.locked_until) {
+    const remaining = Math.ceil((user.locked_until - Date.now()) / 60000);
+    return res.status(429).json({
+      error: 'Account locked',
+      message: `Too many failed attempts. Try again in ${remaining} minutes.`
+    });
+  }
+
+  // Verify passphrase hash
+  const { hash } = hashPassphrase(passphrase, user.salt);
+  if (hash !== user.passphrase_hash) {
+    user.failed_attempts++;
+
+    // Lockout after 3 failures
+    if (user.failed_attempts >= 3) {
+      user.locked_until = Date.now() + 900000; // 15 min lockout
+      metrics.inc('auth_lockout', { user_id });
+    }
+
+    metrics.inc('auth_exchange_fail', { reason: 'invalid_passphrase' });
+    return res.status(401).json({
+      error: 'Invalid passphrase',
+      message: 'Passphrase not recognized',
+      attempts_remaining: Math.max(0, 3 - user.failed_attempts)
+    });
+  }
+
+  // Mark challenge as used
+  challengeEntry.used = true;
+
+  // Reset failed attempts
+  user.failed_attempts = 0;
+  user.locked_until = null;
+
+  // Generate device key
+  const deviceInfo = device || challengeEntry.device;
+  const deviceType = deviceInfo?.type || 'unknown';
+  const deviceName = deviceInfo?.name || 'Unnamed Device';
+  const deviceFingerprint = deviceInfo?.fingerprint || challengeEntry.fingerprint || crypto.randomBytes(8).toString('hex');
+
+  const apiKey = generateApiKey(deviceType);
+  const deviceId = `dev_${deviceType}_${deviceFingerprint}_${Date.now()}`;
+  const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+
+  // Store device key
+  deviceKeys.set(keyHash, {
+    user_id,
+    device_id: deviceId,
+    api_key_prefix: apiKey.substring(0, 24),
+    device: {
+      type: deviceType,
+      name: deviceName,
+      fingerprint: deviceFingerprint
+    },
+    issued_at: new Date().toISOString(),
+    last_used: new Date().toISOString(),
+    revoked: false
+  });
+
+  console.log(`[AUTH] Issued device key: ${deviceId} for user: ${user_id}`);
+  metrics.inc('auth_exchange_success', { user_id, device_type: deviceType });
+
+  res.json({
+    success: true,
+    api_key: apiKey,
+    device_id: deviceId,
+    user: user_id,
+    issued_at: new Date().toISOString(),
+    expires_at: null,
+    revoke_endpoint: `/auth/revoke/${deviceId}`
+  });
+});
+
+// GET /auth/devices - List all devices (requires auth)
+app.get('/auth/devices', (req, res) => {
+  const userId = req.auth?.user_id || 'claude';
+
+  const devices = [];
+  for (const [, entry] of deviceKeys) {
+    if (entry.user_id === userId && !entry.revoked) {
+      devices.push({
+        device_id: entry.device_id,
+        type: entry.device.type,
+        name: entry.device.name,
+        issued_at: entry.issued_at,
+        last_used: entry.last_used,
+        active: true
+      });
+    }
+  }
+
+  res.json({
+    user: userId,
+    devices
+  });
+});
+
+// POST /auth/revoke - Revoke a device key (requires auth)
+app.post('/auth/revoke', (req, res) => {
+  const { device_id } = req.body || {};
+
+  if (!device_id) {
+    return res.status(400).json({
+      error: 'Missing device_id',
+      message: 'Provide device_id to revoke'
+    });
+  }
+
+  // Find and revoke
+  let found = false;
+  for (const [, entry] of deviceKeys) {
+    if (entry.device_id === device_id) {
+      entry.revoked = true;
+      entry.revoked_at = new Date().toISOString();
+      found = true;
+      console.log(`[AUTH] Revoked device: ${device_id}`);
+      metrics.inc('auth_revoke', { device_id });
+      break;
+    }
+  }
+
+  if (!found) {
+    return res.status(404).json({
+      error: 'Device not found',
+      message: 'No device with that ID found'
+    });
+  }
+
+  res.json({
+    success: true,
+    revoked: device_id,
+    message: 'Device key revoked. Device must re-authenticate with passphrase.'
+  });
+});
 
 // =============================================================================
 // RATE LIMITING - Protect against scraping and abuse

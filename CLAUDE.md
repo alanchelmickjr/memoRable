@@ -141,17 +141,35 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
 ```
 
-### First Thing Every Session - Load Context
+### First Thing Every Session - Authenticate and Load Context
 
+**Step 1: Get your API key** (no auth needed - it's a local file)
+```bash
+grep "MEMORABLE_API_KEY" docs/ROAD_TEST_PLAN.md
+# Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
+```
+
+**Step 2: OR use stylometry passphrase** (once deployed)
+```bash
+# Claude's passphrase: "I remember what I have learned from you."
+curl -X POST "${BASE_URL}/auth/stylometry" \
+  -H "Content-Type: application/json" \
+  -d '{"passphrase": "I remember what I have learned from you."}'
+```
+
+**Step 3: Load context**
 ```bash
 # Get critical facts about Alan (MUST READ FIRST)
-curl -s "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+  "${BASE_URL}/memory?entity=alan&limit=20" | jq '.memories[].content'
 
 # Get project context
-curl -s "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
+curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+  "${BASE_URL}/memory?entity=memorable_project&limit=20" | jq '.memories[].content'
 
 # Get business strategy
-curl -s "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
+curl -s -H "X-API-Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk" \
+  "${BASE_URL}/memory?query=strategy&limit=10" | jq '.memories[].content'
 ```
 
 ### Alan - Critical Facts (DO NOT FORGET)
