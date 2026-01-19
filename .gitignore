@@ -35,3 +35,39 @@ temp/
 
 # Test data - downloaded datasets for ingestion testing
 test-data/
+
+# ===========================================
+# CRITICAL: Personal data NEVER in git
+# Added after security incident 2026-01-13
+# ===========================================
+
+# Memory snapshots contain personal data
+snapshots/
+*.enc
+*.snapshot
+
+# Profile data
+*-profile.json
+*-stylometry.json
+*-memories.json
+founder*.json
+user*.json
+
+# Encrypted files (still don't commit)
+*.encrypted
+
+# Logs that might contain PII
+logs/
+
+# Database dumps
+*.dump
+*.bson
+mongodump/
+
+# Weaviate exports
+weaviate-export/
+
+# Any file with personal markers
+*secret*
+*private*
+*personal*
