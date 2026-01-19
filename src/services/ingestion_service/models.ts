@@ -16,6 +16,10 @@ export type ContentType =
   | "Video" // Added for video input
   | "VideoFrame" // Added for individual video frames
   | "GenericData"     // Fallback for other types
+  // Robot-specific content types
+  | "RobotSensorData"     // Aggregated sensor frames (Lidar, ultrasound, IMU)
+  | "NavigationEvent"     // Waypoint reached, path updated, goal set
+  | "RobotObservation"    // VLA observations with spatial context
   | string; // Allows for future extension
 
 /**
@@ -142,6 +146,12 @@ export interface SpatialContext {
   locationCoordinates?: LocationCoordinates;
   locationName?: string;
   spatialProximity?: SpatialProximity[];
+  // Robot navigation extensions
+  robotPose?: RobotPose;
+  currentWaypoint?: Waypoint;
+  navigationPath?: NavigationPath;
+  mapReference?: MapReference;
+  obstacles?: ObstacleContext[];
 }
 
 /**
@@ -172,7 +182,19 @@ export interface ReasoningContext {
 /**
  * Device type for multi-device tracking.
  */
-export type DeviceType = 'mobile' | 'desktop' | 'web' | 'api' | 'mcp' | 'unknown';
+export type DeviceType =
+  | 'mobile'
+  | 'desktop'
+  | 'web'
+  | 'api'
+  | 'mcp'
+  // Robot fleet types
+  | 'robot'           // Generic robot (Pudu, Utilitron, ROS-based)
+  | 'smartglasses'    // AR glasses (Alzheimer's patients)
+  | 'wearable'        // Smartwatch, fitness tracker
+  | 'smarthome'       // IoT sensors, ambient devices
+  | 'drone'           // Aerial robots
+  | 'unknown';
 
 /**
  * Core entity: MemoryMemento.
@@ -424,4 +446,228 @@ export interface IngestionResult {
   status: 'VALIDATION_FAILED' | 'PREPROCESSING_FAILED' | 'MEMENTO_CONSTRUCTION_FAILED' | 'EMBEDDING_FAILED' | 'STORAGE_FAILED' | 'PROCESSED_AND_STORED' | 'PROCESSED_PENDING_EMBEDDING' | 'UNKNOWN_ERROR';
   message: string;
   errors?: Array<{ field?: string; message: string }>; // Optional detailed errors
+}
+
+// ============================================================================
+// Robot Navigation Types - For fleet deployment with Pudu/Utilitron/ROS
+// ============================================================================
+
+/**
+ * Robot pose in 3D space with orientation.
+ * Combines position from odometry/SLAM with orientation from IMU.
+ */
+export interface RobotPose {
+  // Position in local map frame (meters)
+  position: {
+    x: number;
+    y: number;
+    z?: number;  // For 3D navigation (drones, elevators)
+  };
+  // Orientation as Euler angles (radians)
+  orientation: {
+    roll: number;   // Rotation around forward axis
+    pitch: number;  // Rotation around side axis
+    yaw: number;    // Rotation around vertical axis (heading)
+  };
+  // Alternative: quaternion representation
+  quaternion?: {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
+  };
+  // Velocity for motion prediction
+  velocity?: {
+    linear: { x: number; y: number; z?: number };   // m/s
+    angular: { x: number; y: number; z: number };   // rad/s
+  };
+  // Metadata
+  confidence: number;  // 0-1, fusion confidence
+  source: 'odometry' | 'slam' | 'gps' | 'visual' | 'fusion';
+  timestamp: string;   // ISO8601
+  frameId?: string;    // Coordinate frame (e.g., "map", "odom", "base_link")
+}
+
+/**
+ * A named location that robots can navigate to.
+ */
+export interface Waypoint {
+  waypointId: string;
+  name: string;                    // Human-readable: "Kitchen", "Charging Station A"
+  pose: RobotPose;                 // Target pose at waypoint
+  // Semantic information
+  placeType?: WaypointType;
+  floor?: number;                  // Building floor
+  zone?: string;                   // Zone/area name
+  // Navigation hints
+  approachDirection?: number;      // Preferred approach heading (radians)
+  dwellTime?: number;              // Expected time at waypoint (ms)
+  // Operational
+  isChargingStation?: boolean;
+  isDeliveryPoint?: boolean;
+  isRestricted?: boolean;          // Requires permission
+  operatingHours?: {
+    start: string;                 // "09:00"
+    end: string;                   // "17:00"
+  };
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;              // Robot or human that created this waypoint
+}
+
+/**
+ * Types of waypoints for semantic navigation.
+ */
+export type WaypointType =
+  | 'room'
+  | 'corridor'
+  | 'elevator'
+  | 'door'
+  | 'charging_station'
+  | 'delivery_point'
+  | 'waiting_area'
+  | 'storage'
+  | 'entrance'
+  | 'exit'
+  | 'intersection'
+  | 'landmark'
+  | 'custom';
+
+/**
+ * A navigation path between waypoints.
+ */
+export interface NavigationPath {
+  pathId: string;
+  // Endpoints
+  startWaypoint: Waypoint;
+  endWaypoint: Waypoint;
+  viaWaypoints?: Waypoint[];       // Intermediate waypoints
+  // Path geometry
+  pathPoints?: Array<{ x: number; y: number; heading?: number }>;
+  // Metrics
+  totalDistance?: number;          // meters
+  estimatedDuration?: number;      // milliseconds
+  // Status
+  status: NavigationStatus;
+  progress?: number;               // 0-1, how far along the path
+  currentSegment?: number;         // Which waypoint-to-waypoint segment
+  // History
+  startedAt?: string;
+  completedAt?: string;
+  // Failure tracking
+  retryCount?: number;
+  lastError?: string;
+}
+
+/**
+ * Navigation task status.
+ */
+export type NavigationStatus =
+  | 'planned'       // Path computed but not started
+  | 'active'        // Currently navigating
+  | 'paused'        // Temporarily stopped (obstacle, command)
+  | 'completed'     // Reached destination
+  | 'failed'        // Could not complete
+  | 'cancelled';    // User/system cancelled
+
+/**
+ * Reference to a map for spatial context.
+ */
+export interface MapReference {
+  mapId: string;
+  mapName: string;
+  mapType: 'occupancy_grid' | 'semantic' | 'topological' | 'floor_plan' | 'point_cloud';
+  version: string;
+  // Bounds
+  origin?: { x: number; y: number; z?: number };
+  resolution?: number;             // meters per cell (for occupancy grid)
+  dimensions?: { width: number; height: number; floors?: number };
+  // Building context
+  buildingId?: string;
+  floor?: number;
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Detected obstacle for collision avoidance.
+ */
+export interface ObstacleContext {
+  obstacleId: string;
+  // Position relative to robot
+  position: { x: number; y: number; z?: number };
+  // Size/shape
+  boundingBox?: {
+    width: number;
+    height: number;
+    depth?: number;
+  };
+  radius?: number;                 // For circular obstacles
+  // Classification
+  obstacleType: ObstacleType;
+  isDynamic: boolean;              // Moving obstacle (person, other robot)
+  // Tracking
+  velocity?: { x: number; y: number };  // For dynamic obstacles
+  predictedPath?: Array<{ x: number; y: number; time: number }>;
+  // Safety
+  safetyMargin: number;            // Required clearance (meters)
+  threatLevel: 'low' | 'medium' | 'high' | 'critical';
+  // Detection info
+  detectedBy: 'lidar' | 'ultrasound' | 'camera' | 'depth_camera' | 'fusion';
+  confidence: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+/**
+ * Types of obstacles robots may encounter.
+ */
+export type ObstacleType =
+  | 'person'
+  | 'robot'
+  | 'furniture'
+  | 'wall'
+  | 'door'
+  | 'stairs'
+  | 'elevator'
+  | 'vehicle'
+  | 'animal'
+  | 'debris'
+  | 'unknown';
+
+/**
+ * Navigation task tracking - like OpenLoop but for spatial goals.
+ * Tracks "robot promised to go somewhere" with completion status.
+ */
+export interface NavigationTask {
+  taskId: string;
+  robotId: string;
+  // Goal
+  goalType: 'goto' | 'patrol' | 'follow' | 'return_home' | 'charge' | 'deliver';
+  destination: Waypoint;
+  // Multi-stop tasks
+  waypoints?: Waypoint[];
+  currentWaypointIndex?: number;
+  // Timing
+  createdAt: string;
+  startedAt?: string;
+  estimatedArrival?: string;
+  completedAt?: string;
+  deadline?: string;               // Must arrive by this time
+  // Status
+  status: NavigationStatus;
+  progress: number;                // 0-1
+  distanceRemaining?: number;      // meters
+  // Context
+  purpose?: string;                // "Deliver coffee to room 204"
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  // Error handling
+  retryCount: number;
+  maxRetries: number;
+  lastError?: string;
+  blockedBy?: ObstacleContext;
+  // Salience boost when completed/failed
+  salienceBoost?: number;
 }
