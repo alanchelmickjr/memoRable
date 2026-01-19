@@ -249,11 +249,13 @@ These are stored in the API but also documented here as backup:
 # Store verbatim (exact quote from Alan)
 curl -X POST "${BASE_URL}/memory/verbatim" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MEMORABLE_API_KEY" \
   -d '{"content": "exact words here", "source": "alan"}'
 
 # Store with multiple entities (who was involved)
 curl -X POST "${BASE_URL}/memory" \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $MEMORABLE_API_KEY" \
   -d '{"content": "what happened", "entities": ["alan", "claude", "memorable_project"]}'
 ```
 
