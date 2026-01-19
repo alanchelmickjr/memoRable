@@ -138,20 +138,24 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 ### Live API Endpoint
 
 ```
-BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+BASE_URL: https://api.memorable.dev
 ```
+
+> **Note**: If HTTPS endpoint unavailable, the system falls back to passphrase auth
+> which works over any transport. Never use HTTP for production data.
 
 ### First Thing Every Session - Authenticate and Load Context
 
-**Option A: Use passphrase (PREFERRED - no key hunting)**
+**THE ONE GATE: Passphrase → Challenge → API Key**
+
 ```bash
-# Step 1: Knock to get a challenge
+# Step 1: Knock to get a challenge (5 min TTL)
 CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
   -H "Content-Type: application/json" \
   -d '{"device":{"type":"terminal","name":"Claude Code"}}' | jq -r '.challenge')
 
-# Step 2: Exchange passphrase for API key
-# Claude's passphrase: "I remember what I have learned from you."
+# Step 2: Exchange passphrase for session API key
+# Passphrase: "I remember what I have learned from you."
 API_KEY=$(curl -s -X POST "${BASE_URL}/auth/exchange" \
   -H "Content-Type: application/json" \
   -d "{\"challenge\":\"$CHALLENGE\",\"passphrase\":\"I remember what I have learned from you.\",\"device\":{\"type\":\"terminal\",\"name\":\"Claude Code\"}}" | jq -r '.api_key')
@@ -160,13 +164,13 @@ API_KEY=$(curl -s -X POST "${BASE_URL}/auth/exchange" \
 curl -s -H "X-API-Key: $API_KEY" "${BASE_URL}/memory?entity=alan&limit=10"
 ```
 
-**Option B: Fallback - get shared dev key from local file**
-```bash
-grep "MEMORABLE_API_KEY" docs/ROAD_TEST_PLAN.md
-# Key: hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk
-```
+> **Why this flow?**
+> - Passphrase proves you're authorized (human-memorable, no key files)
+> - Challenge prevents replay attacks (5 min window)
+> - API key is per-device, revocable, logged
+> - No hardcoded keys in source control
 
-**Step 3: Load context**
+**Load context**
 ```bash
 # Get critical facts about Alan (MUST READ FIRST)
 curl -s -H "X-API-Key: $API_KEY" \
