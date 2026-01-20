@@ -14,8 +14,12 @@ export async function setupDatabase() {
     const isDocumentDB = uri.includes('docdb.amazonaws.com') || uri.includes('tls=true');
 
     client = new MongoClient(uri, {
-      // For AWS DocumentDB, accept self-signed certs
-      ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+      // For AWS DocumentDB compatibility
+      ...(isDocumentDB ? {
+        tlsAllowInvalidCertificates: true,
+        authMechanism: 'SCRAM-SHA-1', // DocumentDB doesn't support SCRAM-SHA-256
+        directConnection: true,
+      } : {}),
     });
 
     await client.connect();

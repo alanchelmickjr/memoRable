@@ -1157,10 +1157,14 @@ async function initializeDb(): Promise<void> {
 
   // Direct mode: Connect to MongoDB
   connectionMode = 'direct';
-  // Check if TLS is required (DocumentDB or tls=true in URI)
+  // Check if using DocumentDB (requires specific options)
   const isDocumentDB = CONFIG.mongoUri.includes('docdb.amazonaws.com') || CONFIG.mongoUri.includes('tls=true');
   mongoClient = new MongoClient(CONFIG.mongoUri, {
-    ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+    ...(isDocumentDB ? {
+      tlsAllowInvalidCertificates: true,
+      authMechanism: 'SCRAM-SHA-1', // DocumentDB doesn't support SCRAM-SHA-256
+      directConnection: true,
+    } : {}),
   });
   await mongoClient.connect();
   db = mongoClient.db();
@@ -5273,10 +5277,14 @@ export async function mountMcpEndpoint(
     console.error('[MCP] Using provided MongoDB connection');
   } else if (!mongoClient) {
     // Only connect if we don't already have a connection
-    // Check if TLS is required (DocumentDB or tls=true in URI)
+    // Check if using DocumentDB (requires specific options)
     const isDocumentDB = CONFIG.mongoUri.includes('docdb.amazonaws.com') || CONFIG.mongoUri.includes('tls=true');
     mongoClient = new MongoClient(CONFIG.mongoUri, {
-      ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+      ...(isDocumentDB ? {
+        tlsAllowInvalidCertificates: true,
+        authMechanism: 'SCRAM-SHA-1', // DocumentDB doesn't support SCRAM-SHA-256
+        directConnection: true,
+      } : {}),
     });
     await mongoClient.connect();
     db = mongoClient.db();
