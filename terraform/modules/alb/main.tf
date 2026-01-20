@@ -92,6 +92,7 @@ resource "aws_lb_target_group" "ingestion" {
 }
 
 resource "aws_lb_listener" "http" {
+  count             = var.certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"

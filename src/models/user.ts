@@ -247,7 +247,7 @@ export interface UserDocument {
   displayName?: string;
 
   // Entity system integration
-  entityId?: string;           // Links to contacts/entities collection
+  entityId: string;            // User IS an entity
 
   // Account state
   tier: UserTier;
@@ -595,7 +595,7 @@ export function createUserDocument(
     email: options?.email?.toLowerCase().trim(),
     emailVerified: false,
     displayName: options?.displayName ? sanitizeString(options.displayName, VALIDATION.DISPLAY_NAME_MAX) : undefined,
-    entityId: options?.entityId,
+    entityId: userId,
     tier,
     status: 'active',
     isAdmin: options?.isAdmin || false,
