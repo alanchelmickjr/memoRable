@@ -96,8 +96,14 @@ Resources:
                   - ecr:UploadLayerPart
                   - ecr:CompleteLayerUpload
                   - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                  - ecr:ListImages
                   - ecr:CreateRepository
+                  - ecr:DeleteRepository
                   - ecr:TagResource
+                  - ecr:UntagResource
+                  - ecr:GetRepositoryPolicy
+                  - ecr:SetRepositoryPolicy
                 Resource:
                   - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/memorable*
 
@@ -178,9 +184,13 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # DescribeLogGroups requires * or account-level scope
               - Effect: Allow
                 Action:
                   - logs:DescribeLogGroups
+                Resource: '*'
+              - Effect: Allow
+                Action:
                   - logs:DescribeLogStreams
                   - logs:GetLogEvents
                   - logs:CreateLogGroup
@@ -193,6 +203,7 @@ Resources:
                   - logs:ListTagsForResource
                   - logs:PutRetentionPolicy
                   - logs:DeleteRetentionPolicy
+                  - logs:TagLogGroup
                 Resource:
                   - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*
                   - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*:*
