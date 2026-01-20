@@ -156,6 +156,8 @@ Resources:
                 Resource:
                   - arn:aws:s3:::memorable-terraform-state-*
                   - arn:aws:s3:::memorable-terraform-state-*/*
+                  - arn:aws:s3:::memorable-cloudformation-templates
+                  - arn:aws:s3:::memorable-cloudformation-templates/*
               - Effect: Allow
                 Action:
                   - dynamodb:GetItem
