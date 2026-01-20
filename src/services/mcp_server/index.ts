@@ -4957,7 +4957,116 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-main().catch((error) => {
-  console.error('[MCP] Fatal error:', error);
-  process.exit(1);
-});
+/**
+ * Mount MCP endpoint on an existing Express app.
+ * This allows integrating MCP into server.js for unified deployment.
+ *
+ * @param app - Express application to mount on
+ * @param options - Configuration options
+ * @returns Promise that resolves when MCP is ready
+ */
+export async function mountMcpEndpoint(
+  app: express.Application,
+  options: {
+    mongoClient?: MongoClient;
+    apiKey?: string;
+  } = {}
+): Promise<void> {
+  console.error('[MCP] Mounting MCP endpoint on existing Express app...');
+
+  // Use provided mongo client or connect
+  if (options.mongoClient) {
+    mongoClient = options.mongoClient;
+    db = mongoClient.db();
+    console.error('[MCP] Using provided MongoDB connection');
+  } else if (!mongoClient) {
+    // Only connect if we don't already have a connection
+    mongoClient = new MongoClient(CONFIG.mongoUri);
+    await mongoClient.connect();
+    db = mongoClient.db();
+    console.error('[MCP] Connected to MongoDB');
+  }
+
+  // Initialize services
+  if (!useRemoteApi) {
+    await initializeSalienceService(db);
+    console.error('[MCP] Salience service initialized');
+
+    await initAnticipationService(db);
+    console.error('[MCP] Anticipation service initialized');
+  }
+
+  // Initialize LLM client
+  if (!llmClient) {
+    llmClient = createLLMClient();
+    if (llmClient) {
+      console.error('[MCP] LLM client initialized');
+    } else {
+      console.error('[MCP] No LLM API key found, using heuristic mode');
+    }
+  }
+
+  // Create MCP server with all tools
+  const server = createServer();
+
+  // Create HTTP transport
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+  });
+
+  // Create auth middleware that supports both API key and OAuth
+  const mcpAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    // Check X-API-Key header first (simple auth for Claude Code)
+    const apiKeyHeader = req.headers['x-api-key'];
+    if (apiKeyHeader && options.apiKey && apiKeyHeader === options.apiKey) {
+      return next();
+    }
+
+    // Fall back to OAuth if enabled
+    if (CONFIG.oauth.enabled) {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'missing_token' });
+      }
+      const token = authHeader.slice(7);
+      try {
+        const decoded = jwt.verify(token, CONFIG.oauth.jwtSecret);
+        (req as any).user = decoded;
+        return next();
+      } catch (error) {
+        return res.status(401).json({ error: 'invalid_token' });
+      }
+    }
+
+    // If OAuth disabled and no API key match, allow in dev mode
+    if (process.env.NODE_ENV !== 'production') {
+      return next();
+    }
+
+    return res.status(401).json({ error: 'unauthorized' });
+  };
+
+  // Mount MCP endpoint
+  app.all('/mcp', mcpAuthMiddleware, async (req: Request, res: Response) => {
+    try {
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      console.error('[MCP] HTTP transport error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Connect server to transport
+  await server.connect(transport);
+
+  console.error('[MCP] MCP endpoint mounted at /mcp');
+}
+
+// Only run main() when executed directly (not when imported)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  main().catch((error) => {
+    console.error('[MCP] Fatal error:', error);
+    process.exit(1);
+  });
+}

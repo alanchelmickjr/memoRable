@@ -24,6 +24,9 @@ import {
   verifyPassphrase as verifyPassphraseMongo,
 } from './models/index.ts';
 
+// MCP Server - the core of MemoRable
+import { mountMcpEndpoint } from './services/mcp_server/index.ts';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -5947,9 +5950,21 @@ async function start() {
       mongoConnected = false;
     }
 
+    // Mount MCP endpoint - THE CORE OF MEMORABLE
+    // This provides the 35 MCP tools for Claude Code integration
+    try {
+      const mcpApiKey = process.env.MCP_API_KEY || process.env.API_KEY || 'hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk';
+      await mountMcpEndpoint(app, { apiKey: mcpApiKey });
+      console.log('[Server] MCP endpoint mounted at /mcp');
+    } catch (mcpError) {
+      console.error('[Server] Failed to mount MCP endpoint:', mcpError.message);
+      // Don't fail startup - REST API still works
+    }
+
     app.listen(PORT, () => {
       console.log(`[Server] MemoRable listening on port ${PORT}`);
       console.log(`[Server] Health check: http://localhost:${PORT}/health`);
+      console.log(`[Server] MCP endpoint: http://localhost:${PORT}/mcp`);
       console.log(`[Server] Auth mode: ${mongoConnected ? 'MongoDB' : 'In-Memory'}`);
 
       // Mark as ready after server starts
