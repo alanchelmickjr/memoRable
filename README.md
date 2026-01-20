@@ -2,9 +2,12 @@
 
 > **PRE-RELEASE SOFTWARE** - This project is under active development and not yet ready for production use. APIs may change, features may be incomplete, and data migrations are not guaranteed. Star the repo and watch for v1.0 release.
 
-### Enterprise Context Intelligence for Mem0
+### Context-Aware Memory System for AI Agents
 
-[![Mem0 Extension](https://img.shields.io/badge/Mem0-Extension-purple?style=for-the-badge)](https://mem0.ai)
+**Works standalone OR extends Mem0** — Your choice. Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
+
+[![Standalone System](https://img.shields.io/badge/Mode-Standalone-00d4aa?style=for-the-badge)](./docs/deployment-guide.md)
+[![Mem0 Extension](https://img.shields.io/badge/Mode-Mem0_Extension-purple?style=for-the-badge)](https://mem0.ai)
 [![Enterprise Security](https://img.shields.io/badge/Security-Enterprise_Grade-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
@@ -43,9 +46,11 @@
 
 ---
 
-## Extend Your Mem0 Deployment
+## Extend Your Mem0 Deployment (Optional)
 
-**Existing Mem0 users:** Preserve your vector infrastructure. Add the intelligence layer.
+**Already using Mem0?** Keep your vector infrastructure. Add MemoRable's intelligence layer on top.
+
+> **Skip this section if you don't use Mem0.** MemoRable works perfectly standalone — see [Fresh Install](#fresh-install-options-standalone---no-mem0-required).
 
 | Mem0 Foundation | + MemoRable Intelligence |
 |-----------------|--------------------------|
@@ -86,11 +91,13 @@ MemoRable + Mem0: Here's what you need to know:
 
 | I am a... | I want to... | Go to... |
 |-----------|--------------|----------|
-| **Mem0 user** | Add intelligence to my existing deployment | [Extend Mem0](#extend-your-mem0-deployment) |
-| **Developer** | Start fresh with full memory stack | [Fresh Install](#fresh-install-options) |
+| **Developer** | Full standalone memory system (no Mem0 needed) | [Standalone Install](#fresh-install-options) |
+| **Enterprise** | Deploy secure memory infrastructure to AWS | [AWS One-Click Deploy](#aws-one-click-deploy) |
 | **Claude Code user** | Add memory to my coding sessions | [Claude Code Setup](#quick-start-claude-code--vs-code) |
-| **Enterprise** | Deploy secure memory infrastructure | [AWS Deploy](#aws-one-click-deploy) |
+| **Mem0 user** | Add salience/predictions to my existing deployment | [Extend Mem0](#extend-your-mem0-deployment) |
 | **Curious** | Understand what this does | [Use Cases](#who-is-memorable-for) |
+
+> **No Mem0?** No problem. MemoRable is a complete memory system. Mem0 integration is optional for users who already have vector infrastructure.
 
 ---
 
@@ -270,19 +277,22 @@ MemoRable's tiered security makes it suitable for:
 
 ---
 
-### What MemoRable Adds to Mem0
+### MemoRable Capabilities
 
-| Capability | Mem0 | + MemoRable |
-|------------|------|-------------|
-| Vector storage & search | ✅ | ✅ (uses Mem0) |
-| Salience scoring (0-100) | ❌ | ✅ |
-| Commitment tracking (open loops) | ❌ | ✅ |
-| Relationship intelligence | ❌ | ✅ |
-| Pre-meeting briefings | ❌ | ✅ |
-| Multi-device context sync | ❌ | ✅ |
-| Predictive memory (21-day learning) | ❌ | ✅ |
-| **Behavioral identity** | ❌ | ✅ |
-| MCP protocol support | ❌ | ✅ |
+| Capability | MemoRable Standalone | Mem0 Only | MemoRable + Mem0 |
+|------------|---------------------|-----------|------------------|
+| Vector storage & search | ✅ (Weaviate) | ✅ | ✅ (uses Mem0) |
+| Salience scoring (0-100) | ✅ | ❌ | ✅ |
+| Commitment tracking (open loops) | ✅ | ❌ | ✅ |
+| Relationship intelligence | ✅ | ❌ | ✅ |
+| Pre-meeting briefings | ✅ | ❌ | ✅ |
+| Multi-device context sync | ✅ | ❌ | ✅ |
+| Predictive memory (21-day learning) | ✅ | ❌ | ✅ |
+| **Behavioral identity** | ✅ | ❌ | ✅ |
+| MCP protocol support (35 tools) | ✅ | ❌ | ✅ |
+| Enterprise security tiers | ✅ | ❌ | ✅ |
+
+**Bottom line:** MemoRable standalone = complete system. Mem0 integration = optional for existing users.
 
 ---
 
@@ -435,7 +445,9 @@ briefing = memorable.get_briefing(user_id, "Sarah Chen")
 
 ---
 
-## Fresh Install Options
+## Fresh Install Options (Standalone - No Mem0 Required)
+
+MemoRable is a **complete memory system**. No Mem0, no external dependencies beyond MongoDB/Redis. Everything you need out of the box.
 
 ### Option A: Deploy to AWS (Production)
 
