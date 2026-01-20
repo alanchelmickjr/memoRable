@@ -32,6 +32,7 @@ output "documentdb_endpoint" {
 output "elasticache_endpoint" {
   description = "ElastiCache endpoint"
   value       = module.elasticache.endpoint
+  sensitive   = true
 }
 
 output "ecr_repository_url" {
