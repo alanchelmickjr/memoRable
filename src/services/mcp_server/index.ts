@@ -1157,7 +1157,11 @@ async function initializeDb(): Promise<void> {
 
   // Direct mode: Connect to MongoDB
   connectionMode = 'direct';
-  mongoClient = new MongoClient(CONFIG.mongoUri);
+  // Check if TLS is required (DocumentDB or tls=true in URI)
+  const isDocumentDB = CONFIG.mongoUri.includes('docdb.amazonaws.com') || CONFIG.mongoUri.includes('tls=true');
+  mongoClient = new MongoClient(CONFIG.mongoUri, {
+    ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+  });
   await mongoClient.connect();
   db = mongoClient.db();
 
@@ -5269,7 +5273,11 @@ export async function mountMcpEndpoint(
     console.error('[MCP] Using provided MongoDB connection');
   } else if (!mongoClient) {
     // Only connect if we don't already have a connection
-    mongoClient = new MongoClient(CONFIG.mongoUri);
+    // Check if TLS is required (DocumentDB or tls=true in URI)
+    const isDocumentDB = CONFIG.mongoUri.includes('docdb.amazonaws.com') || CONFIG.mongoUri.includes('tls=true');
+    mongoClient = new MongoClient(CONFIG.mongoUri, {
+      ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+    });
     await mongoClient.connect();
     db = mongoClient.db();
     console.error('[MCP] Connected to MongoDB');
