@@ -2,7 +2,7 @@
 
 > **PRE-RELEASE SOFTWARE** - This project is under active development and not yet ready for production use. APIs may change, features may be incomplete, and data migrations are not guaranteed. Star the repo and watch for v1.0 release.
 
-### Context-Aware Memory System for AI Agents
+### Context-Aware Memory System for AI Agents, Humans, Robots & all Devices
 
 **Works standalone OR extends Mem0** — Your choice. Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
 
