@@ -98,6 +98,7 @@ Resources:
                   - ecr:DescribeRepositories
                   - ecr:DescribeImages
                   - ecr:ListImages
+                  - ecr:ListTagsForResource
                   - ecr:CreateRepository
                   - ecr:DeleteRepository
                   - ecr:TagResource
