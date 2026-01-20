@@ -181,6 +181,9 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:DeleteSecret
                   - secretsmanager:DescribeSecret
+                  - secretsmanager:GetResourcePolicy
+                  - secretsmanager:PutResourcePolicy
+                  - secretsmanager:DeleteResourcePolicy
                   - secretsmanager:TagResource
                   - secretsmanager:UntagResource
                 Resource:
@@ -283,11 +286,23 @@ Resources:
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:subnetgroup:memorable*
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:replicationgroup:memorable*
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:parametergroup:memorable*
+                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:parametergroup:default.*
 
               # Service Discovery (for ECS service mesh)
               - Effect: Allow
                 Action:
                   - servicediscovery:*
+                Resource: '*'
+
+              # Route53 (needed by Service Discovery for private DNS)
+              - Effect: Allow
+                Action:
+                  - route53:CreateHostedZone
+                  - route53:DeleteHostedZone
+                  - route53:GetHostedZone
+                  - route53:ListHostedZones
+                  - route53:ChangeResourceRecordSets
+                  - route53:GetChange
                 Resource: '*'
 
               # CloudFormation (for stack updates and template validation)
