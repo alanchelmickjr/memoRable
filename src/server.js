@@ -3117,14 +3117,14 @@ app.get('/user/profile', async (req, res) => {
     return res.status(404).send('User not found');
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Profile - MemoRable</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${userSettingsStyles}</style>
+  <style>${userSettingsStyles}</style>
 </head>
 <body>
   <div class="header">
@@ -3141,19 +3141,19 @@ app.get('/user/profile', async (req, res) => {
     <div class="panel-title">Profile Overview</div>
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-value" style="font-size: 16px;">\${user.userId}</div>
+        <div class="stat-value" style="font-size: 16px;">${user.userId}</div>
         <div class="stat-label">User ID</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--magenta);">\${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-value" style="color: var(--magenta);">${user.tier?.toUpperCase() || 'FREE'}</div>
         <div class="stat-label">Tier</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--green);">\${user.status?.toUpperCase() || 'ACTIVE'}</div>
+        <div class="stat-value" style="color: var(--green);">${user.status?.toUpperCase() || 'ACTIVE'}</div>
         <div class="stat-label">Status</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="font-size: 14px;">\${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</div>
+        <div class="stat-value" style="font-size: 14px;">${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</div>
         <div class="stat-label">Member Since</div>
       </div>
     </div>
@@ -3164,11 +3164,11 @@ app.get('/user/profile', async (req, res) => {
     <form method="POST" action="/user/profile">
       <div class="form-group">
         <label>Display Name</label>
-        <input type="text" name="displayName" value="\${user.displayName || ''}" placeholder="Your display name">
+        <input type="text" name="displayName" value="${user.displayName || ''}" placeholder="Your display name">
       </div>
       <div class="form-group">
         <label>Email</label>
-        <input type="email" name="email" value="\${user.email || ''}" placeholder="your@email.com">
+        <input type="email" name="email" value="${user.email || ''}" placeholder="your@email.com">
       </div>
       <button type="submit" class="btn btn-primary">Update Profile</button>
     </form>
@@ -3182,7 +3182,7 @@ app.get('/user/profile', async (req, res) => {
     <a href="/user/passphrase" class="btn btn-primary">Change Passphrase</a>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3232,14 +3232,14 @@ app.get('/user/devices', async (req, res) => {
     }
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Devices - MemoRable</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${userSettingsStyles}</style>
+  <style>${userSettingsStyles}</style>
 </head>
 <body>
   <div class="header">
@@ -3258,23 +3258,23 @@ app.get('/user/devices', async (req, res) => {
       Manage devices that have access to your memories. Each device has its own API key.
     </p>
     <ul class="device-list">
-      \${devices.length === 0 ? '<li class="device-item"><span style="color: var(--text-dim);">No devices connected</span></li>' :
-        devices.map(d => \`
+      ${devices.length === 0 ? '<li class="device-item"><span style="color: var(--text-dim);">No devices connected</span></li>' :
+        devices.map(d => `
         <li class="device-item">
           <div class="device-info">
-            <h4>\${d.device?.name || d.deviceId}</h4>
-            <span>Type: \${d.device?.type || 'unknown'} • Added: \${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : 'N/A'}</span>
+            <h4>${d.device?.name || d.deviceId}</h4>
+            <span>Type: ${d.device?.type || 'unknown'} • Added: ${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : 'N/A'}</span>
           </div>
           <div class="device-status">
-            <div class="status-dot \${d.status === 'active' ? 'active' : 'inactive'}"></div>
-            <span style="font-size: 11px; color: var(--text-dim);">\${d.status}</span>
+            <div class="status-dot ${d.status === 'active' ? 'active' : 'inactive'}"></div>
+            <span style="font-size: 11px; color: var(--text-dim);">${d.status}</span>
             <form method="POST" action="/user/devices/revoke" style="margin-left: 15px;">
-              <input type="hidden" name="deviceId" value="\${d.deviceId}">
+              <input type="hidden" name="deviceId" value="${d.deviceId}">
               <button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 10px;">Revoke</button>
             </form>
           </div>
         </li>
-        \`).join('')}
+        `).join('')}
     </ul>
   </div>
 
@@ -3288,7 +3288,7 @@ app.get('/user/devices', async (req, res) => {
     </code>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3333,14 +3333,14 @@ app.get('/user/preferences', async (req, res) => {
     prefs = await getAllPreferences(userId) || {};
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Preferences - MemoRable</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${userSettingsStyles}</style>
+  <style>${userSettingsStyles}</style>
 </head>
 <body>
   <div class="header">
@@ -3359,14 +3359,14 @@ app.get('/user/preferences', async (req, res) => {
       <div class="form-group">
         <label>Default Memory Security Tier</label>
         <select name="defaultSecurityTier">
-          <option value="Tier1_General" \${prefs.defaultSecurityTier === 'Tier1_General' ? 'selected' : ''}>Tier 1 - General (External LLM OK)</option>
-          <option value="Tier2_Personal" \${prefs.defaultSecurityTier === 'Tier2_Personal' || !prefs.defaultSecurityTier ? 'selected' : ''}>Tier 2 - Personal (Local LLM Only)</option>
-          <option value="Tier3_Vault" \${prefs.defaultSecurityTier === 'Tier3_Vault' ? 'selected' : ''}>Tier 3 - Vault (Encrypted, No LLM)</option>
+          <option value="Tier1_General" ${prefs.defaultSecurityTier === 'Tier1_General' ? 'selected' : ''}>Tier 1 - General (External LLM OK)</option>
+          <option value="Tier2_Personal" ${prefs.defaultSecurityTier === 'Tier2_Personal' || !prefs.defaultSecurityTier ? 'selected' : ''}>Tier 2 - Personal (Local LLM Only)</option>
+          <option value="Tier3_Vault" ${prefs.defaultSecurityTier === 'Tier3_Vault' ? 'selected' : ''}>Tier 3 - Vault (Encrypted, No LLM)</option>
         </select>
       </div>
       <div class="form-group">
         <label>Auto-forget after (days, 0 = never)</label>
-        <input type="number" name="autoForgetDays" value="\${prefs.autoForgetDays || 0}" min="0" max="365">
+        <input type="number" name="autoForgetDays" value="${prefs.autoForgetDays || 0}" min="0" max="365">
       </div>
       <button type="submit" class="btn btn-primary">Save Privacy Settings</button>
     </form>
@@ -3382,23 +3382,23 @@ app.get('/user/preferences', async (req, res) => {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <div class="form-group">
           <label>Emotional Weight</label>
-          <input type="range" name="emotionWeight" min="0" max="100" value="\${prefs.emotionWeight || 30}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">\${prefs.emotionWeight || 30}%</span>
+          <input type="range" name="emotionWeight" min="0" max="100" value="${prefs.emotionWeight || 30}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${prefs.emotionWeight || 30}%</span>
         </div>
         <div class="form-group">
           <label>Novelty Weight</label>
-          <input type="range" name="noveltyWeight" min="0" max="100" value="\${prefs.noveltyWeight || 20}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">\${prefs.noveltyWeight || 20}%</span>
+          <input type="range" name="noveltyWeight" min="0" max="100" value="${prefs.noveltyWeight || 20}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${prefs.noveltyWeight || 20}%</span>
         </div>
         <div class="form-group">
           <label>Relevance Weight</label>
-          <input type="range" name="relevanceWeight" min="0" max="100" value="\${prefs.relevanceWeight || 20}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">\${prefs.relevanceWeight || 20}%</span>
+          <input type="range" name="relevanceWeight" min="0" max="100" value="${prefs.relevanceWeight || 20}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${prefs.relevanceWeight || 20}%</span>
         </div>
         <div class="form-group">
           <label>Social Weight</label>
-          <input type="range" name="socialWeight" min="0" max="100" value="\${prefs.socialWeight || 15}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">\${prefs.socialWeight || 15}%</span>
+          <input type="range" name="socialWeight" min="0" max="100" value="${prefs.socialWeight || 15}" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${prefs.socialWeight || 15}%</span>
         </div>
       </div>
       <button type="submit" class="btn btn-primary">Save Salience Weights</button>
@@ -3413,7 +3413,7 @@ app.get('/user/preferences', async (req, res) => {
     <a href="/user/export" class="btn btn-primary">Export My Data</a>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3441,14 +3441,14 @@ app.get('/user/passphrase', async (req, res) => {
     return res.redirect('/auth/knock?redirect=/user/passphrase');
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Change Passphrase - MemoRable</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${userSettingsStyles}</style>
+  <style>${userSettingsStyles}</style>
 </head>
 <body>
   <div class="header">
@@ -3496,7 +3496,7 @@ app.get('/user/passphrase', async (req, res) => {
     </form>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3663,7 +3663,7 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
     }
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -3671,7 +3671,7 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
   <meta charset="utf-8">
   <meta http-equiv="refresh" content="30">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${adminStyles}</style>
+  <style>${adminStyles}</style>
 </head>
 <body>
   <div class="header admin-header">
@@ -3689,19 +3689,19 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
     <div class="panel-title">System Overview</div>
     <div class="stat-grid">
       <div class="stat-card admin-stat">
-        <div class="stat-value">\${userCount}</div>
+        <div class="stat-value">${userCount}</div>
         <div class="stat-label">Total Users</div>
       </div>
       <div class="stat-card admin-stat">
-        <div class="stat-value">\${deviceCount}</div>
+        <div class="stat-value">${deviceCount}</div>
         <div class="stat-label">Connected Devices</div>
       </div>
       <div class="stat-card admin-stat">
-        <div class="stat-value">\${memories.length}</div>
+        <div class="stat-value">${memories.length}</div>
         <div class="stat-label">Memories Stored</div>
       </div>
       <div class="stat-card admin-stat">
-        <div class="stat-value">\${Math.floor(uptimeSeconds / 3600)}h</div>
+        <div class="stat-value">${Math.floor(uptimeSeconds / 3600)}h</div>
         <div class="stat-label">Uptime</div>
       </div>
     </div>
@@ -3719,15 +3719,15 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
           </tr>
         </thead>
         <tbody>
-          \${recentUsers.length === 0 ?
+          ${recentUsers.length === 0 ?
             '<tr><td colspan="3" style="color: var(--text-dim);">No users in database</td></tr>' :
-            recentUsers.map(u => \`
+            recentUsers.map(u => `
               <tr>
-                <td>\${u.userId}</td>
-                <td><span class="tier-badge tier-\${u.tier}">\${u.tier}</span></td>
-                <td><span class="status-badge status-\${u.status}">\${u.status}</span></td>
+                <td>${u.userId}</td>
+                <td><span class="tier-badge tier-${u.tier}">${u.tier}</span></td>
+                <td><span class="status-badge status-${u.status}">${u.status}</span></td>
               </tr>
-            \`).join('')}
+            `).join('')}
         </tbody>
       </table>
       <a href="/admin/users" style="display: block; text-align: center; margin-top: 15px; color: var(--cyan); font-size: 12px;">View All Users →</a>
@@ -3735,11 +3735,11 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
 
     <div class="panel">
       <div class="panel-title">System Logs</div>
-      <div class="log-entry success">[SYSTEM] Server started - \${new Date(startTime).toISOString()}</div>
-      <div class="log-entry">[AUTH] MongoDB mode: \${mongoConnected ? 'Connected' : 'In-Memory Fallback'}</div>
-      <div class="log-entry">[METRICS] \${memories.length} memories in store</div>
-      <div class="log-entry">[DEVICES] \${deviceCount} active device keys</div>
-      \${!mongoConnected ? '<div class="log-entry warn">[WARN] Running without MongoDB - data is ephemeral</div>' : ''}
+      <div class="log-entry success">[SYSTEM] Server started - ${new Date(startTime).toISOString()}</div>
+      <div class="log-entry">[AUTH] MongoDB mode: ${mongoConnected ? 'Connected' : 'In-Memory Fallback'}</div>
+      <div class="log-entry">[METRICS] ${memories.length} memories in store</div>
+      <div class="log-entry">[DEVICES] ${deviceCount} active device keys</div>
+      ${!mongoConnected ? '<div class="log-entry warn">[WARN] Running without MongoDB - data is ephemeral</div>' : ''}
     </div>
   </div>
 
@@ -3753,7 +3753,7 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
     </div>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3786,14 +3786,14 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
 
   const totalPages = Math.ceil(total / limit);
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>User Management - MemoRable Admin</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${adminStyles}</style>
+  <style>${adminStyles}</style>
 </head>
 <body>
   <div class="header admin-header">
@@ -3807,7 +3807,7 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
   </div>
 
   <div class="panel">
-    <div class="panel-title">All Users (\${total})</div>
+    <div class="panel-title">All Users (${total})</div>
     <table class="user-table">
       <thead>
         <tr>
@@ -3821,41 +3821,41 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        \${users.map(u => \`
+        ${users.map(u => `
           <tr>
-            <td>\${u.userId}</td>
-            <td>\${u.email || '-'}</td>
-            <td><span class="tier-badge tier-\${u.tier}">\${u.tier}</span></td>
-            <td><span class="status-badge status-\${u.status}">\${u.status}</span></td>
-            <td>\${u.isAdmin ? '✓' : '-'}</td>
-            <td>\${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+            <td>${u.userId}</td>
+            <td>${u.email || '-'}</td>
+            <td><span class="tier-badge tier-${u.tier}">${u.tier}</span></td>
+            <td><span class="status-badge status-${u.status}">${u.status}</span></td>
+            <td>${u.isAdmin ? '✓' : '-'}</td>
+            <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
             <td>
-              <form method="POST" action="/admin/users/\${u.userId}/action" style="display: inline;">
+              <form method="POST" action="/admin/users/${u.userId}/action" style="display: inline;">
                 <select name="action" style="padding: 4px; font-size: 11px; background: var(--bg-card); color: var(--text); border: 1px solid var(--border);">
                   <option value="">Actions...</option>
-                  \${u.status === 'active' ? '<option value="suspend">Suspend</option>' : '<option value="activate">Activate</option>'}
-                  \${u.isAdmin ? '<option value="revoke_admin">Revoke Admin</option>' : '<option value="grant_admin">Grant Admin</option>'}
+                  ${u.status === 'active' ? '<option value="suspend">Suspend</option>' : '<option value="activate">Activate</option>'}
+                  ${u.isAdmin ? '<option value="revoke_admin">Revoke Admin</option>' : '<option value="grant_admin">Grant Admin</option>'}
                   <option value="change_tier">Change Tier</option>
-                  \${u.status !== 'deleted' ? '<option value="delete">Delete</option>' : '<option value="restore">Restore</option>'}
+                  ${u.status !== 'deleted' ? '<option value="delete">Delete</option>' : '<option value="restore">Restore</option>'}
                 </select>
                 <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 10px; margin-left: 5px;">Go</button>
               </form>
             </td>
           </tr>
-        \`).join('')}
+        `).join('')}
       </tbody>
     </table>
 
-    \${totalPages > 1 ? \`
+    ${totalPages > 1 ? `
       <div style="margin-top: 20px; text-align: center;">
-        \${page > 1 ? \`<a href="/admin/users?page=\${page - 1}" class="btn btn-primary" style="padding: 6px 12px;">← Prev</a>\` : ''}
-        <span style="margin: 0 15px; color: var(--text-dim);">Page \${page} of \${totalPages}</span>
-        \${page < totalPages ? \`<a href="/admin/users?page=\${page + 1}" class="btn btn-primary" style="padding: 6px 12px;">Next →</a>\` : ''}
+        ${page > 1 ? `<a href="/admin/users?page=${page - 1}" class="btn btn-primary" style="padding: 6px 12px;">← Prev</a>` : ''}
+        <span style="margin: 0 15px; color: var(--text-dim);">Page ${page} of ${totalPages}</span>
+        ${page < totalPages ? `<a href="/admin/users?page=${page + 1}" class="btn btn-primary" style="padding: 6px 12px;">Next →</a>` : ''}
       </div>
-    \` : ''}
+    ` : ''}
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -3924,14 +3924,14 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
     }
   }
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>Device Management - MemoRable Admin</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${adminStyles}</style>
+  <style>${adminStyles}</style>
 </head>
 <body>
   <div class="header admin-header">
@@ -3945,7 +3945,7 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
   </div>
 
   <div class="panel">
-    <div class="panel-title">All Devices (\${allDevices.length})</div>
+    <div class="panel-title">All Devices (${allDevices.length})</div>
     <table class="user-table">
       <thead>
         <tr>
@@ -3959,30 +3959,30 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        \${allDevices.length === 0 ?
+        ${allDevices.length === 0 ?
           '<tr><td colspan="7" style="color: var(--text-dim);">No devices found</td></tr>' :
-          allDevices.map(d => \`
+          allDevices.map(d => `
             <tr>
-              <td>\${d.device?.name || d.deviceId}</td>
-              <td>\${d.device?.type || 'unknown'}</td>
-              <td>\${d.userDisplayName || d.userId}</td>
-              <td><span class="status-badge status-\${d.status}">\${d.status}</span></td>
-              <td>\${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : '-'}</td>
-              <td>\${d.lastUsed ? new Date(d.lastUsed).toLocaleString() : 'Never'}</td>
+              <td>${d.device?.name || d.deviceId}</td>
+              <td>${d.device?.type || 'unknown'}</td>
+              <td>${d.userDisplayName || d.userId}</td>
+              <td><span class="status-badge status-${d.status}">${d.status}</span></td>
+              <td>${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : '-'}</td>
+              <td>${d.lastUsed ? new Date(d.lastUsed).toLocaleString() : 'Never'}</td>
               <td>
-                \${d.status === 'active' ? \`
-                  <form method="POST" action="/admin/devices/\${d.deviceId}/revoke" style="display: inline;">
+                ${d.status === 'active' ? `
+                  <form method="POST" action="/admin/devices/${d.deviceId}/revoke" style="display: inline;">
                     <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 10px;">Revoke</button>
                   </form>
-                \` : '<span style="color: var(--text-dim);">Revoked</span>'}
+                ` : '<span style="color: var(--text-dim);">Revoked</span>'}
               </td>
             </tr>
-          \`).join('')}
+          `).join('')}
       </tbody>
     </table>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -4011,14 +4011,14 @@ app.post('/admin/devices/:deviceId/revoke', adminMiddleware, async (req, res) =>
 
 // GET /admin/settings - System settings
 app.get('/admin/settings', adminMiddleware, async (req, res) => {
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>System Settings - MemoRable Admin</title>
   <meta charset="utf-8">
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <style>\${adminStyles}</style>
+  <style>${adminStyles}</style>
 </head>
 <body>
   <div class="header admin-header">
@@ -4035,13 +4035,13 @@ app.get('/admin/settings', adminMiddleware, async (req, res) => {
     <div class="panel-title">Environment</div>
     <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; font-size: 13px;">
       <div style="color: var(--text-dim);">Node Version</div>
-      <div>\${process.version}</div>
+      <div>${process.version}</div>
       <div style="color: var(--text-dim);">Environment</div>
-      <div>\${process.env.NODE_ENV || 'development'}</div>
+      <div>${process.env.NODE_ENV || 'development'}</div>
       <div style="color: var(--text-dim);">MongoDB</div>
-      <div style="color: \${mongoConnected ? 'var(--green)' : 'var(--yellow)'}">\${mongoConnected ? 'Connected' : 'Not Connected (In-Memory Mode)'}</div>
+      <div style="color: ${mongoConnected ? 'var(--green)' : 'var(--yellow)'}">${mongoConnected ? 'Connected' : 'Not Connected (In-Memory Mode)'}</div>
       <div style="color: var(--text-dim);">Port</div>
-      <div>\${process.env.PORT || 3000}</div>
+      <div>${process.env.PORT || 3000}</div>
     </div>
   </div>
 
@@ -4108,7 +4108,7 @@ app.get('/admin/settings', adminMiddleware, async (req, res) => {
     </div>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
