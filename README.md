@@ -18,13 +18,15 @@
 
 ---
 
-## Deploy Your Own Memory Stack in 15 Minutes
+## Deploy Your Own Memory Stack in 15 Minutes (Standalone)
+
+**No Mem0 required. Complete system out of the box.**
 
 > **Note:** One-click deploy is for **development/testing only** until v1.0 release.
 
 [![Deploy to AWS](https://img.shields.io/badge/🚀_Deploy_to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
 
-**Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration. Full stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
+**Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration, no Mem0. Full standalone stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
 
 ---
 
