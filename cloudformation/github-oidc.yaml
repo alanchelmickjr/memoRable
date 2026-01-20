@@ -167,7 +167,7 @@ Resources:
                   - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/memorable-terraform-locks*
 
         #############################################
-        # Secrets Manager - Read deployment secrets
+        # Secrets Manager - Manage deployment secrets
         #############################################
         - PolicyName: SecretsAccess
           PolicyDocument:
@@ -175,8 +175,14 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - secretsmanager:CreateSecret
                   - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:DeleteSecret
                   - secretsmanager:DescribeSecret
+                  - secretsmanager:TagResource
+                  - secretsmanager:UntagResource
                 Resource:
                   - !Sub arn:aws:secretsmanager:*:${AWS::AccountId}:secret:memorable/*
 
@@ -275,6 +281,14 @@ Resources:
                 Resource:
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:cluster:memorable*
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:subnetgroup:memorable*
+                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:replicationgroup:memorable*
+                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:parametergroup:memorable*
+
+              # Service Discovery (for ECS service mesh)
+              - Effect: Allow
+                Action:
+                  - servicediscovery:*
+                Resource: '*'
 
               # CloudFormation (for stack updates and template validation)
               - Effect: Allow
