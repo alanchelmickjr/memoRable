@@ -110,6 +110,10 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - ecs:CreateCluster
+                  - ecs:DeleteCluster
+                  - ecs:CreateService
+                  - ecs:DeleteService
                   - ecs:UpdateService
                   - ecs:DescribeServices
                   - ecs:DescribeClusters
@@ -119,6 +123,9 @@ Resources:
                   - ecs:ListTaskDefinitions
                   - ecs:ListServices
                   - ecs:ListClusters
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                  - ecs:PutClusterCapacityProviders
                 Resource: '*'
               - Effect: Allow
                 Action:
@@ -177,8 +184,15 @@ Resources:
                   - logs:DescribeLogStreams
                   - logs:GetLogEvents
                   - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
                   - logs:CreateLogStream
+                  - logs:DeleteLogStream
                   - logs:PutLogEvents
+                  - logs:TagResource
+                  - logs:UntagResource
+                  - logs:ListTagsForResource
+                  - logs:PutRetentionPolicy
+                  - logs:DeleteRetentionPolicy
                 Resource:
                   - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*
                   - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*:*
@@ -217,21 +231,26 @@ Resources:
                   - elasticloadbalancing:*
                 Resource: '*'
 
-              # DocumentDB
+              # DocumentDB (uses RDS API)
               - Effect: Allow
                 Action:
                   - rds:*DBCluster*
                   - rds:*DBInstance*
                   - rds:*DBSubnetGroup*
                   - rds:*DBParameterGroup*
+                  - rds:*DBClusterParameterGroup*
                   - rds:Describe*
                   - rds:CreateTags
                   - rds:DeleteTags
+                  - rds:AddTagsToResource
+                  - rds:RemoveTagsFromResource
+                  - rds:ListTagsForResource
                 Resource:
                   - !Sub arn:aws:rds:*:${AWS::AccountId}:cluster:memorable*
                   - !Sub arn:aws:rds:*:${AWS::AccountId}:db:memorable*
                   - !Sub arn:aws:rds:*:${AWS::AccountId}:subgrp:memorable*
                   - !Sub arn:aws:rds:*:${AWS::AccountId}:pg:memorable*
+                  - !Sub arn:aws:rds:*:${AWS::AccountId}:cluster-pg:memorable*
 
               # ElastiCache
               - Effect: Allow
