@@ -55,12 +55,14 @@ module "secrets" {
 module "documentdb" {
   source = "./modules/documentdb"
 
-  name_prefix         = local.name_prefix
-  vpc_id              = module.vpc.vpc_id
-  private_subnet_ids  = module.vpc.private_subnet_ids
+  name_prefix             = local.name_prefix
+  vpc_id                  = module.vpc.vpc_id
+  private_subnet_ids      = module.vpc.private_subnet_ids
   allowed_security_groups = [module.ecs.ecs_security_group_id]
-  instance_class      = var.documentdb_instance_class
-  instance_count      = var.documentdb_instance_count
+  instance_class          = var.documentdb_instance_class
+  instance_count          = var.documentdb_instance_count
+  skip_final_snapshot     = var.environment == "staging" ? true : false
+  deletion_protection     = var.environment == "production" ? true : false
 }
 
 module "elasticache" {
