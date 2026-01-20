@@ -20,17 +20,17 @@ output "ingestion_service_name" {
 
 output "ecr_repository_url" {
   description = "ECR repository URL"
-  value       = aws_ecr_repository.app.repository_url
+  value       = data.aws_ecr_repository.app.repository_url
 }
 
 output "ecr_mcp_repository_url" {
   description = "ECR MCP repository URL"
-  value       = aws_ecr_repository.mcp.repository_url
+  value       = data.aws_ecr_repository.mcp.repository_url
 }
 
 output "ecr_ingestion_repository_url" {
   description = "ECR ingestion repository URL"
-  value       = aws_ecr_repository.ingestion.repository_url
+  value       = data.aws_ecr_repository.ingestion.repository_url
 }
 
 output "ecs_security_group_id" {

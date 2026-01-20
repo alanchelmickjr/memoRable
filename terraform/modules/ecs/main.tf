@@ -1,41 +1,14 @@
-# ECR Repository
-resource "aws_ecr_repository" "app" {
-  name                 = "memorable"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name = "${var.name_prefix}-ecr"
-  }
+# ECR Repositories - use data sources since build-images creates them first
+data "aws_ecr_repository" "app" {
+  name = "memorable"
 }
 
-resource "aws_ecr_repository" "mcp" {
-  name                 = "memorable-mcp"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name = "${var.name_prefix}-mcp-ecr"
-  }
+data "aws_ecr_repository" "mcp" {
+  name = "memorable-mcp"
 }
 
-resource "aws_ecr_repository" "ingestion" {
-  name                 = "memorable-ingestion"
-  image_tag_mutability = "MUTABLE"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  tags = {
-    Name = "${var.name_prefix}-ingestion-ecr"
-  }
+data "aws_ecr_repository" "ingestion" {
+  name = "memorable-ingestion"
 }
 
 # ECS Cluster
@@ -186,7 +159,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "memorable-app"
-      image     = var.app_image != "" ? var.app_image : "${aws_ecr_repository.app.repository_url}:latest"
+      image     = var.app_image != "" ? var.app_image : "${data.aws_ecr_repository.app.repository_url}:latest"
       essential = true
 
       portMappings = [
@@ -251,7 +224,7 @@ resource "aws_ecs_task_definition" "ingestion" {
   container_definitions = jsonencode([
     {
       name      = "memorable-ingestion"
-      image     = "${aws_ecr_repository.ingestion.repository_url}:latest"
+      image     = "${data.aws_ecr_repository.ingestion.repository_url}:latest"
       essential = true
 
       portMappings = [
