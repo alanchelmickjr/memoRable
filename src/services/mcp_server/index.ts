@@ -1165,9 +1165,15 @@ async function initializeDb(): Promise<void> {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   const redisPassword = process.env.REDIS_PASSWORD;
   try {
+    // Check if TLS is required (rediss:// or explicit env var)
+    const useTls = redisUrl.startsWith('rediss://') || process.env.REDIS_TLS === 'true';
     redisClient = createClient({
       url: redisUrl,
       password: redisPassword,
+      socket: useTls ? {
+        tls: true,
+        rejectUnauthorized: false, // AWS ElastiCache uses self-signed certs
+      } : undefined,
     });
     redisClient.on('error', (err) => console.error('[MCP] Redis error:', err));
     await redisClient.connect();

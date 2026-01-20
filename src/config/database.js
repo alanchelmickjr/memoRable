@@ -10,10 +10,7 @@ export async function setupDatabase() {
       throw new Error('MONGODB_URI environment variable is not set');
     }
 
-    client = new MongoClient(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    client = new MongoClient(uri);
 
     await client.connect();
     logger.info('Successfully connected to MongoDB');

@@ -10,6 +10,9 @@ export async function setupRedis() {
       throw new Error('REDIS_URL environment variable is not set');
     }
 
+    // Check if TLS is required (rediss:// or explicit env var)
+    const useTls = url.startsWith('rediss://') || process.env.REDIS_TLS === 'true';
+
     client = createClient({
       url,
       socket: {
@@ -21,6 +24,7 @@ export async function setupRedis() {
         },
         connectTimeout: 10000, // 10 seconds
         keepAlive: 5000, // 5 seconds
+        ...(useTls ? { tls: true, rejectUnauthorized: false } : {}), // AWS ElastiCache TLS
       },
       database: 0,
       commandsQueueMaxLength: 100000,
