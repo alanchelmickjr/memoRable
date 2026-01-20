@@ -113,3 +113,11 @@ module "ecs" {
   # Task execution
   execution_role_arn  = module.secrets.task_execution_role_arn
 }
+
+# Populate mongodb secret with connection string (after documentdb is created)
+resource "aws_secretsmanager_secret_version" "mongodb" {
+  secret_id = module.secrets.mongodb_secret_arn
+  secret_string = jsonencode({
+    connection_string = module.documentdb.connection_string
+  })
+}
