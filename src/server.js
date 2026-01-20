@@ -170,6 +170,9 @@ const PUBLIC_PATHS = [
   '/health/ready',
   '/health/startup',
   '/',
+  '/login',
+  '/register',
+  '/docs',
   '/metrics',
   '/metrics/dashboard',
   '/metrics/json',
@@ -259,13 +262,28 @@ const authMiddleware = async (req, res, next) => {
   }
 
   // Check for API key in headers (X-API-Key is canonical)
-  const providedKey = req.headers['x-api-key'];
+  // Also check cookie for browser-based auth
+  let providedKey = req.headers['x-api-key'];
+
+  // Fall back to cookie if no header
+  if (!providedKey && req.headers.cookie) {
+    const cookies = req.headers.cookie.split(';').reduce((acc, c) => {
+      const [key, val] = c.trim().split('=');
+      acc[key] = val;
+      return acc;
+    }, {});
+    providedKey = cookies['memorable_api_key'];
+  }
 
   if (!providedKey) {
     metrics.inc('auth_failures', { reason: 'missing_key' });
+    // For browser requests, redirect to login instead of JSON error
+    if (req.headers.accept && req.headers.accept.includes('text/html')) {
+      return res.redirect('/login');
+    }
     return res.status(401).json({
       error: 'Authentication required',
-      message: 'Provide API key via X-API-Key header. Use /auth/knock + /auth/exchange to get a key.'
+      message: 'Provide API key via X-API-Key header or cookie. Use /auth/knock + /auth/exchange to get a key.'
     });
   }
 
@@ -995,14 +1013,444 @@ app.get('/health/startup', (_req, res) => {
   res.status(isReady ? 200 : 503).json({ initialized: isReady });
 });
 
-// Basic info endpoint
+// Landing page - the front door to MemoRable
 app.get('/', (_req, res) => {
-  res.json({
-    name: 'MemoRable',
-    version: process.env.npm_package_version || '1.0.0',
-    description: 'Context-aware memory system for AI agents',
-    status: isReady ? 'ready' : 'starting',
-  });
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MemoRable - Memory for AI Agents</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 64px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan), 0 0 40px var(--cyan);
+      letter-spacing: 8px;
+      margin-bottom: 20px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .tagline {
+      font-size: 24px;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+      letter-spacing: 2px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-dim);
+      margin-bottom: 50px;
+      max-width: 600px;
+    }
+    .cta-buttons {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      padding: 16px 40px;
+      border-radius: 4px;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--cyan);
+      color: var(--bg-dark);
+      border: 2px solid var(--cyan);
+    }
+    .btn-primary:hover {
+      background: transparent;
+      color: var(--cyan);
+      box-shadow: 0 0 30px var(--cyan);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--magenta);
+      border: 2px solid var(--magenta);
+    }
+    .btn-secondary:hover {
+      background: var(--magenta);
+      color: var(--bg-dark);
+      box-shadow: 0 0 30px var(--magenta);
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 30px;
+      padding: 60px 40px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .feature {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 30px;
+    }
+    .feature h3 {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--cyan);
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 15px;
+    }
+    .feature p {
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .footer {
+      text-align: center;
+      padding: 30px;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 30px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="tagline">Memory for AI Agents</div>
+    <div class="subtitle">
+      Context-aware memory with salience scoring, relationship intelligence,
+      and predictive recall. 35 MCP tools for Claude Code integration.
+    </div>
+    <div class="cta-buttons">
+      <a href="/login" class="btn btn-primary">Sign In</a>
+      <a href="/docs" class="btn btn-secondary">Documentation</a>
+    </div>
+    <div class="status">
+      <div class="status-dot"></div>
+      System Online
+    </div>
+  </div>
+
+  <div class="features">
+    <div class="feature">
+      <h3>Salience Scoring</h3>
+      <p>Not all memories matter equally. Our engine scores by emotion, novelty, relevance, social weight, and consequences.</p>
+    </div>
+    <div class="feature">
+      <h3>MCP Native</h3>
+      <p>35 tools for Claude Code. Store, recall, anticipate, track commitments, understand relationships - all via MCP.</p>
+    </div>
+    <div class="feature">
+      <h3>Privacy First</h3>
+      <p>Three-tier security: General, Personal, Vault. Your sensitive data stays encrypted, never leaves your control.</p>
+    </div>
+    <div class="feature">
+      <h3>Predictive Memory</h3>
+      <p>21-day pattern learning. Surface the right context before you ask for it. Memory that anticipates.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p>MemoRable &copy; 2024 &mdash; Context Intelligence for the Age of AI</p>
+  </div>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Login page - passphrase authentication
+app.get('/login', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --red: #ff0040;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-container {
+      width: 100%;
+      max-width: 440px;
+      padding: 20px;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .login-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 40px;
+    }
+    .login-box h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--cyan);
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+    }
+    .btn {
+      width: 100%;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      padding: 16px;
+      border-radius: 4px;
+      border: 2px solid var(--cyan);
+      background: var(--cyan);
+      color: var(--bg-dark);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn:hover {
+      background: transparent;
+      color: var(--cyan);
+      box-shadow: 0 0 30px var(--cyan);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .error {
+      background: rgba(255, 0, 64, 0.1);
+      border: 1px solid var(--red);
+      color: var(--red);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: none;
+    }
+    .success {
+      background: rgba(0, 255, 65, 0.1);
+      border: 1px solid var(--green);
+      color: var(--green);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: none;
+    }
+    .hint {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .hint a {
+      color: var(--magenta);
+      text-decoration: none;
+    }
+    .hint a:hover {
+      text-decoration: underline;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 30px;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .back-link:hover {
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="login-box">
+      <h2>Sign In</h2>
+      <div class="error" id="error"></div>
+      <div class="success" id="success"></div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="passphrase">Passphrase</label>
+          <input type="password" id="passphrase" name="passphrase" placeholder="Enter your passphrase" required>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Authenticate</button>
+      </form>
+      <p class="hint">New here? <a href="/register">Create an account</a></p>
+    </div>
+    <a href="/" class="back-link">&larr; Back to Home</a>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const errorDiv = document.getElementById('error');
+    const successDiv = document.getElementById('success');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Authenticating...';
+
+      try {
+        // Step 1: Get challenge
+        const knockRes = await fetch('/auth/knock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device: { type: 'browser', name: navigator.userAgent.slice(0, 50) }
+          })
+        });
+        const knockData = await knockRes.json();
+        if (!knockRes.ok) throw new Error(knockData.error || 'Failed to get challenge');
+
+        // Step 2: Exchange passphrase for API key
+        const passphrase = document.getElementById('passphrase').value;
+        const exchangeRes = await fetch('/auth/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challenge: knockData.challenge,
+            passphrase: passphrase,
+            device: { type: 'browser', name: navigator.userAgent.slice(0, 50) }
+          })
+        });
+        const exchangeData = await exchangeRes.json();
+        if (!exchangeRes.ok) throw new Error(exchangeData.error || 'Authentication failed');
+
+        // Store API key in cookie (httpOnly would be better but requires server support)
+        document.cookie = 'memorable_api_key=' + exchangeData.api_key + '; path=/; max-age=604800; SameSite=Strict';
+
+        successDiv.textContent = 'Authentication successful! Redirecting...';
+        successDiv.style.display = 'block';
+
+        // Redirect to dashboard
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1000);
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Authenticate';
+      }
+    });
+  </script>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
 });
 
 // =============================================================================
