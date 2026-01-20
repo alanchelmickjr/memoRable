@@ -30,7 +30,7 @@
 
 ---
 
-**MemoRable extends Mem0 with context intelligence and enterprise-grade security.** Salience scoring, commitment tracking, relationship awareness, and predictive memory - with data protection suitable for regulated industries.
+**MemoRable extends AI context intelligence and enterprise-grade security.** Salience scoring, commitment tracking, relationship awareness, and predictive memory - with data protection suitable for regulated industries.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
