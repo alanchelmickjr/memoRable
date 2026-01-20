@@ -98,6 +98,10 @@ import {
 // Device types for multi-device support
 import type { DeviceType } from '../salience_service/device_context.js';
 
+// Context frame for prompt enrichment
+import { getContextFrame, surfaceMemoriesForFrame } from '../salience_service/context_frame.js';
+import { getAnticipatedForUser, getPredictiveAnticipationService } from '../salience_service/predictive_anticipation.js';
+
 // Configuration
 const CONFIG = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/memorable',
@@ -220,6 +224,242 @@ async function getAuthCode(code: string): Promise<AuthorizationCode | null> {
 async function deleteAuthCode(code: string): Promise<void> {
   if (!redisClient) return;
   await redisClient.del(`${AUTH_CODE_PREFIX}${code}`);
+}
+
+// ============================================================================
+// PROMPT ENRICHMENT SYSTEM
+// ============================================================================
+// The rolling Redis window - polled on EVERY prompt to surface relevant context
+// This is the core of MemoRable's value: automatic context injection
+// ============================================================================
+
+/**
+ * Context enrichment result - injected into every tool response
+ */
+interface PromptEnrichment {
+  // Current context frame from Redis
+  contextFrame?: {
+    location?: string;
+    people: string[];
+    activity?: string;
+    timeOfDay: string;
+    dayType: string;
+  };
+  // Anticipated memories based on patterns
+  anticipated: Array<{
+    memoryId: string;
+    content: string;
+    score: number;
+    reasons: string[];
+  }>;
+  // Urgent open loops
+  urgentLoops: Array<{
+    id: string;
+    description: string;
+    dueIn?: string;
+    isOverdue: boolean;
+  }>;
+  // Suggested topics to explore
+  suggestedTopics: string[];
+  // Pattern stats
+  patternStats?: {
+    totalPatterns: number;
+    formedPatterns: number;
+    readyForPrediction: boolean;
+  };
+}
+
+/**
+ * PRE-PROMPT HOOK: Enrich context before tool execution
+ * Polls Redis rolling window and predictive engine
+ */
+async function enrichPromptContext(userId: string): Promise<PromptEnrichment> {
+  const enrichment: PromptEnrichment = {
+    anticipated: [],
+    urgentLoops: [],
+    suggestedTopics: [],
+  };
+
+  try {
+    // 1. Get current context frame from Redis
+    const frame = await getContextFrame(userId);
+    if (frame) {
+      enrichment.contextFrame = {
+        location: frame.location?.value,
+        people: frame.people.map(p => p.value),
+        activity: frame.activity?.value,
+        timeOfDay: frame.timeOfDay,
+        dayType: frame.dayType,
+      };
+
+      // Surface memories for current context
+      const surfaced = await surfaceMemoriesForFrame(frame);
+      if (surfaced.suggestedTopics) {
+        enrichment.suggestedTopics = surfaced.suggestedTopics;
+      }
+    }
+
+    // 2. Get anticipated memories from predictive engine
+    const anticipated = await getAnticipatedForUser(userId, undefined, 5);
+    if (anticipated.memories) {
+      enrichment.anticipated = anticipated.memories.map(m => ({
+        memoryId: m.memoryId,
+        content: m.content.slice(0, 150) + (m.content.length > 150 ? '...' : ''),
+        score: m.anticipationScore,
+        reasons: m.anticipationReasons,
+      }));
+    }
+
+    // 3. Get urgent open loops (due within 7 days)
+    const loops = await getOpenLoops(userId, { limit: 5 });
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+    enrichment.urgentLoops = loops
+      .filter((l: any) => {
+        if (!l.dueDate) return l.isOverdue;
+        const dueTime = new Date(l.dueDate).getTime();
+        return (dueTime - now) < weekMs || dueTime < now;
+      })
+      .map((l: any) => {
+        const dueDate = l.dueDate ? new Date(l.dueDate) : null;
+        const daysUntil = dueDate
+          ? Math.ceil((dueDate.getTime() - now) / (24 * 60 * 60 * 1000))
+          : null;
+        return {
+          id: l.id || l._id?.toString(),
+          description: l.description,
+          dueIn: daysUntil !== null
+            ? (daysUntil <= 0 ? 'overdue' : `${daysUntil}d`)
+            : undefined,
+          isOverdue: l.isOverdue || (daysUntil !== null && daysUntil <= 0),
+        };
+      });
+
+    // 4. Get pattern stats
+    const stats = await getPatternStats(userId);
+    enrichment.patternStats = {
+      totalPatterns: stats.totalPatterns,
+      formedPatterns: stats.formedPatterns,
+      readyForPrediction: stats.readyForPrediction,
+    };
+
+  } catch (error) {
+    console.error('[MCP] Enrichment error (non-fatal):', error);
+    // Continue with partial enrichment - don't fail the request
+  }
+
+  return enrichment;
+}
+
+/**
+ * POST-TOOL HOOK: Record observation for pattern learning
+ * Feeds the 21-day pattern formation system
+ */
+async function recordToolObservation(
+  userId: string,
+  toolName: string,
+  memoriesAccessed: string[],
+  topicsDiscussed: string[],
+  peopleInvolved: string[]
+): Promise<void> {
+  try {
+    // Get current time features for pattern learning
+    const now = new Date();
+    const hour = now.getHours();
+    const timeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+
+    // Record context observation for pattern detection
+    await observeContext(
+      userId,
+      {
+        timeOfDay: timeOfDay as 'morning' | 'afternoon' | 'evening' | 'night',
+        dayOfWeek: now.getDay(),
+        activity: toolName,
+        people: peopleInvolved,
+      },
+      memoriesAccessed,
+      peopleInvolved,
+      topicsDiscussed
+    );
+  } catch (error) {
+    console.error('[MCP] Observation recording error (non-fatal):', error);
+  }
+}
+
+/**
+ * Wrap tool response with enrichment context
+ * This is what Claude sees - the enriched response
+ */
+function wrapWithEnrichment(
+  toolResponse: { content: Array<{ type: string; text: string }> },
+  enrichment: PromptEnrichment,
+  toolName: string
+): { content: Array<{ type: string; text: string }> } {
+  // Don't enrich certain tools that already have context
+  const skipEnrichment = [
+    'whats_relevant',
+    'anticipate',
+    'get_briefing',
+    'day_outlook',
+    'get_predictions',
+  ];
+
+  if (skipEnrichment.includes(toolName)) {
+    return toolResponse;
+  }
+
+  // Only add enrichment if there's something useful
+  const hasEnrichment =
+    enrichment.anticipated.length > 0 ||
+    enrichment.urgentLoops.length > 0 ||
+    enrichment.suggestedTopics.length > 0;
+
+  if (!hasEnrichment) {
+    return toolResponse;
+  }
+
+  // Build enrichment block
+  const enrichmentParts: string[] = [];
+
+  if (enrichment.anticipated.length > 0) {
+    enrichmentParts.push(`📍 Anticipated (pattern-matched):`);
+    enrichment.anticipated.slice(0, 3).forEach(a => {
+      enrichmentParts.push(`  • ${a.content} [${a.reasons.join(', ')}]`);
+    });
+  }
+
+  if (enrichment.urgentLoops.length > 0) {
+    enrichmentParts.push(`⚡ Open commitments:`);
+    enrichment.urgentLoops.slice(0, 3).forEach(l => {
+      const urgency = l.isOverdue ? '🔴 OVERDUE' : `⏰ ${l.dueIn}`;
+      enrichmentParts.push(`  • ${l.description} ${urgency}`);
+    });
+  }
+
+  if (enrichment.suggestedTopics.length > 0) {
+    enrichmentParts.push(`💡 Suggested: ${enrichment.suggestedTopics.slice(0, 3).join(', ')}`);
+  }
+
+  // Append enrichment to response
+  const enrichmentText = `\n\n---\n_MemoRable Context:_\n${enrichmentParts.join('\n')}`;
+
+  // Clone and modify the response
+  const enrichedContent = toolResponse.content.map((item, index) => {
+    if (index === toolResponse.content.length - 1 && item.type === 'text') {
+      return { ...item, text: item.text + enrichmentText };
+    }
+    return item;
+  });
+
+  return { content: enrichedContent };
+}
+
+// Track tool execution context for observation recording
+interface ToolExecutionContext {
+  memoriesAccessed: string[];
+  topicsDiscussed: string[];
+  peopleInvolved: string[];
 }
 
 // ============================================
@@ -2187,7 +2427,20 @@ function createServer(): Server {
     await initializeDb();
     const { name, arguments: args } = request.params;
 
-    try {
+    // ================================================================
+    // PRE-PROMPT HOOK: Enrich context from Redis rolling window
+    // ================================================================
+    const enrichment = await enrichPromptContext(CONFIG.defaultUserId);
+
+    // Track what this tool execution accesses (for pattern learning)
+    const execContext: ToolExecutionContext = {
+      memoriesAccessed: [],
+      topicsDiscussed: [],
+      peopleInvolved: [],
+    };
+
+    // Helper to execute tool and capture result
+    async function executeToolCall(): Promise<{ content: Array<{ type: string; text: string }> }> {
       switch (name) {
         case 'store_memory': {
           const {
@@ -4460,7 +4713,36 @@ function createServer(): Server {
         default:
           throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
       }
+    }
+
+    // ================================================================
+    // EXECUTE TOOL WITH PRE/POST HOOKS AND ENRICHMENT
+    // ================================================================
+    try {
+      const toolResult = await executeToolCall();
+
+      // POST-TOOL HOOK: Record observation for pattern learning
+      await recordToolObservation(
+        CONFIG.defaultUserId,
+        name,
+        execContext.memoriesAccessed,
+        execContext.topicsDiscussed,
+        execContext.peopleInvolved
+      ).catch(e => console.error('[MCP] Post-hook error:', e));
+
+      // RESPONSE ENRICHMENT: Wrap result with context
+      return wrapWithEnrichment(toolResult, enrichment, name);
+
     } catch (error) {
+      // Record observation even on error
+      await recordToolObservation(
+        CONFIG.defaultUserId,
+        name,
+        execContext.memoriesAccessed,
+        execContext.topicsDiscussed,
+        execContext.peopleInvolved
+      ).catch(e => console.error('[MCP] Post-hook error:', e));
+
       if (error instanceof McpError) throw error;
       throw new McpError(
         ErrorCode.InternalError,
