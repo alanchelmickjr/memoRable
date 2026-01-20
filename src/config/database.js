@@ -10,7 +10,13 @@ export async function setupDatabase() {
       throw new Error('MONGODB_URI environment variable is not set');
     }
 
-    client = new MongoClient(uri);
+    // Check if TLS is required (docdb.amazonaws.com or tls=true in URI)
+    const isDocumentDB = uri.includes('docdb.amazonaws.com') || uri.includes('tls=true');
+
+    client = new MongoClient(uri, {
+      // For AWS DocumentDB, accept self-signed certs
+      ...(isDocumentDB ? { tlsAllowInvalidCertificates: true } : {}),
+    });
 
     await client.connect();
     logger.info('Successfully connected to MongoDB');
