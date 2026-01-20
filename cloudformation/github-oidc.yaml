@@ -274,7 +274,11 @@ Resources:
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:cluster:memorable*
                   - !Sub arn:aws:elasticache:*:${AWS::AccountId}:subnetgroup:memorable*
 
-              # CloudFormation (for stack updates)
+              # CloudFormation (for stack updates and template validation)
+              - Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
               - Effect: Allow
                 Action:
                   - cloudformation:*
