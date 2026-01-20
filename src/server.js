@@ -173,6 +173,7 @@ const PUBLIC_PATHS = [
   '/login',
   '/register',
   '/docs',
+  '/mcp', // MCP has its own auth middleware
   '/metrics',
   '/metrics/dashboard',
   '/metrics/json',
