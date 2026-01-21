@@ -102,6 +102,21 @@ import type { DeviceType } from '../salience_service/device_context.js';
 import { getContextFrame, surfaceMemoriesForFrame } from '../salience_service/context_frame.js';
 import { getAnticipatedForUser, getPredictiveAnticipationService } from '../salience_service/predictive_anticipation.js';
 
+// Notification service for care circle alerts
+import { notificationService } from '../notification_service/index.js';
+
+// Emotion analyzer for distress detection
+import { EmotionAnalyzerClient } from '../ingestion_service/clients/emotion_analyzer_client.js';
+
+// Prediction hooks for proactive memory surfacing
+import { createHook, generateHookPrompt, type HookCondition, type HookPriority } from '../salience_service/prediction_hooks.js';
+
+// Entity pressure tracking for butterfly → hurricane early warning
+import { addPressureVector, createEntityPressure, type EntityPressure, type PressureVector, type PressureCategory } from '../salience_service/entity.js';
+
+// Multi-signal distress scoring - predict BEFORE crisis
+import { calculateDistressScore, buildDistressSignals } from '../salience_service/distress_scorer.js';
+
 // Configuration
 const CONFIG = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/memorable',
@@ -2607,6 +2622,256 @@ function createServer(): Server {
 
           // TODO: For Tier1/Tier2, send to embedding service for vector storage
           // For now, vector storage is handled elsewhere or skipped for Tier3
+
+          // =================================================================
+          // MULTI-SIGNAL DISTRESS DETECTION & CARE CIRCLE NOTIFICATION
+          // Adriana's safety net - predict distress BEFORE crisis
+          // =================================================================
+          try {
+            // Analyze text for emotional content (uses Hume.ai or fallback)
+            const emotionAnalyzer = new EmotionAnalyzerClient();
+            const emotionalContext = await emotionAnalyzer.analyze(text);
+
+            // For each person mentioned, calculate multi-signal distress score
+            if (context?.people && context.people.length > 0) {
+              const db = getDb();
+
+              for (const personId of context.people) {
+                // Get existing pressure record for this person
+                const pressureRecord = await db.collection('entity_pressure').findOne({ entityId: personId }) as EntityPressure | null;
+
+                // Build signals from all available sources
+                const signals = buildDistressSignals(
+                  emotionalContext.detectedEmotionsHume,
+                  pressureRecord,
+                  text,
+                  emotionalContext.emotionalValence !== undefined
+                    ? (emotionalContext.emotionalValence + 1) / 2 - 0.5  // Convert 0-1 to -0.5 to 0.5
+                    : undefined
+                );
+
+                // Calculate multi-signal distress score
+                const distressScore = calculateDistressScore(signals);
+
+                console.log(`[MCP] Distress score for ${personId}: ${distressScore.score} (${distressScore.level})`);
+                if (distressScore.triggeringSignals.length > 0) {
+                  console.log(`[MCP] Triggering signals: ${distressScore.triggeringSignals.join(', ')}`);
+                }
+
+                // Store distress score in memory record for analysis
+                await db.collection('memories').updateOne(
+                  { memoryId },
+                  {
+                    $set: {
+                      [`distressScores.${personId}`]: {
+                        score: distressScore.score,
+                        level: distressScore.level,
+                        confidence: distressScore.confidence,
+                        triggeringSignals: distressScore.triggeringSignals,
+                        timestamp: new Date().toISOString(),
+                      },
+                    },
+                  }
+                );
+
+                // Alert care circle based on distress level
+                if (distressScore.level !== 'none' && pressureRecord?.careCircle?.length) {
+                  const urgencyMap: Record<string, 'monitor' | 'concern' | 'urgent'> = {
+                    low: 'monitor',
+                    moderate: 'concern',
+                    high: 'concern',
+                    critical: 'urgent',
+                  };
+
+                  await notificationService.checkAndNotify(personId, {
+                    pressureScore: pressureRecord.pressureScore || 0,
+                    interventionUrgency: urgencyMap[distressScore.level] || 'monitor',
+                    patterns: pressureRecord.patterns || {
+                      receivingFromMultipleSources: false,
+                      transmittingToOthers: false,
+                      isolating: false,
+                      escalating: false,
+                    },
+                    careCircle: pressureRecord.careCircle,
+                  });
+
+                  console.log(`[MCP] Care circle notified for ${personId} - distress level: ${distressScore.level}`);
+                }
+
+                // CRITICAL: For critical distress, log recommendation
+                if (distressScore.level === 'critical') {
+                  console.error(`[MCP] CRITICAL DISTRESS for ${personId}: ${distressScore.recommendation}`);
+                }
+              }
+            }
+          } catch (emotionError) {
+            // Don't fail memory storage if emotion analysis fails
+            console.warn('[MCP] Emotion analysis/notification failed:', emotionError);
+          }
+
+          // =================================================================
+          // PREDICTION HOOKS - Generate hooks at ingest for proactive surfacing
+          // "Betty's doll knows to remind her about salt before the daughter calls"
+          // =================================================================
+          try {
+            const db = getDb();
+            const entities = context?.people || [];
+
+            // Generate hooks based on content patterns (heuristic for now)
+            // TODO: Use LLM for Tier1 to generate smarter hooks
+            const hooks: Array<{ conditions: HookCondition[]; priority: HookPriority; surfaceText?: string }> = [];
+
+            // Hook 1: Surface when talking to mentioned people
+            if (entities.length > 0) {
+              hooks.push({
+                conditions: [{ type: 'talking_to', operator: 'contains', value: entities[0] }],
+                priority: 'medium',
+              });
+            }
+
+            // Hook 2: Surface based on emotional keywords (distress → high priority)
+            const emotionalKeywords = result.extractedFeatures?.emotionalKeywords || [];
+            const distressKeywords = ['worried', 'scared', 'anxious', 'stressed', 'hurt', 'sad', 'angry', 'frustrated'];
+            const hasDistress = emotionalKeywords.some((k: string) =>
+              distressKeywords.some(d => k.toLowerCase().includes(d))
+            );
+            if (hasDistress) {
+              hooks.push({
+                conditions: [{ type: 'emotional_state', operator: 'equals', value: 'stressed' }],
+                priority: 'high',
+                surfaceText: `Remember: ${text.slice(0, 100)}...`,
+              });
+            }
+
+            // Hook 3: Surface based on location mentions
+            const locationKeywords = ['home', 'office', 'work', 'school', 'hospital', 'doctor', 'store', 'gym'];
+            const mentionedLocation = locationKeywords.find(loc => text.toLowerCase().includes(loc));
+            if (mentionedLocation) {
+              hooks.push({
+                conditions: [{ type: 'location_type', operator: 'equals', value: mentionedLocation }],
+                priority: 'low',
+              });
+            }
+
+            // Hook 4: Surface for open loops (commitments)
+            if (result.openLoopsCreated && result.openLoopsCreated.length > 0) {
+              const loop = result.openLoopsCreated[0];
+              if (loop.otherParty) {
+                hooks.push({
+                  conditions: [{ type: 'talking_to', operator: 'contains', value: loop.otherParty }],
+                  priority: 'high',
+                  surfaceText: `Open commitment: ${loop.description}`,
+                });
+              }
+            }
+
+            // Store generated hooks
+            for (const hookData of hooks) {
+              const hook = createHook(memoryId, CONFIG.defaultUserId, hookData.conditions, {
+                priority: hookData.priority,
+                surfaceText: hookData.surfaceText,
+                cooldownMs: 60 * 60 * 1000, // 1 hour cooldown
+              });
+              await db.collection('prediction_hooks').insertOne(hook);
+            }
+
+            if (hooks.length > 0) {
+              console.log(`[MCP] Generated ${hooks.length} prediction hooks for memory ${memoryId}`);
+            }
+          } catch (hookError) {
+            console.warn('[MCP] Hook generation failed:', hookError);
+          }
+
+          // =================================================================
+          // PRESSURE VECTOR UPDATES - Track emotional pressure for early warning
+          // Butterfly → Hurricane: wounded person wounds another
+          // =================================================================
+          try {
+            const db = getDb();
+            const entities = context?.people || [];
+            const emotionalKeywords = result.extractedFeatures?.emotionalKeywords || [];
+            const sentimentScore = result.extractedFeatures?.sentimentScore || 0;
+
+            // Determine pressure category from emotional keywords
+            let category: PressureCategory = 'neutral';
+            const categoryMap: Record<string, PressureCategory> = {
+              angry: 'conflict', frustrated: 'conflict', annoyed: 'conflict',
+              sad: 'loss', grief: 'loss', mourning: 'loss',
+              worried: 'stress', anxious: 'stress', stressed: 'stress', overwhelmed: 'stress',
+              rejected: 'rejection', alone: 'rejection', excluded: 'rejection',
+              criticized: 'criticism', blamed: 'criticism',
+              disappointed: 'disappointment',
+              happy: 'encouragement', excited: 'encouragement', grateful: 'encouragement',
+              supported: 'support', helped: 'support', loved: 'support',
+              connected: 'connection', together: 'connection',
+              accomplished: 'achievement', proud: 'achievement', succeeded: 'achievement',
+            };
+
+            for (const keyword of emotionalKeywords) {
+              const lower = keyword.toLowerCase();
+              for (const [key, cat] of Object.entries(categoryMap)) {
+                if (lower.includes(key)) {
+                  category = cat;
+                  break;
+                }
+              }
+            }
+
+            // Calculate intensity from sentiment score
+            const intensity = Math.min(1, Math.abs(sentimentScore));
+            const valence = sentimentScore; // -1 to +1
+
+            // Only create vectors for significant emotional content
+            if (intensity > 0.3 && entities.length > 0) {
+              const now = new Date().toISOString();
+
+              for (const entityId of entities) {
+                // Get or create entity pressure record
+                let pressureRecord = await db.collection('entity_pressure').findOne({ entityId }) as EntityPressure | null;
+
+                if (!pressureRecord) {
+                  pressureRecord = createEntityPressure(entityId);
+                }
+
+                // Create pressure vector
+                const vector: PressureVector = {
+                  sourceEntityId: CONFIG.defaultUserId, // The user/device that captured this
+                  targetEntityId: entityId,
+                  memoryId,
+                  timestamp: now,
+                  intensity,
+                  valence,
+                  category,
+                  isRepeated: false, // TODO: detect repeated patterns
+                  cascadeDepth: 0,
+                };
+
+                // Update pressure with new vector
+                const updatedPressure = addPressureVector(pressureRecord, vector);
+
+                // Store updated pressure
+                await db.collection('entity_pressure').updateOne(
+                  { entityId },
+                  { $set: updatedPressure },
+                  { upsert: true }
+                );
+
+                // If intervention urgency changed, notify care circle
+                if (updatedPressure.interventionUrgency !== 'none' && updatedPressure.careCircle?.length) {
+                  await notificationService.checkAndNotify(entityId, {
+                    pressureScore: updatedPressure.pressureScore,
+                    interventionUrgency: updatedPressure.interventionUrgency,
+                    patterns: updatedPressure.patterns,
+                    careCircle: updatedPressure.careCircle,
+                  });
+                }
+
+                console.log(`[MCP] Pressure vector added for ${entityId}: intensity=${intensity.toFixed(2)}, valence=${valence.toFixed(2)}, category=${category}`);
+              }
+            }
+          } catch (pressureError) {
+            console.warn('[MCP] Pressure vector update failed:', pressureError);
+          }
 
           return {
             content: [

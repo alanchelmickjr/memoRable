@@ -413,6 +413,35 @@ export function addPressureVector(
     pressure.patterns.escalating = avgSecond > avgFirst * 1.2;
   }
 
+  // Check for isolation (fewer positive interactions over time)
+  // Compare first half of window to second half
+  const recentPosInputs = pressure.positiveInputs.filter(
+    v => now_ms - new Date(v.timestamp).getTime() < recentWindow
+  );
+  const midpoint = now_ms - (recentWindow / 2);
+
+  const firstHalfPositive = recentPosInputs.filter(
+    v => new Date(v.timestamp).getTime() < midpoint
+  );
+  const secondHalfPositive = recentPosInputs.filter(
+    v => new Date(v.timestamp).getTime() >= midpoint
+  );
+
+  // Isolation detected if:
+  // 1. Had positive interactions in first half but fewer/none in second half, OR
+  // 2. Unique positive sources decreased significantly
+  const firstHalfPositiveCount = firstHalfPositive.length;
+  const secondHalfPositiveCount = secondHalfPositive.length;
+  const uniqueFirstHalf = new Set(firstHalfPositive.map(v => v.sourceEntityId)).size;
+  const uniqueSecondHalf = new Set(secondHalfPositive.map(v => v.sourceEntityId)).size;
+
+  pressure.patterns.isolating = (
+    // Had at least 2 positive interactions in first half, but fewer than half in second
+    (firstHalfPositiveCount >= 2 && secondHalfPositiveCount < firstHalfPositiveCount * 0.5) ||
+    // Or unique sources decreased by more than half
+    (uniqueFirstHalf >= 2 && uniqueSecondHalf < uniqueFirstHalf * 0.5)
+  );
+
   // Determine intervention urgency
   let urgencyScore = 0;
   if (pressure.patterns.receivingFromMultipleSources) urgencyScore++;

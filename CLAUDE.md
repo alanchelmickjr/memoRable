@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2. **NO SECRETS TO GIT** - Never commit API keys, tokens, passwords, or any sensitive data. Check `.env.example` exists, use environment variables, and verify `.gitignore` covers secret files BEFORE committing.
 
+3. **LISTS BEFORE CODE** - When given a multi-part task, FIRST create a comprehensive list of what needs to be done. Audit the codebase, read the docs, then MAKE THE LIST. Only start coding AFTER the list is complete and reviewed. Don't jump straight to implementation.
+
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
 ---

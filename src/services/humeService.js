@@ -304,6 +304,24 @@ export class HumeService {
     .sort((a, b) => b.score - a.score);
   }
 
+  handleError(error) {
+    logger.error('Hume service error:', error.message);
+    this.isConnected = false;
+    // Attempt reconnection on error
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnect();
+    }
+  }
+
+  handleDisconnect() {
+    this.isConnected = false;
+    logger.info('Hume service disconnected');
+    // Attempt reconnection on disconnect
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnect();
+    }
+  }
+
   async close() {
     // Stop all active streams
     for (const streamId of this.activeStreams.keys()) {

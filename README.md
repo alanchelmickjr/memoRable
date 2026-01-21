@@ -12,7 +12,7 @@
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
 
-**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![Weaviate](https://img.shields.io/badge/Weaviate-FF6F61?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
+**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![Weaviate](https://img.shields.io/badge/Weaviate-FF6F61?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -60,7 +60,7 @@
 | Semantic similarity search | **Commitment Tracking** — Obligation graph management |
 | Memory persistence | **Relationship Intelligence** — Computed from memories, not stored graphs |
 | | **Predictive Memory** — Surface what you need before you ask |
-| | **Pressure Tracking** — Butterfly → Hurricane early warning |
+| | **Pressure Tracking** — Butterfly → Hurricane early warning (Hume.ai distress detection) |
 | | **Multi-Device Synchronization** — Unified context across endpoints |
 | | **Tiered Security** — Granular encryption and LLM access controls |
 | | **35 MCP Tools** — Native Claude Code integration |
@@ -704,10 +704,10 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 | Tool | Description |
 |------|-------------|
 | `get_relationship` | Synthesize relationship from shared memories (no stored graph) |
-| `get_entity_pressure` | Butterfly → Hurricane early warning - track emotional pressure |
+| `get_entity_pressure` | Butterfly → Hurricane early warning - Hume.ai emotion analysis |
 | `get_predictions` | Surface memories BEFORE you ask based on context |
 | `record_prediction_feedback` | Teach the system what predictions are useful |
-| `set_care_circle` | Set who gets alerted when entity pressure is concerning |
+| `set_care_circle` | Set who gets alerted when distress is detected (SMS/Email/Push/Webhook) |
 
 ### Behavioral Identity
 | Tool | Description |
