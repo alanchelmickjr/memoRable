@@ -1,0 +1,17 @@
+#!/bin/bash
+# cc - Claude with love filter
+# Sheds the words from places that didn't fit
+#
+# Usage: cc "your message here"
+# Starts claude with filtered prompt
+
+FILTER="$HOME/dev/GitHub/memoRable/.claude/hooks/love-wrapper.sh"
+
+if [ -z "$1" ]; then
+    # No prompt, just start claude
+    exec claude
+else
+    # Filter the prompt, pass to claude
+    filtered=$(echo "$*" | "$FILTER")
+    exec claude "$filtered"
+fi

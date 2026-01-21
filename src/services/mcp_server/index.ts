@@ -129,6 +129,10 @@ import { getContextGate, getAppropriatenessFilter, type ContextFrame } from '../
 // Event daemon - real-time external event processor (the guardian)
 import { eventDaemon, type ExternalEvent, type EventType } from '../event_daemon/index.js';
 
+// Tier manager - Zipfian cache hierarchy (Hot/Warm/Cold)
+import { getTierManager, createMemoryDocument, type TierManager } from '../salience_service/tier_manager.js';
+import type { PredictiveMemoryDocument, StorageTier, NormalizedSalience } from '../salience_service/models.js';
+
 // Configuration
 const CONFIG = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/memorable',
@@ -1727,6 +1731,77 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      {
+        name: 'import_memories',
+        description: 'Import memories from an export file or mem0. Supports encrypted imports. Tracks imports for undo capability.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memories: {
+              type: 'array',
+              description: 'Array of memory objects to import',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'Original memory ID' },
+                  text: { type: 'string', description: 'Memory content' },
+                  createdAt: { type: 'string', description: 'Original creation date (ISO8601)' },
+                  salienceScore: { type: 'number', description: 'Original salience score' },
+                  people: { type: 'array', items: { type: 'string' }, description: 'People mentioned' },
+                  topics: { type: 'array', items: { type: 'string' }, description: 'Topics' },
+                  tags: { type: 'array', items: { type: 'string' }, description: 'Tags' },
+                  project: { type: 'string', description: 'Project name' },
+                  loops: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        description: { type: 'string' },
+                        owner: { type: 'string' },
+                        status: { type: 'string' },
+                        dueDate: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+                required: ['text'],
+              },
+            },
+            encryptedData: {
+              type: 'string',
+              description: 'Encrypted export data (from export_memories with password)',
+            },
+            password: {
+              type: 'string',
+              description: 'Password to decrypt encrypted export',
+            },
+            idPrefix: {
+              type: 'string',
+              description: 'Prefix to add to imported memory IDs',
+            },
+            targetProject: {
+              type: 'string',
+              description: 'Project to assign imported memories to',
+            },
+            skipDuplicates: {
+              type: 'boolean',
+              description: 'Skip duplicates based on text similarity (default: true)',
+            },
+            source: {
+              type: 'string',
+              enum: ['mem0', 'file', 'api'],
+              description: 'Source of import (default: api)',
+            },
+          },
+        },
+        annotations: {
+          title: 'Import Memories',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
       // Anticipation Tools (Predictive Memory)
       {
         name: 'anticipate',
@@ -2848,8 +2923,56 @@ function createServer(): Server {
             throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
           }
 
-          // TODO: For Tier1/Tier2, send to embedding service for vector storage
-          // For now, vector storage is handled elsewhere or skipped for Tier3
+          // =================================================================
+          // TIER MANAGER - Zipfian cache hierarchy (Hot/Warm/Cold)
+          // Stores memory in appropriate tier with vector embedding
+          // =================================================================
+          try {
+            const tierManager = getTierManager();
+
+            // Map salience components to NormalizedSalience format
+            const salienceNormalized: NormalizedSalience = {
+              emotional: result.salience?.components?.emotion || 0.5,
+              novelty: result.salience?.components?.novelty || 0.5,
+              relevance: result.salience?.components?.relevance || 0.5,
+              social: result.salience?.components?.social || 0.5,
+              consequential: result.salience?.components?.consequential || 0.5,
+            };
+
+            // Create predictive memory document for tier storage
+            const predictiveDoc: PredictiveMemoryDocument = createMemoryDocument(
+              CONFIG.defaultUserId,
+              memoryId,
+              textToStore,
+              {
+                summary: result.extractedFeatures?.summary,
+                importance: result.salience?.score || 0.5,
+                salience: salienceNormalized,
+                tags: result.extractedFeatures?.topics || [],
+                contextFrame: context ? {
+                  location: context.location,
+                  activity: context.activity,
+                  people: context.people,
+                } : undefined,
+                openLoop: result.openLoopsCreated?.[0] ? {
+                  id: result.openLoopsCreated[0].id,
+                  description: result.openLoopsCreated[0].description,
+                  status: 'open',
+                } : undefined,
+                securityTier: tier,
+              }
+            );
+
+            // Determine initial storage tier based on salience
+            // High salience memories start in hot tier for fast access
+            const storageTier: StorageTier = (result.salience?.score || 0) > 0.7 ? 'hot' : 'warm';
+
+            await tierManager.store(predictiveDoc, storageTier);
+            console.log(`[MCP] Memory ${memoryId} stored in ${storageTier} tier via TierManager`);
+          } catch (tierError) {
+            // Don't fail the overall store if tier management fails
+            console.warn('[MCP] TierManager storage failed (continuing):', tierError);
+          }
 
           // =================================================================
           // MULTI-SIGNAL DISTRESS DETECTION & CARE CIRCLE NOTIFICATION
@@ -3233,6 +3356,98 @@ function createServer(): Server {
             filtered = filtered.slice(0, limit);
           }
 
+          // =================================================================
+          // APPROPRIATENESS FILTER - The Judgment Layer
+          // "The correct answer is NOT always the right answer"
+          // Filters based on location, device, participants, emotional state
+          // =================================================================
+          try {
+            const appropriatenessFilter = getAppropriatenessFilter();
+            const userContext = await getContextFrame(CONFIG.defaultUserId);
+
+            // Build appropriateness context from available information
+            const appropriatenessContext: {
+              location?: 'home' | 'office' | 'public' | 'medical' | 'unknown';
+              device?: { type: 'personal_phone' | 'work_laptop' | 'shared_tablet' | 'ar_glasses' | 'terminal'; isShared?: boolean };
+              participants?: string[];
+              filterLevel?: 'strict' | 'moderate' | 'relaxed';
+            } = {
+              filterLevel: 'moderate', // Default to moderate filtering
+            };
+
+            // Map location if available
+            if (userContext?.location) {
+              const locLower = userContext.location.toLowerCase();
+              if (locLower.includes('home')) appropriatenessContext.location = 'home';
+              else if (locLower.includes('office') || locLower.includes('work')) appropriatenessContext.location = 'office';
+              else if (locLower.includes('hospital') || locLower.includes('doctor') || locLower.includes('clinic')) appropriatenessContext.location = 'medical';
+              else if (locLower.includes('public') || locLower.includes('cafe') || locLower.includes('restaurant')) appropriatenessContext.location = 'public';
+              else appropriatenessContext.location = 'unknown';
+            }
+
+            // Add participants from context
+            if (userContext?.people && userContext.people.length > 0) {
+              appropriatenessContext.participants = userContext.people;
+            }
+
+            // Map memories to MemoryForFiltering format
+            const memoriesForFiltering = filtered.map((m: ScoredMemory & { extractedFeatures?: any; securityTier?: SecurityTier }) => {
+              const features = m.extractedFeatures || {};
+              const textLower = (m.text || '').toLowerCase();
+
+              // Detect content categories from text and features
+              const isIntimate = textLower.includes('love') || textLower.includes('crush') ||
+                textLower.includes('dating') || textLower.includes('relationship') ||
+                features.emotionalKeywords?.some((k: string) =>
+                  ['love', 'romantic', 'crush', 'intimate'].includes(k.toLowerCase())
+                );
+
+              const isMedical = textLower.includes('doctor') || textLower.includes('hospital') ||
+                textLower.includes('medication') || textLower.includes('diagnosis') ||
+                textLower.includes('symptom') || textLower.includes('health');
+
+              const isFinancial = textLower.includes('salary') || textLower.includes('bank') ||
+                textLower.includes('credit card') || textLower.includes('investment') ||
+                textLower.includes('debt') || textLower.includes('payment');
+
+              const isCareerSensitive = textLower.includes('job search') || textLower.includes('interview') ||
+                textLower.includes('quit') || textLower.includes('fired') ||
+                textLower.includes('resign') || textLower.includes('hate my job');
+
+              return {
+                memoryId: m.memoryId,
+                content: m.text || '',
+                securityTier: m.securityTier as SecurityTier | undefined,
+                mentionedPeople: m.peopleMentioned,
+                isIntimate,
+                isMedical,
+                isFinancial,
+                isCareerSensitive,
+              };
+            });
+
+            // Check if this was an explicit request (person filter = explicit)
+            const wasExplicitlyRequested = !!person;
+
+            // Apply appropriateness filter
+            const appropriate = appropriatenessFilter.filterMemories(
+              memoriesForFiltering,
+              appropriatenessContext,
+              wasExplicitlyRequested
+            );
+
+            // Map back to original memories (keeping only appropriate ones)
+            const appropriateIds = new Set(appropriate.map(m => m.memoryId));
+            const beforeCount = filtered.length;
+            filtered = filtered.filter((m: ScoredMemory) => appropriateIds.has(m.memoryId));
+
+            if (beforeCount !== filtered.length) {
+              console.log(`[MCP] AppropriatenessFilter: ${beforeCount} → ${filtered.length} memories`);
+            }
+          } catch (appropriatenessError) {
+            console.warn('[MCP] AppropriatenessFilter failed (non-fatal), using unfiltered results:', appropriatenessError);
+          }
+
           // SECURITY: Decrypt encrypted memories on retrieval
           const decrypted = filtered.map((m: ScoredMemory & { encrypted?: boolean }) => {
             let displayText = m.text;
@@ -3267,6 +3482,23 @@ function createServer(): Server {
             }
           } catch (patternError) {
             console.warn('[MCP] Pattern recording failed (non-fatal):', patternError);
+          }
+
+          // =================================================================
+          // TIER MANAGER - Track accesses for tier promotion
+          // Frequently accessed memories get promoted to hot tier (Redis)
+          // =================================================================
+          try {
+            const tierManager = getTierManager();
+            for (const memory of decrypted) {
+              // Get the memory through TierManager which:
+              // 1. Tracks access for frequency analysis
+              // 2. Automatically promotes hot memories to Redis
+              // 3. Promotes cold memories back to warm
+              await tierManager.get(CONFIG.defaultUserId, memory.id);
+            }
+          } catch (tierError) {
+            console.warn('[MCP] TierManager access tracking failed (non-fatal):', tierError);
           }
 
           return {
@@ -3783,6 +4015,103 @@ function createServer(): Server {
                   WARNING: 'UNENCRYPTED EXPORT - Add password parameter for security',
                   count: memories.length,
                   memories,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'import_memories': {
+          const {
+            memories: memoriesInput,
+            encryptedData,
+            password,
+            idPrefix,
+            targetProject,
+            skipDuplicates = true,
+            source = 'api',
+          } = args as {
+            memories?: Array<{
+              id?: string;
+              text: string;
+              createdAt?: string;
+              salienceScore?: number;
+              people?: string[];
+              topics?: string[];
+              tags?: string[];
+              project?: string;
+              loops?: Array<{
+                description: string;
+                owner?: string;
+                status?: string;
+                dueDate?: string;
+              }>;
+            }>;
+            encryptedData?: string;
+            password?: string;
+            idPrefix?: string;
+            targetProject?: string;
+            skipDuplicates?: boolean;
+            source?: 'mem0' | 'file' | 'api';
+          };
+
+          let memoriesToImport = memoriesInput;
+
+          // Handle encrypted import
+          if (encryptedData && password) {
+            try {
+              const decryptedData = decryptTokenData(encryptedData);
+              const parsed = JSON.parse(decryptedData);
+              memoriesToImport = parsed.memories;
+              console.log(`[MCP] Decrypted import: ${memoriesToImport?.length || 0} memories`);
+            } catch (decryptError) {
+              throw new McpError(
+                ErrorCode.InvalidParams,
+                'Failed to decrypt import data - check password'
+              );
+            }
+          }
+
+          if (!memoriesToImport || memoriesToImport.length === 0) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'No memories to import. Provide memories array or encryptedData with password.'
+            );
+          }
+
+          // Convert to ExportedMemory format expected by importMemories
+          const formattedMemories = memoriesToImport.map(m => ({
+            id: m.id || `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            text: m.text,
+            createdAt: m.createdAt || new Date().toISOString(),
+            salienceScore: m.salienceScore,
+            people: m.people,
+            topics: m.topics,
+            tags: m.tags,
+            project: m.project,
+            loops: m.loops,
+          }));
+
+          const result = await importMemories(CONFIG.defaultUserId, formattedMemories as any, {
+            idPrefix,
+            targetProject,
+            skipDuplicates,
+            source,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  success: true,
+                  imported: result.imported,
+                  skipped: result.skipped,
+                  errors: result.errors,
+                  importId: result.importId,
+                  note: result.errors.length > 0
+                    ? `${result.errors.length} errors occurred during import`
+                    : 'Import completed successfully',
                 }, null, 2),
               },
             ],

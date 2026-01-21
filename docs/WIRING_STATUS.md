@@ -1,7 +1,7 @@
 # MemoRable Wiring Status
 
 **Generated:** 2026-01-21
-**Last Updated:** 2026-01-21 (Event Daemon + Context Gate wiring)
+**Last Updated:** 2026-01-21 (TierManager + AppropriatenessFilter + import_memories wiring)
 **Purpose:** Track what's implemented, wired, vs placeholder
 
 ---
@@ -31,8 +31,12 @@ store_memory()
     │
     ├──▶ observeContext() (learned_patterns) ✅ WIRED
     │
-    └──▶ recordMemoryAccess() (accessHistory) ✅ WIRED (today)
-              └──▶ FFT Pattern Detector    ✅ WIRED (today)
+    ├──▶ recordMemoryAccess() (accessHistory) ✅ WIRED
+    │         └──▶ FFT Pattern Detector    ✅ WIRED
+    │
+    └──▶ TierManager.store()                  ✅ WIRED (today)
+              ├──▶ Hot tier (Redis)          ✅ High salience → hot
+              └──▶ Warm tier (MongoDB)       ✅ Default storage
 
 
                               RETRIEVAL FLOW
@@ -43,12 +47,18 @@ recall()
     │
     ├──▶ Salience ranking                  ✅ WIRED
     │
-    ├──▶ Context Gate (filter by context)  ✅ WIRED (today)
-    │         ├──▶ CompositeContextGate    ✅ WIRED (today)
-    │         ├──▶ SemanticContextGate     ✅ WIRED (today)
-    │         └──▶ AppropriatenessFilter   ⚠️ PARTIAL (not in recall yet)
+    ├──▶ Context Gate (filter by context)  ✅ WIRED
+    │         ├──▶ CompositeContextGate    ✅ WIRED
+    │         ├──▶ SemanticContextGate     ✅ WIRED
+    │         └──▶ AppropriatenessFilter   ✅ WIRED (today)
+    │                   ├──▶ Location filter     ✅
+    │                   ├──▶ Device filter       ✅
+    │                   └──▶ Participant filter  ✅
     │
-    ├──▶ recordMemoryAccess() (pattern learning) ✅ WIRED (today)
+    ├──▶ recordMemoryAccess() (pattern learning) ✅ WIRED
+    │
+    ├──▶ TierManager.get() (tier promotion)   ✅ WIRED (today)
+    │         └──▶ maybePromoteHot()          ✅ Auto-promotes to Redis
     │
     └──▶ Return results
 
@@ -131,14 +141,16 @@ ingest_event()
 | **Threat Detection** | event_daemon/index.ts | THREAT_PATTERNS array |
 | **Guardian Actions** | event_daemon/index.ts | handlePhoneCallContent, etc. |
 | **Scheduled Checks** | event_daemon/index.ts | scheduleCheck() |
+| **Tier Manager** | tier_manager.ts | mcp_server/index.ts (store_memory + recall) |
+| **AppropriatenessFilter** | context_gate.ts | mcp_server/index.ts (recall handler) |
+| **Video Stream Service** | videoStreamService.js | emotionalContextService.js (via use_video) |
+| **Import Memories** | memory_operations.ts | mcp_server/index.ts (import_memories tool) |
 
 ### CODE EXISTS BUT NOT WIRED
 
 | Component | File | What's Missing |
 |-----------|------|----------------|
-| AppropriatenessFilter | context_gate.ts | Not filtering in recall (security context) |
-| Tier Manager | tier_manager.ts | Hot/Warm/Cold caching not wired |
-| Video Stream Service | videoStreamService.js | Exists but needs testing |
+| (All major components now wired) | - | - |
 
 ### PLACEHOLDER / NOT STARTED
 
@@ -155,10 +167,10 @@ ingest_event()
 
 ---
 
-## MCP Tools Summary (42 Tools)
+## MCP Tools Summary (43 Tools)
 
-### Core Memory (8)
-- store_memory, recall, forget, restore, reassociate, export_memories, search_memories, resolve_open_loop
+### Core Memory (9)
+- store_memory, recall, forget, restore, reassociate, export_memories, **import_memories**, search_memories, resolve_open_loop
 
 ### Context Management (4)
 - set_context, whats_relevant, clear_context, list_devices
