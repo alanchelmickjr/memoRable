@@ -25,14 +25,21 @@ export async function setupDatabase() {
     await client.connect();
     logger.info('Successfully connected to MongoDB');
 
-    // Create time series collections
+    // Create collections
     const db = client.db('memorable');
-    
-    // Create collections with time series configuration
-    await createTimeSeriesCollection(db, 'emotions', 'timestamp');
-    await createTimeSeriesCollection(db, 'interactions', 'timestamp');
-    await createTimeSeriesCollection(db, 'contextual_data', 'timestamp');
-    
+
+    // DocumentDB doesn't support time series collections, so skip them
+    // They're optional - the app works fine with regular collections
+    if (!isDocumentDB) {
+      try {
+        await createTimeSeriesCollection(db, 'emotions', 'timestamp');
+        await createTimeSeriesCollection(db, 'interactions', 'timestamp');
+        await createTimeSeriesCollection(db, 'contextual_data', 'timestamp');
+      } catch (tsError) {
+        logger.warn('Time series collections not supported, using regular collections');
+      }
+    }
+
     return client;
   } catch (error) {
     logger.error('MongoDB connection error:', error);
