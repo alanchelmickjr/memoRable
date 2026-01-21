@@ -120,6 +120,15 @@ import { addPressureVector, createEntityPressure, type EntityPressure, type Pres
 // Multi-signal distress scoring - predict BEFORE crisis
 import { calculateDistressScore, buildDistressSignals } from '../salience_service/distress_scorer.js';
 
+// FFT pattern detection - records memory access for periodicity detection
+import { recordMemoryAccess } from '../salience_service/pattern_detector.js';
+
+// Context gate - filters memories by current context relevance
+import { getContextGate, getAppropriatenessFilter, type ContextFrame } from '../salience_service/context_gate.js';
+
+// Event daemon - real-time external event processor (the guardian)
+import { eventDaemon, type ExternalEvent, type EventType } from '../event_daemon/index.js';
+
 // Configuration
 const CONFIG = {
   mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/memorable',
@@ -2536,6 +2545,138 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ============================================
+      // EVENT DAEMON TOOLS - Real-time Guardian
+      // ============================================
+      {
+        name: 'ingest_event',
+        description:
+          'Submit an external event to the daemon for real-time processing. Events trigger predictions, scam detection, and guardian actions. Phone rings, doorbells, emails, sensors - the daemon evaluates and acts.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: ['phone_ring', 'phone_call_content', 'doorbell', 'email_received', 'calendar_reminder', 'time_trigger', 'sensor_alert', 'device_input', 'silence_detected', 'location_change', 'market_data', 'custom_webhook'],
+              description: 'Type of external event',
+            },
+            entity_id: {
+              type: 'string',
+              description: 'Who this event is about (e.g., "betty")',
+            },
+            device_id: {
+              type: 'string',
+              description: 'Which device detected the event',
+            },
+            payload: {
+              type: 'object',
+              description: 'Event-specific data',
+            },
+            metadata: {
+              type: 'object',
+              description: 'Additional metadata (caller_id, transcript, keywords, etc.)',
+              properties: {
+                caller_id: { type: 'string' },
+                caller_name: { type: 'string' },
+                caller_number: { type: 'string' },
+                transcript: { type: 'string', description: 'For phone_call_content - real-time transcript' },
+                keywords: { type: 'array', items: { type: 'string' } },
+                location: { type: 'string' },
+              },
+            },
+          },
+          required: ['type', 'entity_id'],
+        },
+        annotations: {
+          title: 'Ingest External Event',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      {
+        name: 'schedule_check',
+        description:
+          'Schedule a future check for an entity. Use for meal reminders, medication schedules, check-ins. The daemon will fire a time_trigger event when due.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity_id: {
+              type: 'string',
+              description: 'Entity to check on',
+            },
+            check_type: {
+              type: 'string',
+              enum: ['meal_reminder', 'medication_reminder', 'check_in', 'custom'],
+              description: 'Type of scheduled check',
+            },
+            delay_minutes: {
+              type: 'number',
+              description: 'Minutes from now to trigger the check',
+            },
+            message: {
+              type: 'string',
+              description: 'Message to deliver when check fires',
+            },
+          },
+          required: ['entity_id', 'check_type', 'delay_minutes'],
+        },
+        annotations: {
+          title: 'Schedule Check',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_daemon_status',
+        description:
+          'Get event daemon status including queue length, scheduled checks, and running state.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+        annotations: {
+          title: 'Get Daemon Status',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'set_entity_vulnerability',
+        description:
+          'Set vulnerability level for an entity. High vulnerability entities get extra protection (scam interception, silence monitoring, care circle alerts).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity_id: {
+              type: 'string',
+              description: 'Entity to configure',
+            },
+            vulnerability: {
+              type: 'string',
+              enum: ['normal', 'moderate', 'high'],
+              description: 'Vulnerability level. High = Alzheimer\'s, elderly, at-risk',
+            },
+            notes: {
+              type: 'string',
+              description: 'Context about why this level (e.g., "Alzheimer\'s diagnosis 2024")',
+            },
+          },
+          required: ['entity_id', 'vulnerability'],
+        },
+        annotations: {
+          title: 'Set Entity Vulnerability',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -3044,17 +3185,53 @@ function createServer(): Server {
           const memories = await retrieveMemoriesByQuery(
             CONFIG.defaultUserId,
             query,
-            { limit, minSalience }
+            { limit: limit * 2, minSalience } // Fetch extra for post-filtering
           );
 
           // Filter by person if specified
-          const filtered = person
+          let filtered = person
             ? memories.filter((m: ScoredMemory) =>
                 m.peopleMentioned?.some(
                   (p: string) => p.toLowerCase().includes(person.toLowerCase())
                 )
               )
             : memories;
+
+          // CONTEXT GATE: Filter by current context relevance
+          // The right memory at the wrong time is the wrong memory
+          try {
+            const userContext = await getContextFrame(CONFIG.defaultUserId);
+            if (userContext && (userContext.location || userContext.activity || userContext.people?.length)) {
+              const contextGate = getContextGate();
+              const memoriesWithContext = filtered.map((m: ScoredMemory) => ({
+                ...m,
+                contextFrame: {
+                  location: (m as any).context?.location,
+                  activity: (m as any).context?.activity,
+                  people: m.peopleMentioned,
+                  project: (m as any).context?.project,
+                },
+              }));
+
+              const gated = contextGate.gate(
+                { frame: userContext as ContextFrame },
+                memoriesWithContext as any,
+                0.2 // Low threshold - we still want relevant results
+              );
+
+              // If gating returns results, use them; otherwise keep original
+              if (gated.length > 0) {
+                filtered = gated.slice(0, limit) as any;
+              } else {
+                filtered = filtered.slice(0, limit);
+              }
+            } else {
+              filtered = filtered.slice(0, limit);
+            }
+          } catch (gateError) {
+            console.warn('[MCP] Context gate failed (non-fatal), using unfiltered results:', gateError);
+            filtered = filtered.slice(0, limit);
+          }
 
           // SECURITY: Decrypt encrypted memories on retrieval
           const decrypted = filtered.map((m: ScoredMemory & { encrypted?: boolean }) => {
@@ -3078,6 +3255,19 @@ function createServer(): Server {
               encrypted: m.encrypted,
             };
           });
+
+          // Record memory accesses for FFT pattern detection
+          // This feeds the 21/63 day pattern learning system
+          try {
+            for (const memory of decrypted) {
+              await recordMemoryAccess(CONFIG.defaultUserId, memory.id, {
+                activity: 'recall',
+                people: memory.people,
+              });
+            }
+          } catch (patternError) {
+            console.warn('[MCP] Pattern recording failed (non-fatal):', patternError);
+          }
 
           return {
             content: [
@@ -5234,6 +5424,234 @@ function createServer(): Server {
                 care_circle,
                 alert_threshold,
                 message: `Care circle set. ${care_circle.join(', ')} will be notified when pressure reaches "${alert_threshold}" level.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        // ============================================
+        // EVENT DAEMON HANDLERS - Real-time Guardian
+        // ============================================
+        case 'ingest_event': {
+          const {
+            type,
+            entity_id,
+            device_id,
+            payload = {},
+            metadata = {},
+          } = args as {
+            type: EventType;
+            entity_id: string;
+            device_id?: string;
+            payload?: Record<string, unknown>;
+            metadata?: {
+              caller_id?: string;
+              caller_name?: string;
+              caller_number?: string;
+              transcript?: string;
+              keywords?: string[];
+              location?: string;
+            };
+          };
+
+          if (!type || !entity_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'type and entity_id are required');
+          }
+
+          // Start daemon if not running
+          if (!eventDaemon.getStatus().running) {
+            eventDaemon.start();
+          }
+
+          // Create event
+          const event: ExternalEvent = {
+            eventId: `event_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+            type,
+            timestamp: new Date().toISOString(),
+            entityId: entity_id,
+            deviceId: device_id,
+            payload,
+            metadata: {
+              callerId: metadata.caller_id,
+              callerName: metadata.caller_name,
+              callerNumber: metadata.caller_number,
+              transcript: metadata.transcript,
+              keywords: metadata.keywords,
+              location: metadata.location,
+            },
+          };
+
+          // Ingest and process
+          await eventDaemon.ingestEvent(event);
+
+          // Wait a moment for processing (for critical events)
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+          // Check if action was taken
+          const db = getDb();
+          const action = await db.collection('guardian_actions').findOne(
+            { eventId: event.eventId },
+            { sort: { executedAt: -1 } }
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                event_id: event.eventId,
+                type,
+                entity_id,
+                processed: true,
+                action_taken: action ? {
+                  type: action.actionType,
+                  result: action.result,
+                  notified_care_circle: action.notifiedCareCircle,
+                } : null,
+                message: action
+                  ? `Event processed. Action: ${action.actionType}. ${action.result}`
+                  : `Event logged for ${entity_id}. No immediate action needed.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'schedule_check': {
+          const {
+            entity_id,
+            check_type,
+            delay_minutes,
+            message,
+          } = args as {
+            entity_id: string;
+            check_type: 'meal_reminder' | 'medication_reminder' | 'check_in' | 'custom';
+            delay_minutes: number;
+            message?: string;
+          };
+
+          if (!entity_id || !check_type || !delay_minutes) {
+            throw new McpError(ErrorCode.InvalidParams, 'entity_id, check_type, and delay_minutes are required');
+          }
+
+          // Start daemon if not running
+          if (!eventDaemon.getStatus().running) {
+            eventDaemon.start();
+          }
+
+          const checkId = eventDaemon.scheduleCheck(
+            entity_id,
+            check_type,
+            delay_minutes * 60 * 1000, // Convert to ms
+            { message }
+          );
+
+          const triggerTime = new Date(Date.now() + delay_minutes * 60 * 1000);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                check_id: checkId,
+                entity_id,
+                check_type,
+                scheduled_for: triggerTime.toISOString(),
+                delay_minutes,
+                message: message || `${check_type} check scheduled`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'get_daemon_status': {
+          const status = eventDaemon.getStatus();
+
+          // Get recent actions
+          const db = getDb();
+          const recentActions = await db.collection('guardian_actions')
+            .find({})
+            .sort({ executedAt: -1 })
+            .limit(5)
+            .toArray();
+
+          const recentScamAttempts = await db.collection('scam_attempts')
+            .find({})
+            .sort({ timestamp: -1 })
+            .limit(5)
+            .toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                daemon: status,
+                recent_actions: recentActions.map(a => ({
+                  action_id: a.actionId,
+                  entity_id: a.entityId,
+                  type: a.actionType,
+                  result: a.result,
+                  executed_at: a.executedAt,
+                })),
+                recent_scam_attempts: recentScamAttempts.map(s => ({
+                  entity_id: s.entityId,
+                  pattern: s.pattern,
+                  intercepted: s.intercepted,
+                  timestamp: s.timestamp,
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'set_entity_vulnerability': {
+          const {
+            entity_id,
+            vulnerability,
+            notes,
+          } = args as {
+            entity_id: string;
+            vulnerability: 'normal' | 'moderate' | 'high';
+            notes?: string;
+          };
+
+          if (!entity_id || !vulnerability) {
+            throw new McpError(ErrorCode.InvalidParams, 'entity_id and vulnerability are required');
+          }
+
+          const db = getDb();
+
+          await db.collection('entities').updateOne(
+            { entityId: entity_id },
+            {
+              $set: {
+                vulnerability,
+                vulnerabilityNotes: notes,
+                vulnerabilitySetAt: new Date().toISOString(),
+              },
+              $setOnInsert: {
+                entityId: entity_id,
+                createdAt: new Date().toISOString(),
+              },
+            },
+            { upsert: true }
+          );
+
+          const protectionLevel = {
+            normal: 'Standard monitoring',
+            moderate: 'Enhanced monitoring, scam warnings enabled',
+            high: 'Maximum protection: scam interception, silence monitoring, care circle alerts',
+          }[vulnerability];
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                entity_id,
+                vulnerability,
+                notes,
+                protection_level: protectionLevel,
+                message: `${entity_id} vulnerability set to "${vulnerability}". ${protectionLevel}.`,
               }, null, 2),
             }],
           };

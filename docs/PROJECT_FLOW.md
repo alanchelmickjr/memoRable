@@ -46,17 +46,17 @@ Predict stock = money. Predict pain = lives.
 | Emotion Analysis | ✅ Working | Hume.ai integrated, valence-arousal model |
 | Multi-Modal Sessions | ✅ Working | start/stop/list emotional sessions for devices & people |
 
-### MCP Tools: 38 TOOLS
+### MCP Tools: 42 TOOLS
 | Category | Count | Status |
 |----------|-------|--------|
 | Context Management | 4 | ✅ Working |
 | Memory Operations | 8 | ✅ Working |
 | Commitment Tracking | 3 | ✅ Working |
-| Predictive Memory | 4 | ⚠️ Needs data |
-| Energy-Aware Tasks | 4 | ✅ Working |
+| Predictive Memory | 6 | ⚠️ Needs data |
 | Emotion & Prosody | 10 | ✅ Working (includes start/stop/list sessions) |
 | Relationship Intelligence | 5 | ✅ Working (pressure vectors, isolation detection) |
 | Behavioral Identity | 3 | ✅ Working |
+| **Event Daemon** | 4 | ✅ Working (guardian, scam detection, scheduled checks) |
 
 ### SDKs: NOT STARTED
 | SDK | Status |
@@ -172,12 +172,38 @@ Location/isolation──┘
 
 ### 2.4 Pattern Learning
 
-| Task | Priority | Effort |
+| Task | Priority | Status |
 |------|----------|--------|
-| FFT pattern detector testing | MEDIUM | 2 days |
-| 21-day learning validation | MEDIUM | 21 days (passive) |
-| Context gate tuning | MEDIUM | 3 days |
-| Prediction accuracy metrics | MEDIUM | 2 days |
+| FFT pattern detector wiring | MEDIUM | ✅ DONE - recordMemoryAccess() in recall |
+| 21-day learning validation | MEDIUM | ⚠️ ONGOING - 21 days (passive) |
+| Context gate wiring | MEDIUM | ✅ DONE - getContextGate() in recall |
+| Prediction accuracy metrics | MEDIUM | ⚠️ PENDING - needs data |
+
+### 2.5 Event Daemon (The Guardian)
+
+**Purpose:** Act on external events in real-time. Betty's phone rings, Opus answers.
+
+```
+External Event → Daemon Evaluates → Action Taken
+    │                 │                 │
+    │                 ├──▶ Scam? ──────┼──▶ INTERCEPT
+    │                 │                 │
+    │                 ├──▶ Threat? ────┼──▶ ALERT CARE CIRCLE
+    │                 │                 │
+    │                 └──▶ Routine? ───┴──▶ ASSIST
+
+No user asked. The system ACTS.
+```
+
+| Task | Priority | Status |
+|------|----------|--------|
+| Event daemon service | HIGH | ✅ DONE - event_daemon/index.ts |
+| Threat pattern detection | HIGH | ✅ DONE - 6 scam patterns |
+| Guardian action router | HIGH | ✅ DONE - intercept, notify, remind, assist, alert |
+| MCP tools (ingest_event, etc.) | HIGH | ✅ DONE - 4 tools |
+| Scheduled checks (meal, med) | HIGH | ✅ DONE - scheduleCheck() |
+| Entity vulnerability levels | HIGH | ✅ DONE - set_entity_vulnerability |
+| Hume.ai + Twilio voice | MEDIUM | ❌ PENDING - Opus personality |
 
 ---
 
