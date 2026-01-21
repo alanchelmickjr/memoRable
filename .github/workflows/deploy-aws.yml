@@ -157,7 +157,8 @@ jobs:
         env:
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          TF_VAR_app_image: ${{ needs.build-images.outputs.app_image }}
+          # Use latest tag - built images are always tagged as latest
+          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
         run: |
           terraform plan \
             -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars" \
@@ -169,7 +170,8 @@ jobs:
         env:
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          TF_VAR_app_image: ${{ needs.build-images.outputs.app_image }}
+          # Use latest tag - built images are always tagged as latest
+          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
         run: terraform apply -auto-approve tfplan
 
       - name: Get outputs
