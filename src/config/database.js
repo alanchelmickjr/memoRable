@@ -10,35 +10,17 @@ export async function setupDatabase() {
       throw new Error('MONGODB_URI environment variable is not set');
     }
 
-    // Check if TLS is required (docdb.amazonaws.com or tls=true in URI)
-    const isDocumentDB = uri.includes('docdb.amazonaws.com') || uri.includes('tls=true');
-
-    client = new MongoClient(uri, {
-      // For AWS DocumentDB compatibility
-      ...(isDocumentDB ? {
-        tlsAllowInvalidCertificates: true,
-        authMechanism: 'SCRAM-SHA-1', // DocumentDB doesn't support SCRAM-SHA-256
-        directConnection: true,
-      } : {}),
-    });
+    client = new MongoClient(uri);
 
     await client.connect();
     logger.info('Successfully connected to MongoDB');
 
-    // Create collections
+    // Create time series collections for efficient temporal data
     const db = client.db('memorable');
 
-    // DocumentDB doesn't support time series collections, so skip them
-    // They're optional - the app works fine with regular collections
-    if (!isDocumentDB) {
-      try {
-        await createTimeSeriesCollection(db, 'emotions', 'timestamp');
-        await createTimeSeriesCollection(db, 'interactions', 'timestamp');
-        await createTimeSeriesCollection(db, 'contextual_data', 'timestamp');
-      } catch (tsError) {
-        logger.warn('Time series collections not supported, using regular collections');
-      }
-    }
+    await createTimeSeriesCollection(db, 'emotions', 'timestamp');
+    await createTimeSeriesCollection(db, 'interactions', 'timestamp');
+    await createTimeSeriesCollection(db, 'contextual_data', 'timestamp');
 
     return client;
   } catch (error) {
@@ -58,8 +40,8 @@ async function createTimeSeriesCollection(db, collectionName, timeField) {
     });
     logger.info(`Created time series collection: ${collectionName}`);
   } catch (error) {
-    // Collection might already exist
-    if (error.code !== 48) { // 48 is the error code for "collection already exists"
+    // Collection might already exist (code 48) - that's fine
+    if (error.code !== 48) {
       throw error;
     }
   }
