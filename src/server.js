@@ -1456,6 +1456,337 @@ app.get('/login', (_req, res) => {
   res.send(html);
 });
 
+// Register page - self-service user registration
+app.get('/register', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --red: #ff0040;
+      --yellow: #ffff00;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .register-container {
+      width: 100%;
+      max-width: 480px;
+      padding: 20px;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .register-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 40px;
+    }
+    .register-box h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--cyan);
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+    }
+    .form-group small {
+      display: block;
+      color: var(--text-dim);
+      font-size: 11px;
+      margin-top: 6px;
+    }
+    .passphrase-strength {
+      height: 4px;
+      background: var(--bg-dark);
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .passphrase-strength .fill {
+      height: 100%;
+      transition: all 0.3s;
+      width: 0%;
+    }
+    .btn {
+      width: 100%;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      padding: 16px;
+      border-radius: 4px;
+      border: 2px solid var(--cyan);
+      background: var(--cyan);
+      color: var(--bg-dark);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn:hover {
+      background: transparent;
+      color: var(--cyan);
+      box-shadow: 0 0 30px var(--cyan);
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .error {
+      background: rgba(255, 0, 64, 0.1);
+      border: 1px solid var(--red);
+      color: var(--red);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: none;
+    }
+    .success {
+      background: rgba(0, 255, 65, 0.1);
+      border: 1px solid var(--green);
+      color: var(--green);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: none;
+    }
+    .hint {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .hint a {
+      color: var(--magenta);
+      text-decoration: none;
+    }
+    .hint a:hover {
+      text-decoration: underline;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 30px;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .back-link:hover {
+      color: var(--cyan);
+    }
+    .demo-notice {
+      background: rgba(255, 255, 0, 0.1);
+      border: 1px solid var(--yellow);
+      color: var(--yellow);
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 11px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="register-container">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="register-box">
+      <h2>Create Account</h2>
+      <div class="demo-notice">
+        Demo Mode: For full access, contact team@memorable.ai
+      </div>
+      <div class="error" id="error"></div>
+      <div class="success" id="success"></div>
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="Choose a username" required pattern="[a-z0-9_]+" minlength="3" maxlength="20">
+          <small>Lowercase letters, numbers, underscores only</small>
+        </div>
+        <div class="form-group">
+          <label for="passphrase">Passphrase</label>
+          <input type="password" id="passphrase" name="passphrase" placeholder="Create a memorable passphrase" required minlength="10">
+          <div class="passphrase-strength"><div class="fill" id="strengthFill"></div></div>
+          <small>Make it memorable: "the blue cat danced under moonlight"</small>
+        </div>
+        <div class="form-group">
+          <label for="confirm">Confirm Passphrase</label>
+          <input type="password" id="confirm" name="confirm" placeholder="Repeat your passphrase" required>
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Create Account</button>
+      </form>
+      <p class="hint">Already have an account? <a href="/login">Sign in</a></p>
+    </div>
+    <a href="/" class="back-link">&larr; Back to Home</a>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const errorDiv = document.getElementById('error');
+    const successDiv = document.getElementById('success');
+    const submitBtn = document.getElementById('submitBtn');
+    const passphraseInput = document.getElementById('passphrase');
+    const strengthFill = document.getElementById('strengthFill');
+
+    // Passphrase strength indicator
+    passphraseInput.addEventListener('input', () => {
+      const val = passphraseInput.value;
+      let strength = 0;
+      if (val.length >= 10) strength += 25;
+      if (val.length >= 20) strength += 25;
+      if (/[A-Z]/.test(val)) strength += 15;
+      if (/[0-9]/.test(val)) strength += 15;
+      if (/\\s/.test(val)) strength += 20; // Spaces = passphrase style
+
+      let color = 'var(--red)';
+      if (strength >= 50) color = 'var(--yellow)';
+      if (strength >= 75) color = 'var(--green)';
+
+      strengthFill.style.width = strength + '%';
+      strengthFill.style.background = color;
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorDiv.style.display = 'none';
+      successDiv.style.display = 'none';
+
+      const username = document.getElementById('username').value.toLowerCase();
+      const passphrase = passphraseInput.value;
+      const confirm = document.getElementById('confirm').value;
+
+      if (passphrase !== confirm) {
+        errorDiv.textContent = 'Passphrases do not match';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating Account...';
+
+      try {
+        // Step 1: Register
+        const regRes = await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: username,
+            passphrase: passphrase
+          })
+        });
+
+        const regData = await regRes.json();
+
+        if (!regRes.ok || !regData.success) {
+          throw new Error(regData.error || regData.message || 'Registration failed');
+        }
+
+        // Step 2: Get challenge
+        const knockRes = await fetch('/auth/knock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device: { type: 'browser', name: navigator.userAgent.slice(0, 50) }
+          })
+        });
+        const knockData = await knockRes.json();
+
+        // Step 3: Exchange for API key
+        const exchangeRes = await fetch('/auth/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challenge: knockData.challenge,
+            passphrase: passphrase,
+            device: { type: 'browser', name: navigator.userAgent.slice(0, 50) }
+          })
+        });
+        const exchangeData = await exchangeRes.json();
+
+        if (!exchangeData.success || !exchangeData.api_key) {
+          throw new Error('Failed to get API key after registration');
+        }
+
+        // Store API key in cookie
+        document.cookie = 'memorable_api_key=' + exchangeData.api_key + '; path=/; max-age=' + (30 * 24 * 60 * 60) + '; SameSite=Strict';
+
+        successDiv.innerHTML = 'Account created! Welcome, ' + username + '. Redirecting...';
+        successDiv.style.display = 'block';
+
+        setTimeout(() => {
+          window.location.href = '/dashboard/mission-control';
+        }, 1500);
+      } catch (err) {
+        errorDiv.textContent = err.message;
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // =============================================================================
 // METRICS ENDPOINTS
 // =============================================================================

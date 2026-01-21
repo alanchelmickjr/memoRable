@@ -140,8 +140,11 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 ### Live API Endpoint
 
 ```
-BASE_URL: https://api.memorable.dev
+BASE_URL: https://api.memorable.chat
 ```
+
+> **IMPORTANT**: Our domains are memorable.chat, memorable.codes, memorable.cool, memorable.site
+> We do NOT own memorable.dev - do not use that domain.
 
 > **Note**: If HTTPS endpoint unavailable, the system falls back to passphrase auth
 > which works over any transport. Never use HTTP for production data.
