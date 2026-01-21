@@ -102,6 +102,7 @@ async function storeMemory(
         loop: memory.loop,
         securityTier: memory.securityTier,
         originalCreatedAt: memory.createdAt,
+        historicalTimestamp: memory.createdAt,  // For backdating support
       },
     }),
   });

@@ -5513,6 +5513,10 @@ app.post('/memory', async (req, res) => {
       entityList = ['default'];
     }
 
+    // Support historical timestamps for data import/testing
+    // context.timestamp or metadata.historicalTimestamp can override
+    const timestamp = context.timestamp || metadata.historicalTimestamp || new Date().toISOString();
+
     const memory = {
       id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
@@ -5523,8 +5527,9 @@ app.post('/memory', async (req, res) => {
       metadata: {
         ...metadata,
         prosody: filterResult.prosody,  // Store prosody analysis
+        backdated: timestamp !== new Date().toISOString(), // Track if backdated
       },
-      timestamp: new Date().toISOString(),
+      timestamp,
       salience: calculateSalience(content, context),
       fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
     };
