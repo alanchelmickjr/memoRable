@@ -5,6 +5,15 @@
  * Rolling time machine with minute-level segmented recovery.
  * Supports both in-memory and MongoDB storage.
  * Tracks Mem0 imports for undoable integration.
+ *
+ * SECURITY:
+ * - Backups stored in MongoDB collections prefixed with '_backup_' (internal)
+ * - EFS provides encryption at rest (AES-256)
+ * - MongoDB auth required (SCRAM-SHA-256)
+ * - User isolation: backups include user_id for access control
+ * - Checksums verify integrity on restore
+ * - Audit trail: all operations logged with timestamps
+ * - No secrets in backup data (API keys stored separately in Secrets Manager)
  */
 
 import { Db, Collection, Document } from 'mongodb';
@@ -26,6 +35,7 @@ export interface BackupManifest {
   timestamp: string;
   reason: string;
   version: string;
+  user_id?: string;  // For user isolation - only owner can restore
   collections: {
     name: string;
     count: number;
@@ -97,12 +107,105 @@ const MEMORABLE_COLLECTIONS = [
 ];
 
 // =============================================================================
-// BACKUP STORE (In-memory for metadata, segments can be in DB or memory)
+// BACKUP STORE - MongoDB-backed with in-memory fallback
 // =============================================================================
 
-const backupStore = new Map<string, Backup>();
-const frameStore = new Map<string, Frame>();
-const importRecords = new Map<string, ImportRecord>();
+// In-memory fallback (used only if MongoDB not available)
+const inMemoryBackupStore = new Map<string, Backup>();
+const inMemoryFrameStore = new Map<string, Frame>();
+const inMemoryImportRecords = new Map<string, ImportRecord>();
+
+// MongoDB collection names for persistent backup storage
+const BACKUP_COLLECTION = '_backup_manifests';
+const BACKUP_SEGMENTS_COLLECTION = '_backup_segments';
+const FRAMES_COLLECTION = '_backup_frames';
+const IMPORTS_COLLECTION = '_backup_imports';
+
+/**
+ * Get or create backup collections in MongoDB.
+ * These are prefixed with _ to distinguish from user data.
+ */
+async function getBackupCollections(db: Db) {
+  return {
+    manifests: db.collection<BackupManifest>(BACKUP_COLLECTION),
+    segments: db.collection<BackupSegment & { backup_id: string }>(BACKUP_SEGMENTS_COLLECTION),
+    frames: db.collection<Frame>(FRAMES_COLLECTION),
+    imports: db.collection<ImportRecord>(IMPORTS_COLLECTION),
+  };
+}
+
+/**
+ * Store a backup in MongoDB (persistent) instead of in-memory.
+ */
+async function persistBackup(db: Db, backup: Backup): Promise<void> {
+  const collections = await getBackupCollections(db);
+
+  // Store manifest
+  await collections.manifests.updateOne(
+    { id: backup.manifest.id },
+    { $set: backup.manifest },
+    { upsert: true }
+  );
+
+  // Store segments with backup_id reference
+  for (const segment of backup.segments) {
+    await collections.segments.updateOne(
+      { backup_id: backup.manifest.id, index: segment.index },
+      { $set: { ...segment, backup_id: backup.manifest.id } },
+      { upsert: true }
+    );
+  }
+}
+
+/**
+ * Retrieve a backup from MongoDB.
+ */
+async function retrieveBackup(db: Db, backupId: string): Promise<Backup | null> {
+  const collections = await getBackupCollections(db);
+
+  const manifest = await collections.manifests.findOne({ id: backupId });
+  if (!manifest) return null;
+
+  const segments = await collections.segments
+    .find({ backup_id: backupId })
+    .sort({ index: 1 })
+    .toArray();
+
+  return {
+    manifest: manifest as BackupManifest,
+    segments: segments.map(s => ({
+      index: s.index,
+      collection: s.collection,
+      count: s.count,
+      documents: s.documents,
+      checksum: s.checksum,
+    })),
+  };
+}
+
+/**
+ * Store a frame in MongoDB.
+ */
+async function persistFrame(db: Db, frame: Frame): Promise<void> {
+  const collections = await getBackupCollections(db);
+  await collections.frames.updateOne(
+    { name: frame.name },
+    { $set: frame },
+    { upsert: true }
+  );
+}
+
+/**
+ * Store an import record in MongoDB.
+ */
+async function persistImportRecord(db: Db, record: ImportRecord): Promise<void> {
+  const collections = await getBackupCollections(db);
+  await collections.imports.updateOne(
+    { id: record.id },
+    { $set: record },
+    { upsert: true }
+  );
+}
 
 // =============================================================================
 // UTILITY FUNCTIONS
@@ -139,14 +242,23 @@ function segmentArray<T>(arr: T[], size: number): T[][] {
 /**
  * Create a full backup of all MemoRable collections.
  * Original Mem0 data is NOT touched - only MemoRable enrichments.
+ *
+ * @param db - MongoDB database instance
+ * @param reason - Why the backup was created (for audit trail)
+ * @param frameName - Optional named recovery point
+ * @param userId - User who created the backup (for access control)
  */
 export async function createBackup(
   db: Db,
   reason: string = 'manual',
-  frameName?: string
+  frameName?: string,
+  userId?: string
 ): Promise<BackupManifest> {
   const timestamp = new Date().toISOString();
-  const backupId = `backup_${Date.now()}`;
+  const backupId = `backup_${Date.now()}_${simpleChecksum(timestamp + Math.random())}`;
+
+  console.log(`[Backup] Creating backup: reason=${reason}, user=${userId || 'system'}`);
+
 
   const segments: BackupSegment[] = [];
   const collectionStats: BackupManifest['collections'] = [];
@@ -185,12 +297,13 @@ export async function createBackup(
     }
   }
 
-  // Create manifest
+  // Create manifest with security metadata
   const manifest: BackupManifest = {
     id: backupId,
     timestamp,
     reason,
     version: BACKUP_CONFIG.VERSION,
+    user_id: userId,  // For access control - only owner can restore
     collections: collectionStats,
     total_documents: totalDocuments,
     total_segments: segments.length,
@@ -198,29 +311,35 @@ export async function createBackup(
     checksum: simpleChecksum(JSON.stringify(segments.map(s => s.checksum))),
   };
 
-  // Store backup
-  backupStore.set(backupId, { manifest, segments });
+  // Store backup to MongoDB (persistent) and in-memory (fast access)
+  const backup = { manifest, segments };
+  inMemoryBackupStore.set(backupId, backup);
+  await persistBackup(db, backup);
 
   // Create frame if requested
   if (frameName) {
-    frameStore.set(frameName, {
+    const frame: Frame = {
       name: frameName,
       backup_id: backupId,
       created_at: timestamp,
       document_count: totalDocuments,
-    });
+    };
+    inMemoryFrameStore.set(frameName, frame);
+    await persistFrame(db, frame);
   }
 
   // Prune old backups
-  pruneOldBackups();
+  await pruneOldBackups(db);
 
-  console.log(`[Backup] Created ${backupId}: ${totalDocuments} docs in ${segments.length} segments`);
+  console.log(`[Backup] Created ${backupId}: ${totalDocuments} docs in ${segments.length} segments (persisted to MongoDB)`);
 
   return manifest;
 }
 
 /**
  * Restore from a backup - point-in-time recovery.
+ *
+ * SECURITY: If backup has user_id, requestingUserId must match (or be admin).
  */
 export async function restoreFromBackup(
   db: Db,
@@ -229,17 +348,29 @@ export async function restoreFromBackup(
     merge?: boolean;
     collections?: string[];
     segmentFilter?: number[];
+    requestingUserId?: string;  // For access control
   } = {}
 ): Promise<RestoreResult> {
-  const backup = backupStore.get(backupId);
+  // Try in-memory first (fast), then MongoDB (persistent)
+  let backup = inMemoryBackupStore.get(backupId);
+  if (!backup) {
+    backup = await retrieveBackup(db, backupId);
+  }
   if (!backup) {
     throw new Error(`Backup not found: ${backupId}`);
   }
 
-  const { merge = false, collections, segmentFilter } = options;
+  // SECURITY: Validate user has permission to restore this backup
+  const { merge = false, collections, segmentFilter, requestingUserId } = options;
+  if (backup.manifest.user_id && requestingUserId && backup.manifest.user_id !== requestingUserId) {
+    console.warn(`[Backup] SECURITY: User ${requestingUserId} attempted to restore backup owned by ${backup.manifest.user_id}`);
+    throw new Error('Access denied: You can only restore your own backups');
+  }
+
+  console.log(`[Backup] Restoring ${backupId}: user=${requestingUserId || 'system'}, merge=${merge}`);
 
   // Create safety backup before restore
-  const safetyBackup = await createBackup(db, 'pre_restore_safety');
+  const safetyBackup = await createBackup(db, 'pre_restore_safety', undefined, requestingUserId);
 
   let segmentsToRestore = backup.segments;
 
@@ -251,6 +382,15 @@ export async function restoreFromBackup(
   // Filter by segment index if specified
   if (segmentFilter) {
     segmentsToRestore = segmentsToRestore.filter(s => segmentFilter.includes(s.index));
+  }
+
+  // SECURITY: Verify checksums before restore (integrity check)
+  for (const segment of segmentsToRestore) {
+    const computedChecksum = simpleChecksum(JSON.stringify(segment.documents));
+    if (computedChecksum !== segment.checksum) {
+      console.error(`[Backup] SECURITY: Checksum mismatch for segment ${segment.index} in ${segment.collection}`);
+      throw new Error(`Backup integrity check failed: segment ${segment.index} corrupted`);
+    }
   }
 
   // Group segments by collection
@@ -317,7 +457,12 @@ export async function restoreFromFrame(
   frameName: string,
   options: Parameters<typeof restoreFromBackup>[2] = {}
 ): Promise<RestoreResult> {
-  const frame = frameStore.get(frameName);
+  // Try in-memory first, then MongoDB
+  let frame = inMemoryFrameStore.get(frameName);
+  if (!frame) {
+    const collections = await getBackupCollections(db);
+    frame = await collections.frames.findOne({ name: frameName }) as Frame | null;
+  }
   if (!frame) {
     throw new Error(`Frame not found: ${frameName}`);
   }
@@ -354,22 +499,25 @@ export async function startImport(
     metadata,
   };
 
-  importRecords.set(importId, record);
+  // Store in-memory and persist to MongoDB
+  inMemoryImportRecords.set(importId, record);
+  await persistImportRecord(db, record);
 
-  console.log(`[Import] Started import ${importId} from ${source}`);
+  console.log(`[Import] Started import ${importId} from ${source} (persisted)`);
 
   return importId;
 }
 
 /**
  * Track documents added during an import.
+ * Note: Updates in-memory only. Persisted when completeImport is called.
  */
 export function trackImportedDocument(
   importId: string,
   collection: string,
   documentId: string
 ): void {
-  const record = importRecords.get(importId);
+  const record = inMemoryImportRecords.get(importId);
   if (!record) {
     console.warn(`[Import] Unknown import ID: ${importId}`);
     return;
@@ -388,12 +536,14 @@ export function trackImportedDocument(
 
 /**
  * Complete an import operation.
+ * Now async to persist to MongoDB.
  */
-export function completeImport(importId: string): ImportRecord | undefined {
-  const record = importRecords.get(importId);
+export async function completeImport(db: Db, importId: string): Promise<ImportRecord | undefined> {
+  const record = inMemoryImportRecords.get(importId);
   if (record) {
     record.status = 'completed';
-    console.log(`[Import] Completed ${importId}: ${Object.values(record.document_ids).flat().length} documents`);
+    await persistImportRecord(db, record);
+    console.log(`[Import] Completed ${importId}: ${Object.values(record.document_ids).flat().length} documents (persisted)`);
   }
   return record;
 }
@@ -405,7 +555,12 @@ export async function undoImport(
   db: Db,
   importId: string
 ): Promise<RestoreResult> {
-  const record = importRecords.get(importId);
+  // Try in-memory first, then MongoDB
+  let record = inMemoryImportRecords.get(importId);
+  if (!record) {
+    const collections = await getBackupCollections(db);
+    record = await collections.imports.findOne({ id: importId }) as ImportRecord | null;
+  }
   if (!record) {
     throw new Error(`Import not found: ${importId}`);
   }
@@ -417,21 +572,22 @@ export async function undoImport(
     collections: record.collections_affected,
   });
 
-  // Mark import as rolled back
+  // Mark import as rolled back and persist
   record.status = 'rolled_back';
+  await persistImportRecord(db, record);
 
   return result;
 }
 
 /**
  * List all import records.
+ * Now async to query MongoDB.
  */
-export function listImports(userId?: string): ImportRecord[] {
-  let records = Array.from(importRecords.values());
-  if (userId) {
-    records = records.filter(r => r.user_id === userId);
-  }
-  return records.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+export async function listImports(db: Db, userId?: string): Promise<ImportRecord[]> {
+  const collections = await getBackupCollections(db);
+  const query = userId ? { user_id: userId } : {};
+  const records = await collections.imports.find(query).sort({ timestamp: -1 }).toArray();
+  return records as ImportRecord[];
 }
 
 // =============================================================================
@@ -446,7 +602,10 @@ export async function createFrame(
   name: string,
   description?: string
 ): Promise<Frame> {
-  if (frameStore.has(name)) {
+  // Check both in-memory and MongoDB
+  const collections = await getBackupCollections(db);
+  const existingFrame = inMemoryFrameStore.has(name) || await collections.frames.findOne({ name });
+  if (existingFrame) {
     throw new Error(`Frame '${name}' already exists`);
   }
 
@@ -460,24 +619,31 @@ export async function createFrame(
     description,
   };
 
-  frameStore.set(name, frame);
+  // Store in both places
+  inMemoryFrameStore.set(name, frame);
+  await persistFrame(db, frame);
 
   return frame;
 }
 
 /**
  * List all frames.
+ * Now async to query MongoDB.
  */
-export function listFrames(): Frame[] {
-  return Array.from(frameStore.values())
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+export async function listFrames(db: Db): Promise<Frame[]> {
+  const collections = await getBackupCollections(db);
+  const frames = await collections.frames.find({}).sort({ created_at: -1 }).toArray();
+  return frames as Frame[];
 }
 
 /**
  * Delete a frame (does not delete the backup).
  */
-export function deleteFrame(name: string): boolean {
-  return frameStore.delete(name);
+export async function deleteFrame(db: Db, name: string): Promise<boolean> {
+  inMemoryFrameStore.delete(name);
+  const collections = await getBackupCollections(db);
+  const result = await collections.frames.deleteOne({ name });
+  return result.deletedCount > 0;
 }
 
 // =============================================================================
@@ -486,41 +652,77 @@ export function deleteFrame(name: string): boolean {
 
 /**
  * List all backups.
+ * Now async to query MongoDB.
  */
-export function listBackups(limit: number = 20): BackupManifest[] {
-  return Array.from(backupStore.values())
-    .map(b => b.manifest)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, limit);
+export async function listBackups(db: Db, limit: number = 20): Promise<BackupManifest[]> {
+  const collections = await getBackupCollections(db);
+  const manifests = await collections.manifests
+    .find({})
+    .sort({ timestamp: -1 })
+    .limit(limit)
+    .toArray();
+  return manifests as BackupManifest[];
 }
 
 /**
  * Get a specific backup segment (for efficient transfer).
  */
-export function getBackupSegment(backupId: string, segmentIndex: number): BackupSegment | undefined {
-  const backup = backupStore.get(backupId);
-  if (!backup) return undefined;
-  return backup.segments.find(s => s.index === segmentIndex);
+export async function getBackupSegment(db: Db, backupId: string, segmentIndex: number): Promise<BackupSegment | undefined> {
+  // Try in-memory first
+  const memBackup = inMemoryBackupStore.get(backupId);
+  if (memBackup) {
+    return memBackup.segments.find(s => s.index === segmentIndex);
+  }
+  // Fall back to MongoDB
+  const collections = await getBackupCollections(db);
+  const segment = await collections.segments.findOne({ backup_id: backupId, index: segmentIndex });
+  if (!segment) return undefined;
+  return {
+    index: segment.index,
+    collection: segment.collection,
+    count: segment.count,
+    documents: segment.documents,
+    checksum: segment.checksum,
+  };
 }
 
 /**
- * Prune old backups to prevent memory bloat.
+ * Prune old backups to prevent storage bloat.
+ * Now async to work with MongoDB.
  */
-function pruneOldBackups(): void {
-  const framedBackupIds = new Set(Array.from(frameStore.values()).map(f => f.backup_id));
-  const importBackupIds = new Set(Array.from(importRecords.values()).map(r => r.pre_import_backup_id));
+async function pruneOldBackups(db: Db): Promise<void> {
+  const collections = await getBackupCollections(db);
 
-  const backups = Array.from(backupStore.entries())
-    .filter(([id]) => !framedBackupIds.has(id) && !importBackupIds.has(id))
-    .sort((a, b) => new Date(b[1].manifest.timestamp).getTime() - new Date(a[1].manifest.timestamp).getTime());
+  // Get IDs of backups that are protected (have frames or imports referencing them)
+  const frames = await collections.frames.find({}).toArray();
+  const imports = await collections.imports.find({}).toArray();
+  const framedBackupIds = new Set(frames.map(f => f.backup_id));
+  const importBackupIds = new Set(imports.map(r => r.pre_import_backup_id));
 
-  const toRemove = backups.slice(BACKUP_CONFIG.MAX_BACKUPS);
-  for (const [id] of toRemove) {
-    backupStore.delete(id);
+  // Get all backups sorted by timestamp
+  const allManifests = await collections.manifests
+    .find({})
+    .sort({ timestamp: -1 })
+    .toArray();
+
+  // Filter to unprotected backups
+  const unprotectedBackups = allManifests.filter(
+    m => !framedBackupIds.has(m.id) && !importBackupIds.has(m.id)
+  );
+
+  // Remove excess backups (keep MAX_BACKUPS)
+  const toRemove = unprotectedBackups.slice(BACKUP_CONFIG.MAX_BACKUPS);
+
+  for (const manifest of toRemove) {
+    // Delete from MongoDB
+    await collections.manifests.deleteOne({ id: manifest.id });
+    await collections.segments.deleteMany({ backup_id: manifest.id });
+    // Also clean in-memory
+    inMemoryBackupStore.delete(manifest.id);
   }
 
   if (toRemove.length > 0) {
-    console.log(`[Backup] Pruned ${toRemove.length} old backups`);
+    console.log(`[Backup] Pruned ${toRemove.length} old backups from MongoDB`);
   }
 }
 

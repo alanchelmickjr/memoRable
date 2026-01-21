@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'MemoRable - One-Click Deploy. Context-aware memory for AI agents. NOTE: Deploy to us-west-2, us-east-1, or other DocumentDB-supported region.'
+Description: 'MemoRable - One-Click Deploy. Context-aware memory for AI agents. Works in ALL AWS regions (uses MongoDB container, not DocumentDB).'
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -82,29 +82,29 @@ Conditions:
 Mappings:
   SizeConfig:
     small:
-      DocDBClass: db.t3.medium
-      DocDBCount: 1
       CacheType: cache.t3.micro
       CacheCount: 1
       AppCpu: 512
       AppMemory: 1024
       AppCount: 1
+      MongoCpu: 512
+      MongoMemory: 1024
     medium:
-      DocDBClass: db.r5.large
-      DocDBCount: 1
       CacheType: cache.t3.small
       CacheCount: 1
       AppCpu: 1024
       AppMemory: 2048
       AppCount: 2
+      MongoCpu: 1024
+      MongoMemory: 2048
     large:
-      DocDBClass: db.r5.large
-      DocDBCount: 2
       CacheType: cache.r5.large
       CacheCount: 2
       AppCpu: 2048
       AppMemory: 4096
       AppCount: 3
+      MongoCpu: 2048
+      MongoMemory: 4096
 
 Resources:
   #############################################
@@ -291,19 +291,33 @@ Resources:
       IpProtocol: -1
       SourceSecurityGroupId: !Ref ECSSecurityGroup
 
-  DocumentDBSecurityGroup:
+  MongoDBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: DocumentDB Security Group
+      GroupDescription: MongoDB Security Group
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 27017
           ToPort: 27017
           SourceSecurityGroupId: !Ref ECSSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
       Tags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-docdb-sg
+          Value: !Sub ${AWS::StackName}-mongodb-sg
+
+  # Self-referencing rule for EFS mount targets
+  MongoDBSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MongoDBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      SourceSecurityGroupId: !Ref MongoDBSecurityGroup
 
   RedisSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -402,39 +416,136 @@ Resources:
         ExcludeCharacters: '"@/\'
 
   #############################################
-  # DocumentDB
+  # MongoDB (Real MongoDB in ECS, not DocumentDB)
   #############################################
-  DocumentDBSubnetGroup:
-    Type: AWS::DocDB::DBSubnetGroup
-    Properties:
-      DBSubnetGroupDescription: DocumentDB Subnet Group
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
 
-  DocumentDBCluster:
-    Type: AWS::DocDB::DBCluster
-    DeletionPolicy: Snapshot
+  # EFS for MongoDB data persistence
+  MongoDBFileSystem:
+    Type: AWS::EFS::FileSystem
     Properties:
-      DBClusterIdentifier: !Sub ${AWS::StackName}-docdb
-      MasterUsername: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:username}}'
-      MasterUserPassword: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:password}}'
-      DBSubnetGroupName: !Ref DocumentDBSubnetGroup
-      VpcSecurityGroupIds:
-        - !Ref DocumentDBSecurityGroup
-      StorageEncrypted: true
-      Tags:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags:
         - Key: Name
-          Value: !Sub ${AWS::StackName}-docdb
+          Value: !Sub ${AWS::StackName}-mongodb-efs
 
-  DocumentDBInstance:
-    Type: AWS::DocDB::DBInstance
+  MongoDBMountTarget1:
+    Type: AWS::EFS::MountTarget
     Properties:
-      DBClusterIdentifier: !Ref DocumentDBCluster
-      DBInstanceClass: !FindInMap [SizeConfig, !Ref InstanceSize, DocDBClass]
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-docdb-instance
+      FileSystemId: !Ref MongoDBFileSystem
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroups:
+        - !Ref MongoDBSecurityGroup
+
+  MongoDBMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref MongoDBFileSystem
+      SubnetId: !Ref PrivateSubnet2
+      SecurityGroups:
+        - !Ref MongoDBSecurityGroup
+
+  # EFS Access Point for MongoDB
+  MongoDBAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref MongoDBFileSystem
+      PosixUser:
+        Uid: "999"
+        Gid: "999"
+      RootDirectory:
+        Path: /mongodb
+        CreationInfo:
+          OwnerUid: "999"
+          OwnerGid: "999"
+          Permissions: "755"
+
+  # Service Discovery namespace for internal DNS
+  ServiceDiscoveryNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+      Name: !Sub ${AWS::StackName}.local
+      Vpc: !Ref VPC
+
+  # MongoDB Service Discovery
+  MongoDBServiceDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: mongodb
+      NamespaceId: !Ref ServiceDiscoveryNamespace
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 10
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+
+  # MongoDB Task Definition
+  MongoDBTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${AWS::StackName}-mongodb
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 512
+      Memory: 1024
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      Volumes:
+        - Name: mongodb-data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref MongoDBFileSystem
+            TransitEncryption: ENABLED
+            AuthorizationConfig:
+              AccessPointId: !Ref MongoDBAccessPoint
+              IAM: ENABLED
+      ContainerDefinitions:
+        - Name: mongodb
+          Image: mongo:7.0
+          Essential: true
+          PortMappings:
+            - ContainerPort: 27017
+              Protocol: tcp
+          Environment:
+            - Name: MONGO_INITDB_ROOT_USERNAME
+              Value: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:username}}'
+            - Name: MONGO_INITDB_ROOT_PASSWORD
+              Value: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:password}}'
+          MountPoints:
+            - SourceVolume: mongodb-data
+              ContainerPath: /data/db
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: mongodb
+
+  # MongoDB ECS Service
+  MongoDBService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - MongoDBMountTarget1
+      - MongoDBMountTarget2
+    Properties:
+      ServiceName: !Sub ${AWS::StackName}-mongodb
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref MongoDBTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      PlatformVersion: '1.4.0'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          SecurityGroups:
+            - !Ref MongoDBSecurityGroup
+      ServiceRegistries:
+        - RegistryArn: !GetAtt MongoDBServiceDiscovery.Arn
 
   #############################################
   # ElastiCache Redis
@@ -555,6 +666,17 @@ Resources:
                 Action:
                   - s3:GetEncryptionConfiguration
                 Resource: '*'
+        # EFS access for MongoDB data persistence
+        - PolicyName: EFSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - elasticfilesystem:ClientMount
+                  - elasticfilesystem:ClientWrite
+                  - elasticfilesystem:DescribeMountTargets
+                Resource: !GetAtt MongoDBFileSystem.Arn
         # Bedrock access for LLM inference (when using Bedrock provider)
         - !If
           - UseBedrock
@@ -677,10 +799,9 @@ Resources:
               Value: !Sub redis://${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}
             - Name: MONGODB_URI
               Value: !Sub
-                - mongodb://${Username}:${Password}@${Endpoint}:27017/memorable?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false
+                - mongodb://${Username}:${Password}@mongodb.${AWS::StackName}.local:27017/memorable?authSource=admin
                 - Username: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:username}}'
                   Password: !Sub '{{resolve:secretsmanager:${MongoDBSecret}:SecretString:password}}'
-                  Endpoint: !GetAtt DocumentDBCluster.Endpoint
             # LLM Provider configuration
             - Name: LLM_PROVIDER
               Value: !Ref LLMProvider
@@ -716,6 +837,7 @@ Resources:
     DependsOn:
       - ALBListener
       - TriggerBuild
+      - MongoDBService
     Properties:
       ServiceName: !Sub ${AWS::StackName}-app
       Cluster: !Ref ECSCluster
@@ -950,7 +1072,7 @@ Outputs:
     Description: Security configuration status
     Value: !If
       - EnableHTTPS
-      - "HTTPS enabled (TLS 1.3/1.2), DocumentDB encrypted at rest, all connections encrypted"
+      - "HTTPS enabled (TLS 1.3/1.2), MongoDB data encrypted at rest (EFS), all connections encrypted"
       - "WARNING: HTTP only - provide CertificateArn parameter for encryption in transit"
 
   ECRRepository:
@@ -961,9 +1083,9 @@ Outputs:
     Description: ECS Cluster Name
     Value: !Ref ECSCluster
 
-  DocumentDBEndpoint:
-    Description: DocumentDB Endpoint (encrypted at rest, TLS required)
-    Value: !GetAtt DocumentDBCluster.Endpoint
+  MongoDBEndpoint:
+    Description: MongoDB Service (internal DNS via Service Discovery)
+    Value: !Sub mongodb.${AWS::StackName}.local:27017
 
   RedisEndpoint:
     Description: Redis Endpoint
