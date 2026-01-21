@@ -1,6 +1,7 @@
 resource "aws_secretsmanager_secret" "anthropic" {
-  name        = "memorable/${var.environment}/anthropic"
-  description = "Anthropic API key for MemoRable"
+  name                    = "memorable/${var.environment}/anthropic"
+  description             = "Anthropic API key for MemoRable"
+  recovery_window_in_days = 0  # Allow immediate recreation
 
   tags = {
     Name = "${var.name_prefix}-anthropic-secret"
@@ -15,9 +16,10 @@ resource "aws_secretsmanager_secret_version" "anthropic" {
 }
 
 resource "aws_secretsmanager_secret" "openai" {
-  count       = var.openai_key != "" ? 1 : 0
-  name        = "memorable/${var.environment}/openai"
-  description = "OpenAI API key for MemoRable"
+  count                   = var.openai_key != "" ? 1 : 0
+  name                    = "memorable/${var.environment}/openai"
+  description             = "OpenAI API key for MemoRable"
+  recovery_window_in_days = 0  # Allow immediate recreation
 
   tags = {
     Name = "${var.name_prefix}-openai-secret"
@@ -33,8 +35,9 @@ resource "aws_secretsmanager_secret_version" "openai" {
 }
 
 resource "aws_secretsmanager_secret" "mongodb" {
-  name        = "memorable/${var.environment}/mongodb"
-  description = "MongoDB credentials for MemoRable"
+  name                    = "memorable/${var.environment}/mongodb"
+  description             = "MongoDB credentials for MemoRable"
+  recovery_window_in_days = 0  # Allow immediate recreation
 
   tags = {
     Name = "${var.name_prefix}-mongodb-secret"
