@@ -108,6 +108,9 @@ import { notificationService } from '../notification_service/index.js';
 // Emotion analyzer for distress detection
 import { EmotionAnalyzerClient } from '../ingestion_service/clients/emotion_analyzer_client.js';
 
+// Multi-modal emotional context service (video, voice, EVI fusion)
+import emotionalContextService from '../emotionalContextService.js';
+
 // Prediction hooks for proactive memory surfacing
 import { createHook, generateHookPrompt, type HookCondition, type HookPriority } from '../salience_service/prediction_hooks.js';
 
@@ -2085,6 +2088,90 @@ function createServer(): Server {
         },
         annotations: {
           title: 'Get Emotional Context',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'start_emotional_session',
+        description:
+          'Start a multi-modal emotional tracking session for a device or person. Enables real-time emotion detection from video, voice prosody, and/or EVI. Two-way gauge: tracks both device state and human emotional state.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Unique session ID (e.g., "device_betty_doll_001" or "person_adriana")',
+            },
+            entity_id: {
+              type: 'string',
+              description: 'Entity ID being tracked (device or person)',
+            },
+            use_video: {
+              type: 'boolean',
+              description: 'Enable video/facial emotion detection',
+              default: false,
+            },
+            use_voice: {
+              type: 'boolean',
+              description: 'Enable voice prosody analysis',
+              default: true,
+            },
+            use_evi: {
+              type: 'boolean',
+              description: 'Enable Hume EVI integration',
+              default: false,
+            },
+            buffer_size: {
+              type: 'number',
+              description: 'Number of emotion samples to buffer before fusion (default: 5)',
+              default: 5,
+            },
+          },
+          required: ['session_id'],
+        },
+        annotations: {
+          title: 'Start Emotional Session',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      {
+        name: 'stop_emotional_session',
+        description:
+          'Stop a multi-modal emotional tracking session. Processes any remaining buffered emotions and cleans up resources.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'string',
+              description: 'Session ID to stop',
+            },
+          },
+          required: ['session_id'],
+        },
+        annotations: {
+          title: 'Stop Emotional Session',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'list_emotional_sessions',
+        description:
+          'List all active emotional tracking sessions. Shows devices and people being tracked.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+        annotations: {
+          title: 'List Emotional Sessions',
           readOnlyHint: true,
           destructiveHint: false,
           idempotentHint: true,
@@ -4267,6 +4354,169 @@ function createServer(): Server {
                 sources: {},
                 historyLength: 0,
                 note: 'No active emotional context. Start a session with video/voice to enable real-time emotion tracking.',
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'start_emotional_session': {
+          const {
+            session_id,
+            entity_id,
+            use_video = false,
+            use_voice = true,
+            use_evi = false,
+            buffer_size = 5,
+          } = args as {
+            session_id: string;
+            entity_id?: string;
+            use_video?: boolean;
+            use_voice?: boolean;
+            use_evi?: boolean;
+            buffer_size?: number;
+          };
+
+          if (!session_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'session_id is required');
+          }
+
+          try {
+            // Initialize the service if not already done
+            if (!emotionalContextService.redis) {
+              await emotionalContextService.initialize();
+            }
+
+            // Start the emotional context session
+            const context = await emotionalContextService.startContext(session_id, {
+              useVideo: use_video,
+              useVoice: use_voice,
+              useEVI: use_evi,
+              bufferSize: buffer_size,
+            });
+
+            // Store session metadata in MongoDB for tracking
+            const db = getDb();
+            await db.collection('emotional_sessions').updateOne(
+              { sessionId: session_id },
+              {
+                $set: {
+                  sessionId: session_id,
+                  entityId: entity_id || session_id,
+                  userId: CONFIG.defaultUserId,
+                  options: {
+                    useVideo: use_video,
+                    useVoice: use_voice,
+                    useEVI: use_evi,
+                    bufferSize: buffer_size,
+                  },
+                  startedAt: new Date().toISOString(),
+                  status: 'active',
+                },
+              },
+              { upsert: true }
+            );
+
+            console.log(`[MCP] Started emotional session ${session_id} for entity ${entity_id || session_id}`);
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  started: true,
+                  sessionId: session_id,
+                  entityId: entity_id || session_id,
+                  options: {
+                    useVideo: use_video,
+                    useVoice: use_voice,
+                    useEVI: use_evi,
+                    bufferSize: buffer_size,
+                  },
+                  note: 'Emotional session started. Use get_emotional_context to retrieve fused emotional state.',
+                }, null, 2),
+              }],
+            };
+          } catch (error) {
+            console.error('[MCP] Failed to start emotional session:', error);
+            throw new McpError(
+              ErrorCode.InternalError,
+              `Failed to start emotional session: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+          }
+        }
+
+        case 'stop_emotional_session': {
+          const { session_id } = args as { session_id: string };
+
+          if (!session_id) {
+            throw new McpError(ErrorCode.InvalidParams, 'session_id is required');
+          }
+
+          try {
+            // Stop the emotional context session
+            await emotionalContextService.stopContext(session_id);
+
+            // Update session metadata in MongoDB
+            const db = getDb();
+            await db.collection('emotional_sessions').updateOne(
+              { sessionId: session_id },
+              {
+                $set: {
+                  status: 'stopped',
+                  stoppedAt: new Date().toISOString(),
+                },
+              }
+            );
+
+            console.log(`[MCP] Stopped emotional session ${session_id}`);
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  stopped: true,
+                  sessionId: session_id,
+                  note: 'Emotional session stopped. Buffered emotions processed and resources cleaned up.',
+                }, null, 2),
+              }],
+            };
+          } catch (error) {
+            console.error('[MCP] Failed to stop emotional session:', error);
+            throw new McpError(
+              ErrorCode.InternalError,
+              `Failed to stop emotional session: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+          }
+        }
+
+        case 'list_emotional_sessions': {
+          const db = getDb();
+
+          // Get active sessions from MongoDB
+          const sessions = await db.collection('emotional_sessions')
+            .find({
+              userId: CONFIG.defaultUserId,
+              status: 'active',
+            })
+            .toArray();
+
+          // Also check in-memory sessions from the service
+          const activeSessions = Array.from(emotionalContextService.activeContexts?.keys() || []);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                count: sessions.length,
+                sessions: sessions.map(s => ({
+                  sessionId: s.sessionId,
+                  entityId: s.entityId,
+                  options: s.options,
+                  startedAt: s.startedAt,
+                  inMemory: activeSessions.includes(s.sessionId),
+                })),
+                note: sessions.length === 0
+                  ? 'No active emotional sessions. Use start_emotional_session to begin tracking.'
+                  : 'Active sessions tracking emotional state for devices/people.',
               }, null, 2),
             }],
           };

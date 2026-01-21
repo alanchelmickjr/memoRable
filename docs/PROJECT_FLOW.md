@@ -41,11 +41,12 @@ Predict stock = money. Predict pain = lives.
 | Context Frames | ✅ Working | set_context, whats_relevant |
 | Predictive Anticipation | ⚠️ Code exists | Needs 21 days of data |
 | Pattern Detector | ⚠️ Code exists | FFT-based, untested at scale |
-| Care Circle | ⚠️ Code exists | Pressure tracking, alerts |
-| Distress Detection | ⚠️ Partial | Prosody analysis basic |
-| Emotion Analysis | ⚠️ Partial | Needs Hume.ai integration |
+| Care Circle | ✅ Working | Pressure tracking, notifications (SMS/Email/Push/Webhook) |
+| Distress Detection | ✅ Working | Multi-signal scoring (Hume + pressure + isolation + keywords) |
+| Emotion Analysis | ✅ Working | Hume.ai integrated, valence-arousal model |
+| Multi-Modal Sessions | ✅ Working | start/stop/list emotional sessions for devices & people |
 
-### MCP Tools: 35 TOOLS
+### MCP Tools: 38 TOOLS
 | Category | Count | Status |
 |----------|-------|--------|
 | Context Management | 4 | ✅ Working |
@@ -53,8 +54,8 @@ Predict stock = money. Predict pain = lives.
 | Commitment Tracking | 3 | ✅ Working |
 | Predictive Memory | 4 | ⚠️ Needs data |
 | Energy-Aware Tasks | 4 | ✅ Working |
-| Emotion & Prosody | 7 | ⚠️ Partial |
-| Relationship Intelligence | 5 | ⚠️ Partial |
+| Emotion & Prosody | 10 | ✅ Working (includes start/stop/list sessions) |
+| Relationship Intelligence | 5 | ✅ Working (pressure vectors, isolation detection) |
 | Behavioral Identity | 3 | ✅ Working |
 
 ### SDKs: NOT STARTED
@@ -141,32 +142,33 @@ Behavior change  ───┤                       - Inner circle activated
 Location/isolation──┘
 ```
 
-| Task | Priority | Effort | Notes |
-|------|----------|--------|-------|
-| Enhance prosody analysis | HIGH | 3 days | Beyond basic sentiment |
-| Add isolation detection | HIGH | 2 days | Location + communication patterns |
-| Build distress scoring model | HIGH | 1 week | Multi-signal fusion |
-| Care circle alert system | CRITICAL | 3 days | The actual alert mechanism |
-| False positive tuning | HIGH | Ongoing | Can't cry wolf |
+| Task | Priority | Status |
+|------|----------|--------|
+| Enhance prosody analysis | HIGH | ✅ DONE - Hume.ai valence-arousal |
+| Add isolation detection | HIGH | ✅ DONE - entity.ts calculates from interaction patterns |
+| Build distress scoring model | HIGH | ✅ DONE - distress_scorer.ts (multi-signal fusion) |
+| Care circle alert system | CRITICAL | ✅ DONE - notification_service/index.ts |
+| False positive tuning | HIGH | ⚠️ ONGOING - needs data |
 
 ### 2.2 Care Circle System
 
-| Task | Priority | Effort |
+| Task | Priority | Status |
 |------|----------|--------|
-| Define care circle schema | HIGH | 1 day |
-| set_care_circle API complete | HIGH | 1 day |
-| Alert routing (SMS, push, call) | HIGH | 3 days |
-| Escalation tiers (monitor → concern → urgent) | HIGH | 2 days |
-| Dashboard for caregivers | MEDIUM | 1 week |
+| Define care circle schema | HIGH | ✅ DONE - EntityPressure type |
+| set_care_circle API complete | HIGH | ✅ DONE - MCP tool working |
+| Alert routing (SMS, push, call) | HIGH | ✅ DONE - Twilio, SendGrid, FCM, Webhook |
+| Escalation tiers (monitor → concern → urgent) | HIGH | ✅ DONE - NotificationService |
+| Dashboard for caregivers | MEDIUM | ❌ NOT STARTED - needs frontend |
 
 ### 2.3 Emotion Integration
 
-| Task | Priority | Effort |
+| Task | Priority | Status |
 |------|----------|--------|
-| Hume.ai API integration | MEDIUM | 2 days |
-| Voice prosody stream processing | MEDIUM | 3 days |
-| Video emotion detection | LOW | 1 week |
-| Multi-modal fusion | MEDIUM | 3 days |
+| Hume.ai API integration | MEDIUM | ✅ DONE - emotion_analyzer_client.ts |
+| Multi-modal session MCP tools | MEDIUM | ✅ DONE - start/stop/list_emotional_session |
+| Voice prosody stream processing | MEDIUM | ✅ WIRED - humeService.js + emotionalContextService.js |
+| Video emotion detection | LOW | ⚠️ WIRED - videoStreamService.js exists |
+| Multi-modal fusion | MEDIUM | ✅ WIRED - emotionalContextService.js fuses all streams |
 
 ### 2.4 Pattern Learning
 
