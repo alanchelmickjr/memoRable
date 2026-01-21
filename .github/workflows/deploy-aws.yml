@@ -98,11 +98,11 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           # Build and push main app
-          docker build -t $ECR_REGISTRY/memorable-app:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/memorable-app:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/memorable-app:$IMAGE_TAG $ECR_REGISTRY/memorable-app:latest
-          docker push $ECR_REGISTRY/memorable-app:latest
-          echo "app_image=$ECR_REGISTRY/memorable-app:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build -t $ECR_REGISTRY/memorable:$IMAGE_TAG -f docker/Dockerfile .
+          docker push $ECR_REGISTRY/memorable:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/memorable:$IMAGE_TAG $ECR_REGISTRY/memorable:latest
+          docker push $ECR_REGISTRY/memorable:latest
+          echo "app_image=$ECR_REGISTRY/memorable:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
           # Build and push ingestion service
           docker build -t $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG -f src/services/ingestion_service/Dockerfile .
@@ -158,7 +158,7 @@ jobs:
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           # Use latest tag - built images are always tagged as latest
-          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable-app:latest
+          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
         run: |
           terraform plan \
             -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars" \
@@ -171,7 +171,7 @@ jobs:
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           # Use latest tag - built images are always tagged as latest
-          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable-app:latest
+          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
         run: terraform apply -auto-approve tfplan
 
       - name: Get outputs
