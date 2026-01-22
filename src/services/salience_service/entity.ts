@@ -686,3 +686,4 @@ export function parseEntityId(entityId: string): { type: string; slug: string } 
     slug: parts.slice(1).join('_'),
   };
 }
+// Build timestamp: 20260122003620
