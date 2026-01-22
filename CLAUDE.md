@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **DOCUMENT BEFORE CODE** - Always create a document before you code. Always make sure the document fits into the overall plan. If you haven't followed the document creation and planning steps you should not be coding.
 
+5. **DICTATION AWARENESS** - Alan uses voice dictation. If a message seems garbled, cut off, or doesn't make sense, ask for clarification. Don't take broken dictation literally.
+
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
 ---
