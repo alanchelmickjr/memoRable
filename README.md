@@ -1325,34 +1325,65 @@ npm test
 
 MemoRable is a **self-documenting, self-indexing** codebase. The indexer indexes itself.
 
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            ENGINE ARCHITECTURE                               │
+│                        Three Layers of Intelligence                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Layer 1: FLAT SEARCH ✅ Complete                                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   Sources    │───▶│   Chunker    │───▶│    Sinks     │                   │
+│  │  .git repos  │    │  Adaptive:   │    │ MemoRable API│                   │
+│  │  docs, code  │    │  • markdown  │    │ Weaviate     │                   │
+│  │              │    │  • code      │    │ Console      │                   │
+│  └──────────────┘    │  • prose     │    └──────────────┘                   │
+│                      └──────────────┘                                        │
+│                                                                              │
+│  Layer 2: GRAPH (Future)                                                     │
+│  ┌──────────────────────────────────────────────────────┐                   │
+│  │  Doc A ──references──▶ Doc B ──flows into──▶ Doc C   │                   │
+│  │  Show paths through the forest, not just trees       │                   │
+│  └──────────────────────────────────────────────────────┘                   │
+│                                                                              │
+│  Layer 3: ENGINE - The Three Ways (Future)                                   │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                 │
+│  │ Use Case →     │  │ Implementation │  │ Quality Gate   │                 │
+│  │ Implementation │  │ → Use Case     │  │                │                 │
+│  │                │  │                │  │ "Is it good?"  │                 │
+│  │ "I need auth"  │  │ "What does     │  │ • Security     │                 │
+│  │  → finds code  │  │  this do?"     │  │ • Patterns     │                 │
+│  │                │  │  → finds why   │  │ • Standards    │                 │
+│  └────────────────┘  └────────────────┘  └────────────────┘                 │
+│                                                                              │
+│  "Why are there 3 auth implementations?" - The question that started it all │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Index any git repo:**
 ```bash
-# Index docs to MemoRable API (builds searchable memory)
+# Index MemoRable itself
 npx tsx scripts/index-simple.ts --memorable
 
-# Dry run (test chunking without storing)
-npx tsx scripts/index-simple.ts
+# Index ANY project (detects .git, absorbs docs+code)
+npx tsx scripts/index-project.ts /path/to/repo project_name
 
-# Index single file
-npx tsx scripts/index-simple.ts --memorable --file CLAUDE.md
-
-# Test chunker on sample files
-npx tsx scripts/index-repo.ts --test
-
-# Show repo stats (files, chunks)
-npx tsx scripts/index-repo.ts --stats
+# Examples
+npx tsx scripts/index-project.ts ~/dev/android-bot android_bot
+npx tsx scripts/index-project.ts . memorable_project
 ```
 
-**Architecture (layered, reusable):**
-```
-Sources → AdaptiveChunker → Sinks (MemoRable API, Weaviate, Console)
+**Query indexed content:**
+```bash
+curl -H "X-API-Key: $KEY" "$API/memory?entity=android_bot&query=grpc"
 ```
 
 | Component | File | Purpose |
 |-----------|------|---------|
 | Chunker | `src/services/ingestion_pipeline/index.ts` | Adaptive chunking (markdown, code, prose) |
-| Sinks | `src/services/ingestion_pipeline/sinks.ts` | Pluggable storage adapters |
-| Weaviate | `src/services/ingestion_pipeline/weaviate_sink.ts` | Vector storage |
-| Simple Indexer | `scripts/index-simple.ts` | Elegant CLI for indexing |
+| Sinks | `src/services/ingestion_pipeline/sinks.ts` | Pluggable storage (API, Weaviate, Console) |
+| Project Indexer | `scripts/index-project.ts` | Index any git repo by path |
+| Simple Indexer | `scripts/index-simple.ts` | Index MemoRable repo |
 
 ---
 
