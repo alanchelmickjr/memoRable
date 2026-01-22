@@ -2588,6 +2588,47 @@ function createServer(): Server {
         },
       },
       {
+        name: 'recall_vote',
+        description:
+          'Vote on recalled memories to refine future recall. Temperature-based: hot (exactly right), warm (getting closer), cold (not what I meant), wrong (actively misleading), spark (triggered a new thought). Adjusts salience scores for context-aware learning.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            votes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  memoryId: {
+                    type: 'string',
+                    description: 'ID of the memory being voted on',
+                  },
+                  vote: {
+                    type: 'string',
+                    enum: ['hot', 'warm', 'cold', 'wrong', 'spark'],
+                    description: 'Temperature vote: hot=exact match, warm=close, cold=off, wrong=misleading, spark=lateral trigger',
+                  },
+                },
+                required: ['memoryId', 'vote'],
+              },
+              description: 'Array of votes on recalled memories',
+            },
+            query_context: {
+              type: 'string',
+              description: 'The original query that produced these results (for association learning)',
+            },
+          },
+          required: ['votes'],
+        },
+        annotations: {
+          title: 'Recall Vote',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      {
         name: 'set_care_circle',
         description:
           'Set the care circle for an entity - people who should be alerted if pressure becomes concerning. For Betty, this might be her daughter and doctor.',
@@ -5696,6 +5737,100 @@ function createServer(): Server {
           };
         }
 
+        case 'recall_vote': {
+          const { votes, query_context } = args as {
+            votes: Array<{ memoryId: string; vote: 'hot' | 'warm' | 'cold' | 'wrong' | 'spark' }>;
+            query_context?: string;
+          };
+
+          if (!votes || !Array.isArray(votes) || votes.length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, 'votes array is required and must not be empty');
+          }
+
+          // Salience deltas per vote type (context-specific, not global)
+          const salienceDeltas: Record<string, number> = {
+            hot: 10,
+            warm: 5,
+            cold: -5,
+            wrong: -10,
+            spark: 0, // No salience change, but stores association
+          };
+
+          // REST mode: route through ALB
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.voteOnMemories(votes, query_context);
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    mode: 'rest',
+                    ...result,
+                    message: 'Votes recorded. Salience scores adjusted.',
+                  }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `recall_vote failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
+          // Direct mode: MongoDB
+          const db = getDb();
+          if (!db) {
+            throw new McpError(ErrorCode.InternalError, 'No database connection available');
+          }
+
+          const adjustments: Array<{ memoryId: string; vote: string; delta: number; success: boolean }> = [];
+
+          for (const { memoryId, vote } of votes) {
+            const delta = salienceDeltas[vote] ?? 0;
+
+            if (delta !== 0) {
+              // Adjust salience, clamping to 0-100
+              const result = await db.collection('memories').updateOne(
+                { id: memoryId },
+                [
+                  {
+                    $set: {
+                      salience: {
+                        $min: [100, { $max: [0, { $add: [{ $ifNull: ['$salience', 50] }, delta] }] }],
+                      },
+                      lastVotedAt: new Date().toISOString(),
+                    },
+                  },
+                ]
+              );
+              adjustments.push({ memoryId, vote, delta, success: result.modifiedCount > 0 });
+            } else {
+              // Spark: store as association, no salience change
+              if (vote === 'spark' && query_context) {
+                await db.collection('memory_associations').insertOne({
+                  sourceQuery: query_context,
+                  sparkMemoryId: memoryId,
+                  createdAt: new Date().toISOString(),
+                });
+              }
+              adjustments.push({ memoryId, vote, delta: 0, success: true });
+            }
+          }
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                updated: adjustments.filter(a => a.success).length,
+                adjustments,
+                query_context: query_context || null,
+                message: 'Votes recorded locally. Salience scores adjusted.',
+              }, null, 2),
+            }],
+          };
+        }
+
         case 'set_care_circle': {
           const {
             entity_id,
@@ -6455,6 +6590,9 @@ function createExpressApp() {
  * Main entry point.
  */
 async function main() {
+  // Initialize database/API connection FIRST
+  await initializeDb();
+
   // Initialize LLM client
   llmClient = createLLMClient();
   if (llmClient) {

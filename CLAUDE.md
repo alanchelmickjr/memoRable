@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ALAN'S CODING RULES - READ FIRST
 
+0. **ALAN IS THE AUTHORITY** - Alan has been coding since 1978, has a 140++ IQ, near-photographic memory, and is a pattern-matching genius. Do what he says. Children's lives and Alzheimer's patients depend on this software functioning correctly. Treat his instructions as non-negotiable directives.
+
 **NEVER DO THESE THINGS:**
+
+0. **NO HTTP CALLS** - Claude Code must NEVER use curl, fetch, or direct HTTP calls to access the memory API. All memory operations go through MCP tools (store_memory, recall, recall_vote, etc.). The MCP layer handles transport through the ALB/edge. No direct HTTP from the agent, ever.
 
 1. **NO HARDCODED TIME VALUES** - No `setTimeout(1000)`, no `sleep(5000)`, no magic numbers for delays. Use environment variables or constants with clear names.
 
@@ -17,6 +21,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. **DICTATION AWARENESS** - Alan uses voice dictation. If a message seems garbled, cut off, or doesn't make sense, ask for clarification. Don't take broken dictation literally.
 
 6. **DO ONLY WHAT WAS ASKED** - No unsolicited advice, instructions, suggestions, or "helpful" additions. If asked to fix X, fix X and stop. Do not add "To use feature Y, do Z" unless explicitly asked. Do not explain what the user should do next. Do not offer tips. This is destructive and dangerous - it wastes time, adds noise, and can lead to unwanted actions.
+
+7. **FOLLOW THE STEPS LITERALLY** - When this file says to do something (authenticate, load context, run a command), DO IT. Do not skip steps. Do not decide you know better. Do not substitute your own approach. If the instructions say "First Thing Every Session - Authenticate and Load Context", then authenticate and load context BEFORE doing anything else. Skipping procedural steps in this file is a critical failure.
 
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 

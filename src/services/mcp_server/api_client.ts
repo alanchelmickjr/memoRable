@@ -337,6 +337,16 @@ export class ApiClient {
   }
 
   /**
+   * Vote on recalled memories to adjust salience scores
+   */
+  async voteOnMemories(votes: Array<{ memoryId: string; vote: string }>, queryContext?: string): Promise<{
+    updated: number;
+    adjustments: Array<{ memoryId: string; delta: number }>;
+  }> {
+    return this.request('POST', '/memory/vote', { votes, query_context: queryContext });
+  }
+
+  /**
    * Check if API is reachable
    */
   async healthCheck(): Promise<boolean> {

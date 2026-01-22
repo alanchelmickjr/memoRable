@@ -13,7 +13,7 @@ export default {
     '/node_modules/',
     '/tests/core/',  // Core tests have ESM jest.mock issues
     '/tests/integration/',  // Integration tests have TS issues
-    '/tests/services/mcp_server/',  // MCP tests need TS fixes
+    // '/tests/services/mcp_server/',  // FIXED: MCP tests pass (130 tests)
     '/tests/services/scad_service/',  // Has setup issues
     '/tests/services/salience_service/salience_calculator',  // TS issues
     '/tests/services/ingestion_service/memory_steward',  // TS issues
