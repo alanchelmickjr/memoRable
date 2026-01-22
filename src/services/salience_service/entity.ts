@@ -313,6 +313,26 @@ export type PressureCategory =
   | 'neutral';
 
 /**
+ * Get or create pressure tracking for an entity from database
+ */
+export async function getEntityPressure(entityId: string): Promise<EntityPressure> {
+  // Import here to avoid circular dependency
+  const { getDatabase } = await import('../../config/database.js');
+  const db = getDatabase();
+
+  // Try to get existing pressure
+  const existing = await db.collection('entity_pressure').findOne({ entityId });
+  if (existing) {
+    return existing as EntityPressure;
+  }
+
+  // Create new pressure tracking
+  const newPressure = createEntityPressure(entityId);
+  await db.collection('entity_pressure').insertOne(newPressure);
+  return newPressure;
+}
+
+/**
  * Create initial pressure tracking for an entity
  */
 export function createEntityPressure(entityId: string): EntityPressure {
