@@ -45,6 +45,25 @@ const IGNORE_DIRS = [
   '__pycache__', '.gradle', '.cargo', 'venv', '.venv'
 ];
 
+// Files that may contain secrets - NEVER index these
+const SENSITIVE_PATTERNS = [
+  // Environment files
+  /^\.env/, /\.env\./, /\.env$/,
+  // Credentials and keys
+  /credentials/i, /secrets/i, /\.key$/, /\.pem$/, /\.crt$/, /\.p12$/,
+  // Docker overrides (often have local secrets)
+  /docker-compose\.override/, /docker-compose\.local/,
+  // Package locks (no value, lots of noise)
+  /package-lock\.json$/, /yarn\.lock$/, /pnpm-lock/, /Podfile\.lock$/,
+  // Terraform state (contains secrets)
+  /\.tfstate/, /\.tfvars$/
+];
+
+function isSensitiveFile(filename: string): boolean {
+  const basename = path.basename(filename);
+  return SENSITIVE_PATTERNS.some(pattern => pattern.test(basename) || pattern.test(filename));
+}
+
 // ============================================================================
 // AUTH
 // ============================================================================
@@ -146,6 +165,9 @@ function scanRepo(repoPath: string): FileSource[] {
         }
         continue;
       }
+
+      // Skip sensitive files (secrets, credentials, locks)
+      if (isSensitiveFile(rel)) continue;
 
       // Check extension
       const ext = path.extname(entry.name).slice(1).toLowerCase();
