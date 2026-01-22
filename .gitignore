@@ -67,6 +67,16 @@ mongodump/
 # Weaviate exports
 weaviate-export/
 
+# ===========================================
+# DEPRECATED: Terraform (use CloudFormation)
+# us-west-2 ONLY, no DocumentDB
+# ===========================================
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
 # Any file with personal markers
 *secret*
 *private*

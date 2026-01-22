@@ -1321,6 +1321,39 @@ docker-compose up -d
 npm test
 ```
 
+#### Developer Tools - Living Documentation
+
+MemoRable is a **self-documenting, self-indexing** codebase. The indexer indexes itself.
+
+```bash
+# Index docs to MemoRable API (builds searchable memory)
+npx tsx scripts/index-simple.ts --memorable
+
+# Dry run (test chunking without storing)
+npx tsx scripts/index-simple.ts
+
+# Index single file
+npx tsx scripts/index-simple.ts --memorable --file CLAUDE.md
+
+# Test chunker on sample files
+npx tsx scripts/index-repo.ts --test
+
+# Show repo stats (files, chunks)
+npx tsx scripts/index-repo.ts --stats
+```
+
+**Architecture (layered, reusable):**
+```
+Sources → AdaptiveChunker → Sinks (MemoRable API, Weaviate, Console)
+```
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Chunker | `src/services/ingestion_pipeline/index.ts` | Adaptive chunking (markdown, code, prose) |
+| Sinks | `src/services/ingestion_pipeline/sinks.ts` | Pluggable storage adapters |
+| Weaviate | `src/services/ingestion_pipeline/weaviate_sink.ts` | Vector storage |
+| Simple Indexer | `scripts/index-simple.ts` | Elegant CLI for indexing |
+
 ---
 
 ### AWS One-Click Deploy
@@ -1674,6 +1707,39 @@ POST /api/ingest/memory
   }
 }
 ```
+
+### Ingestion Pipeline Architecture
+
+High-throughput multimodal vectorization for docs and code:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INGESTION PIPELINE                           │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐    │
+│  │  SOURCE  │──▶│ CHUNKER  │──▶│ EMBEDDER │──▶│ WEAVIATE │    │
+│  │  SCANNER │   │ (adaptive)│   │ (hybrid) │   │ (batch)  │    │
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘    │
+│       │              │              │              │            │
+│       ▼              ▼              ▼              ▼            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              WORKER POOL (parallel threads)              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              ▼                                  │
+│                    ┌──────────────────┐                        │
+│                    │  ERROR HANDLER   │                        │
+│                    │  (retry/backoff) │                        │
+│                    └──────────────────┘                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Adaptive Chunking**: Markdown by headers, code by functions/classes
+- **Hybrid Embedding**: Multiple models (OpenAI, CodeBERT, local)
+- **Server-side Batching**: Weaviate backpressure for optimal throughput
+- **Deterministic UUIDs**: Re-index without duplicates
+- **Parallel Workers**: Configurable concurrency
 
 ---
 

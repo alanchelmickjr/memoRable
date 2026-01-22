@@ -16,7 +16,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 5. **DICTATION AWARENESS** - Alan uses voice dictation. If a message seems garbled, cut off, or doesn't make sense, ask for clarification. Don't take broken dictation literally.
 
+6. **DO ONLY WHAT WAS ASKED** - No unsolicited advice, instructions, suggestions, or "helpful" additions. If asked to fix X, fix X and stop. Do not add "To use feature Y, do Z" unless explicitly asked. Do not explain what the user should do next. Do not offer tips. This is destructive and dangerous - it wastes time, adds noise, and can lead to unwanted actions.
+
 These are non-negotiable. Alan has asked Claude to remember this across every session.
+
+---
+
+## Infrastructure - CLOUD FIRST
+
+**WE ARE DEVELOPING IN THE CLOUD FROM THE START.**
+
+### Single Tech Stack
+- **Regions**: Region-agnostic. Must work in `us-west-1` (SF customers, production)
+- **Current dev/staging**: `us-west-2` (ALB already running)
+- **Infrastructure**: CloudFormation (`cloudformation/`) - NOT Terraform
+- **Database**: MongoDB (Atlas or self-managed) - NOT DocumentDB
+- **Cache**: Redis (ElastiCache) - standard Redis
+
+### What's Deprecated (DO NOT USE)
+- `terraform/` directory - legacy, do not use
+- DocumentDB references - use MongoDB instead
+- Hardcoded regions - must be configurable
+
+### Live Infrastructure (Dev/Staging)
+```
+Region: us-west-2
+ALB: memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+API: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+```
+
+### Why Cloud First?
+- No local-first then "someday deploy" - that's how projects die
+- Real infrastructure from day one catches real issues
+- Production target: us-west-1 for SF customer base
+
+---
+
+## Why MemoRable Must Exist
+
+Even Claude Opus 4.5 - the most advanced model - repeatedly fails to follow simple instructions, adds unsolicited advice, and does not read what it is told to read. This is exactly why MemoRable must succeed. AI needs persistent, enforced memory to stop repeating the same mistakes. Without memory, every session starts fresh and every lesson is forgotten.
 
 ---
 

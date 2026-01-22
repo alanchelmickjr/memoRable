@@ -36,26 +36,48 @@ Bidirectional comparison + quality review:
 - "Why are there 3 auth implementations?" → surfaces duplication/inconsistency
 - Engineering final pass before code ships
 
-## Phase 1: Flat Search (Now)
+## Phase 1: Flat Search ✅ COMPLETE
 
-### Chunking
-- Split by markdown headers
-- Max 1500 chars per chunk
-- Keep header in metadata
+### Chunking (AdaptiveChunker)
+- **Markdown**: Split by headers (h1-h4)
+- **Code**: Split by functions/classes
+- **Prose**: Split by paragraphs
+- Max 1500 chars per chunk with 100 char overlap
+- Metadata: sourceFile, sourceType, section, lineStart/End
 
-### Build
-One script: `scripts/index-docs.cjs`
-- Reads all .md files from docs/, README.md, CLAUDE.md
-- Chunks by section
-- POSTs to memorable API with entity "claude_docs"
-- Run once, re-run when docs change
+### Tools Built
+
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `scripts/index-simple.ts` | Index MemoRable repo | `npx tsx scripts/index-simple.ts --memorable` |
+| `scripts/index-project.ts` | Index ANY git repo | `npx tsx scripts/index-project.ts /path project_name` |
+
+### Architecture
+
+```
+Sources → AdaptiveChunker → Sinks (MemoRable API, Weaviate, Console)
+         (markdown/code)    (pluggable storage)
+```
+
+Key files:
+- `src/services/ingestion_pipeline/index.ts` - Chunker, BatchManager, WorkerPool
+- `src/services/ingestion_pipeline/sinks.ts` - MemorableSink, ConsoleSink, MultiSink
+- `src/services/ingestion_pipeline/weaviate_sink.ts` - Weaviate storage
 
 ### Query
-Already works via existing API:
 ```bash
+# Query indexed docs
 curl -H "X-API-Key: $KEY" \
-  "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/memory?entity=claude_docs&query=weaviate+schema"
+  "$API/memory?entity=claude_docs&query=weaviate+schema"
+
+# Query specific project
+curl -H "X-API-Key: $KEY" \
+  "$API/memory?entity=android_bot&query=grpc"
 ```
+
+### Status
+- MemoRable docs: **1400+ chunks indexed**
+- android-bot: **indexing in progress**
 
 ## Phase 2: Graph (Future)
 
