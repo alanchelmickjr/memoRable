@@ -185,7 +185,9 @@ const PUBLIC_PATHS = [
   '/dashboard/json',
   '/auth/knock',
   '/auth/exchange',
-  '/auth/register'
+  '/auth/register',
+  '/privacy',
+  '/terms'
 ];
 
 // =============================================================================
@@ -594,44 +596,71 @@ app.post('/auth/register', async (req, res) => {
     });
   }
 
-  // MongoDB required for registration
-  if (!mongoConnected) {
-    return res.status(503).json({
-      error: 'Registration unavailable',
-      message: 'MongoDB not connected. Registration requires database.'
-    });
-  }
-
   try {
-    // Check if user already exists
-    const existing = await findUserById(user_id);
-    if (existing) {
-      return res.status(409).json({
-        error: 'User already exists',
-        message: 'A user with this ID already exists'
+    if (mongoConnected) {
+      // MongoDB mode: full user registration
+      const existing = await findUserById(user_id);
+      if (existing) {
+        return res.status(409).json({
+          error: 'User already exists',
+          message: 'A user with this ID already exists'
+        });
+      }
+
+      const user = await registerUser(user_id, passphrase, {
+        email,
+        displayName: display_name,
+      });
+
+      console.log(`[AUTH] Registered new user (MongoDB): ${user_id}`);
+      metrics.inc('auth_register_success', { user_id, storage: 'mongo' });
+
+      res.status(201).json({
+        success: true,
+        user: {
+          user_id: user.userId,
+          email: user.email,
+          display_name: user.displayName,
+          tier: user.tier,
+          created_at: user.createdAt,
+        },
+        message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
+      });
+    } else {
+      // In-memory mode: store user in passphraseUsers Map
+      if (passphraseUsers.has(user_id)) {
+        return res.status(409).json({
+          error: 'User already exists',
+          message: 'A user with this ID already exists'
+        });
+      }
+
+      const { hash } = await hashPassphrase(passphrase);
+      passphraseUsers.set(user_id, {
+        user_id,
+        passphrase_hash: hash,
+        email: email || null,
+        display_name: display_name || null,
+        failed_attempts: 0,
+        locked_until: null,
+        created_at: new Date().toISOString()
+      });
+
+      console.log(`[AUTH] Registered new user (in-memory): ${user_id}`);
+      metrics.inc('auth_register_success', { user_id, storage: 'memory' });
+
+      res.status(201).json({
+        success: true,
+        user: {
+          user_id,
+          email: email || null,
+          display_name: display_name || null,
+          tier: 'free',
+          created_at: new Date().toISOString(),
+        },
+        message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
       });
     }
-
-    // Register the user
-    const user = await registerUser(user_id, passphrase, {
-      email,
-      displayName: display_name,
-    });
-
-    console.log(`[AUTH] Registered new user: ${user_id}`);
-    metrics.inc('auth_register_success', { user_id });
-
-    res.status(201).json({
-      success: true,
-      user: {
-        user_id: user.userId,
-        email: user.email,
-        display_name: user.displayName,
-        tier: user.tier,
-        created_at: user.createdAt,
-      },
-      message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
-    });
   } catch (error) {
     console.error('[AUTH] Registration failed:', error);
     metrics.inc('auth_register_fail', { reason: error.message });
@@ -1845,6 +1874,10 @@ app.get('/login', (_req, res) => {
       <p class="hint">New here? <a href="/register">Create an account</a></p>
     </div>
     <a href="/" class="back-link">&larr; Back to Home</a>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-dim)">
+      <a href="/privacy" style="color:var(--text-dim);text-decoration:none;margin-right:16px">Privacy Policy</a>
+      <a href="/terms" style="color:var(--text-dim);text-decoration:none">Terms of Service</a>
+    </div>
   </div>
 
   <script>
@@ -2124,11 +2157,21 @@ app.get('/register', (_req, res) => {
           <label for="confirm">Confirm Passphrase</label>
           <input type="password" id="confirm" name="confirm" placeholder="Repeat your passphrase" required>
         </div>
+        <div class="form-group" style="margin-top:16px">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="acceptTerms" required style="margin-top:2px;accent-color:var(--cyan)">
+            <span>I agree to the <a href="/privacy" target="_blank" style="color:var(--cyan)">Privacy Policy</a> and <a href="/terms" target="_blank" style="color:var(--cyan)">Terms of Service</a></span>
+          </label>
+        </div>
         <button type="submit" class="btn" id="submitBtn">Create Account</button>
       </form>
       <p class="hint">Already have an account? <a href="/login">Sign in</a></p>
     </div>
     <a href="/" class="back-link">&larr; Back to Home</a>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-dim)">
+      <a href="/privacy" style="color:var(--text-dim);text-decoration:none;margin-right:16px">Privacy Policy</a>
+      <a href="/terms" style="color:var(--text-dim);text-decoration:none">Terms of Service</a>
+    </div>
   </div>
 
   <script>
@@ -2235,6 +2278,281 @@ app.get('/register', (_req, res) => {
       }
     });
   </script>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// =============================================================================
+// LEGAL PAGES
+// =============================================================================
+
+// Privacy Policy
+app.get('/privacy', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .content {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      line-height: 1.7;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 18px;
+      color: var(--cyan);
+      margin-bottom: 24px;
+      text-transform: uppercase;
+    }
+    h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      color: var(--green);
+      margin-top: 28px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    p { margin-bottom: 14px; font-size: 13px; }
+    ul { margin: 10px 0 14px 24px; font-size: 13px; }
+    li { margin-bottom: 6px; }
+    .updated { color: var(--text-dim); font-size: 11px; margin-bottom: 20px; }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 30px;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--cyan); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="content">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: January 2025</p>
+
+      <h2>Your Data is Yours</h2>
+      <p>MemoRable is built on a fundamental principle: your memories are TOP SECRET by default. We treat every piece of personal data with the highest level of protection.</p>
+
+      <h2>What We Collect</h2>
+      <ul>
+        <li><strong>Memories you store:</strong> Text content you explicitly save through MCP tools or the API</li>
+        <li><strong>Context data:</strong> Location, activity, and people context you choose to set</li>
+        <li><strong>Device info:</strong> Device type and name for authentication (no tracking IDs)</li>
+        <li><strong>Usage patterns:</strong> Aggregated recall patterns for improving relevance (no individual logs)</li>
+      </ul>
+
+      <h2>Security Tiers</h2>
+      <ul>
+        <li><strong>Tier 1 (General):</strong> Can be processed by external LLMs for enrichment</li>
+        <li><strong>Tier 2 (Personal):</strong> Local processing only - never leaves your infrastructure</li>
+        <li><strong>Tier 3 (Vault):</strong> Encrypted at rest, no LLM processing, no vector embeddings</li>
+      </ul>
+      <p>All data defaults to Tier 2 (Personal) unless you explicitly choose otherwise.</p>
+
+      <h2>Temporal Control</h2>
+      <p>You have the power to forget. Any memory can be suppressed, archived, or permanently deleted at any time. Deleted memories are purged within 30 days. We do not retain backups of deleted data.</p>
+
+      <h2>No Selling, No Ads</h2>
+      <p>We will never sell your data, use it for advertising, or share it with third parties. Your memories exist solely to serve you.</p>
+
+      <h2>End-to-End Encryption</h2>
+      <p>Tier 3 (Vault) memories use end-to-end encryption derived from your passphrase. We cannot read them even if compelled. All API communication uses TLS encryption in production.</p>
+
+      <h2>Data Portability</h2>
+      <p>You can export all your memories at any time using the export tool. Exports can be encrypted with a password of your choosing. Your data is never held hostage.</p>
+
+      <h2>Contact</h2>
+      <p>Questions about privacy? Reach us at privacy@memorable.chat</p>
+    </div>
+    <a href="/login" class="back-link">&larr; Back to Sign In</a>
+  </div>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Terms of Service
+app.get('/terms', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terms of Service - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .content {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 40px;
+      line-height: 1.7;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 18px;
+      color: var(--cyan);
+      margin-bottom: 24px;
+      text-transform: uppercase;
+    }
+    h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      color: var(--green);
+      margin-top: 28px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    p { margin-bottom: 14px; font-size: 13px; }
+    ul { margin: 10px 0 14px 24px; font-size: 13px; }
+    li { margin-bottom: 6px; }
+    .updated { color: var(--text-dim); font-size: 11px; margin-bottom: 20px; }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 30px;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--cyan); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="content">
+      <h1>Terms of Service</h1>
+      <p class="updated">Last updated: January 2025</p>
+
+      <h2>Acceptance</h2>
+      <p>By using MemoRable, you agree to these terms. If you disagree, do not use the service.</p>
+
+      <h2>The Service</h2>
+      <p>MemoRable provides AI-powered memory storage, retrieval, and contextual intelligence. The service is designed for personal memory augmentation, team knowledge management, and assistive care applications.</p>
+
+      <h2>Your Account</h2>
+      <ul>
+        <li>You are responsible for keeping your passphrase secure</li>
+        <li>One account per person - do not share credentials</li>
+        <li>You must be 13 or older to use MemoRable (or have guardian consent for care applications)</li>
+        <li>Provide accurate information when registering</li>
+      </ul>
+
+      <h2>Acceptable Use</h2>
+      <p>You agree not to:</p>
+      <ul>
+        <li>Store illegal content or content that violates others' rights</li>
+        <li>Attempt to access other users' memories or data</li>
+        <li>Use the service to harm, harass, or surveil others without consent</li>
+        <li>Reverse-engineer, attack, or attempt to circumvent security measures</li>
+        <li>Use automated tools to excessively load the system</li>
+      </ul>
+
+      <h2>Your Content</h2>
+      <p>You retain full ownership of all memories and content you store. We claim no rights to your data. You grant us only the technical permissions needed to store, process, and serve your content back to you.</p>
+
+      <h2>Care Applications</h2>
+      <p>For assistive care use (Alzheimer's support, companion devices): a designated care circle may access relevant memories as configured by the primary user or their legal guardian. This access is logged and auditable.</p>
+
+      <h2>Service Availability</h2>
+      <p>We strive for high availability but do not guarantee uninterrupted service. We are not liable for data loss - maintain your own backups using the export feature.</p>
+
+      <h2>Termination</h2>
+      <p>You may delete your account and all data at any time. We may suspend accounts that violate these terms, with notice when possible.</p>
+
+      <h2>Limitation of Liability</h2>
+      <p>MemoRable is provided "as is" without warranty. We are not liable for indirect, incidental, or consequential damages. Our total liability is limited to the amount you paid for the service in the prior 12 months.</p>
+
+      <h2>Changes</h2>
+      <p>We may update these terms. Material changes will be communicated via email or in-app notice. Continued use after changes constitutes acceptance.</p>
+
+      <h2>Contact</h2>
+      <p>Questions about terms? Reach us at legal@memorable.chat</p>
+    </div>
+    <a href="/login" class="back-link">&larr; Back to Sign In</a>
+  </div>
 </body>
 </html>`;
   res.set('Content-Type', 'text/html');
