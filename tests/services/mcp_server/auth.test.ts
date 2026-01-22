@@ -7,6 +7,7 @@
  */
 
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 describe('OAuth 2.0 and JWT Security', () => {
   const JWT_SECRET = 'test-jwt-secret-key-for-testing';
