@@ -1179,7 +1179,9 @@ app.get('/', (_req, res) => {
     </div>
     <div class="cta-buttons">
       <a href="/login" class="btn btn-primary">Sign In</a>
+      <a href="/register" class="btn btn-primary">Register</a>
       <a href="/docs" class="btn btn-secondary">Documentation</a>
+      <a href="/dashboard/mission-control" class="btn btn-secondary">Mission Control</a>
     </div>
     <div class="status">
       <div class="status-dot"></div>
@@ -1208,6 +1210,458 @@ app.get('/', (_req, res) => {
 
   <div class="footer">
     <p>MemoRable &copy; 2024 &mdash; Context Intelligence for the Age of AI</p>
+  </div>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// Documentation page
+app.get('/docs', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Documentation - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --bg-card: #161b22;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --yellow: #ffff00;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    .header {
+      background: linear-gradient(180deg, #1a1a2e 0%, var(--bg-dark) 100%);
+      border-bottom: 2px solid var(--cyan);
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 10px var(--cyan);
+      letter-spacing: 4px;
+      text-decoration: none;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 10px var(--magenta); }
+    .nav-links {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .nav-link {
+      color: var(--cyan);
+      text-decoration: none;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      padding: 8px 12px;
+      border: 1px solid var(--cyan);
+      border-radius: 4px;
+      transition: all 0.3s;
+      font-family: 'Share Tech Mono', monospace;
+    }
+    .nav-link:hover {
+      background: var(--cyan);
+      color: var(--bg-dark);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 32px;
+      color: var(--cyan);
+      text-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 16px;
+      margin-bottom: 40px;
+    }
+    .section {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+    .section h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 18px;
+      color: var(--magenta);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section h3 {
+      font-size: 16px;
+      color: var(--cyan);
+      margin: 20px 0 10px 0;
+    }
+    .section p {
+      margin-bottom: 15px;
+      color: var(--text);
+    }
+    .tool-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .tool-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 15px;
+      transition: all 0.3s;
+    }
+    .tool-card:hover {
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+    }
+    .tool-name {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      color: var(--green);
+      margin-bottom: 8px;
+    }
+    .tool-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    code {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 13px;
+      color: var(--yellow);
+    }
+    pre {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 15px;
+      overflow-x: auto;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      color: var(--green);
+      margin: 15px 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-right: 8px;
+    }
+    .badge.cyan { background: rgba(0, 255, 255, 0.15); color: var(--cyan); border: 1px solid var(--cyan); }
+    .badge.magenta { background: rgba(255, 0, 255, 0.15); color: var(--magenta); border: 1px solid var(--magenta); }
+    .badge.green { background: rgba(0, 255, 65, 0.15); color: var(--green); border: 1px solid var(--green); }
+    a { color: var(--cyan); }
+    .quick-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 30px;
+    }
+    .quick-link {
+      padding: 10px 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      text-decoration: none;
+      transition: all 0.3s;
+      font-size: 14px;
+    }
+    .quick-link:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    @media (max-width: 768px) {
+      .container { padding: 20px 15px; }
+      h1 { font-size: 24px; }
+      .section { padding: 20px; }
+      .tool-grid { grid-template-columns: 1fr; }
+      .header { padding: 15px; }
+      .logo { font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="/" class="logo">MEMO<span>RABLE</span></a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Home</a>
+      <a href="/dashboard/mission-control" class="nav-link">Mission Control</a>
+      <a href="/login" class="nav-link">Login</a>
+      <a href="/register" class="nav-link">Register</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1>Documentation</h1>
+    <p class="subtitle">Context-Aware Memory System for AI Agents, Humans, Robots & Devices</p>
+
+    <div class="quick-links">
+      <a href="https://github.com/alanchelmickjr/memoRable" class="quick-link" target="_blank">GitHub Repository</a>
+      <a href="https://github.com/alanchelmickjr/memoRable#quick-start-claude-code--vs-code" class="quick-link" target="_blank">Claude Code Setup</a>
+      <a href="https://github.com/alanchelmickjr/memoRable#aws-one-click-deploy" class="quick-link" target="_blank">AWS Deploy</a>
+      <a href="/dashboard/mission-control" class="quick-link">Live Dashboard</a>
+    </div>
+
+    <div class="section">
+      <h2>Getting Started</h2>
+      <p>MemoRable provides <strong>35 MCP tools</strong> for Claude Code integration, giving AI assistants persistent memory, commitment tracking, and predictive context.</p>
+
+      <h3>Quick Install (Docker)</h3>
+      <pre>git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
+npm install && npm run setup
+docker-compose up -d
+curl http://localhost:3000/health</pre>
+
+      <h3>Authentication Flow</h3>
+      <p>MemoRable uses passphrase-based authentication with a knock/exchange pattern:</p>
+      <pre># 1. Get a challenge (5 min TTL)
+curl -X POST /auth/knock -d '{"device":{"type":"cli"}}'
+
+# 2. Exchange passphrase for API key
+curl -X POST /auth/exchange -d '{"challenge":"...", "passphrase":"your phrase"}'
+
+# 3. Use API key for all requests
+curl -H "X-API-Key: memorable_..." /memory?query=search</pre>
+    </div>
+
+    <div class="section">
+      <h2>MCP Tools (35 Total)</h2>
+
+      <h3>Memory Operations</h3>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">store_memory</div>
+          <div class="tool-desc">Store with automatic salience scoring. Supports security tiers: Tier1_General, Tier2_Personal, Tier3_Vault</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">recall</div>
+          <div class="tool-desc">Search memories by query, person, or topic</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">get_briefing</div>
+          <div class="tool-desc">Pre-conversation briefing about a person</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">forget</div>
+          <div class="tool-desc">Suppress, archive, or delete a memory</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">forget_person</div>
+          <div class="tool-desc">Forget all memories about someone</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">export_memories</div>
+          <div class="tool-desc">Export for backup or portability</div>
+        </div>
+      </div>
+
+      <h3>Context Management</h3>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">set_context</div>
+          <div class="tool-desc">Set where you are, who you're with. Auto-surfaces relevant memories.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">whats_relevant</div>
+          <div class="tool-desc">Get what matters NOW. Pass unified: true for multi-device fusion.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">clear_context</div>
+          <div class="tool-desc">Clear context when leaving/ending</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">list_devices</div>
+          <div class="tool-desc">List all active devices and their context status</div>
+        </div>
+      </div>
+
+      <h3>Emotion & Prosody (Hume.ai)</h3>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">analyze_emotion</div>
+          <div class="tool-desc">Analyze emotional content from voice prosody, facial expressions, and text</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">get_entity_pressure</div>
+          <div class="tool-desc">Butterfly-to-Hurricane early warning. Tracks emotional pressure cascades.</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">set_care_circle</div>
+          <div class="tool-desc">Set who gets alerted when distress is detected (SMS/Email/Push)</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">correct_emotion</div>
+          <div class="tool-desc">Override wrong emotion detection (sarcasm != anger)</div>
+        </div>
+      </div>
+
+      <h3>Commitment Tracking</h3>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">list_loops</div>
+          <div class="tool-desc">Open commitments: you owe / they owe / mutual</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">close_loop</div>
+          <div class="tool-desc">Mark a commitment as done</div>
+        </div>
+      </div>
+
+      <h3>Predictive Memory (21-Day Learning)</h3>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">anticipate</div>
+          <div class="tool-desc">Get predictions based on calendar + learned patterns</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">day_outlook</div>
+          <div class="tool-desc">Morning briefing with predicted context switches</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">get_predictions</div>
+          <div class="tool-desc">Surface memories BEFORE you ask, based on current context</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Security Tiers</h2>
+      <p>Every memory is classified into one of three security tiers:</p>
+
+      <div class="tool-grid">
+        <div class="tool-card">
+          <span class="badge cyan">Tier 1</span>
+          <div class="tool-name">General</div>
+          <div class="tool-desc">External LLM OK. AES-256-GCM encrypted. Vector storage enabled.</div>
+        </div>
+        <div class="tool-card">
+          <span class="badge magenta">Tier 2</span>
+          <div class="tool-name">Personal (Default)</div>
+          <div class="tool-desc">Local LLM only (Ollama). AES-256-GCM encrypted. Vector storage enabled.</div>
+        </div>
+        <div class="tool-card">
+          <span class="badge green">Tier 3</span>
+          <div class="tool-name">Vault</div>
+          <div class="tool-desc">NEVER goes to any LLM. AES-256-GCM + hardware encryption. NO vector storage.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>API Endpoints</h2>
+
+      <h3>Health & Metrics</h3>
+      <pre>GET /health/live      # Liveness probe
+GET /health/ready     # Readiness probe
+GET /health           # Full status
+GET /metrics          # Prometheus metrics</pre>
+
+      <h3>Memory Operations</h3>
+      <pre>POST /memory          # Store a memory
+GET  /memory?query=   # Search memories
+GET  /memory/:id      # Get specific memory
+POST /memory/verbatim # Store exact quote (high fidelity)</pre>
+
+      <h3>Authentication</h3>
+      <pre>POST /auth/knock      # Get challenge
+POST /auth/exchange   # Exchange for API key
+POST /auth/register   # Create account
+GET  /auth/devices    # List devices
+POST /auth/revoke     # Revoke device</pre>
+    </div>
+
+    <div class="section">
+      <h2>What to Say to Claude</h2>
+      <p>With MemoRable connected via MCP, you can say:</p>
+
+      <h3>Memory</h3>
+      <pre>"Remember that Sarah mentioned her Series B is closing next month"
+"What do I know about the payment refactor?"
+"Forget everything about Project X"</pre>
+
+      <h3>Commitments</h3>
+      <pre>"What do I owe Mike?"
+"What's owed to me?"
+"Mark the API review as done"</pre>
+
+      <h3>Context</h3>
+      <pre>"I'm meeting with the engineering team"
+"I'm at the coffee shop with Sarah"
+"What should I know right now?"</pre>
+
+      <h3>Briefings</h3>
+      <pre>"Brief me on Sarah before our 1:1"
+"What's my day outlook?"
+"What patterns have you learned about my Mondays?"</pre>
+
+      <h3>Emotion & Care</h3>
+      <pre>"Set up alerts for my mom - notify me if she seems distressed"
+"What's grandma's emotional pressure looking like?"
+"That wasn't anger, it was sarcasm - fix the tag"</pre>
+    </div>
+
+    <div class="section">
+      <h2>Links & Resources</h2>
+      <div class="tool-grid">
+        <div class="tool-card">
+          <div class="tool-name">GitHub Repository</div>
+          <div class="tool-desc"><a href="https://github.com/alanchelmickjr/memoRable" target="_blank">github.com/alanchelmickjr/memoRable</a></div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">MCP Protocol</div>
+          <div class="tool-desc"><a href="https://modelcontextprotocol.io" target="_blank">modelcontextprotocol.io</a></div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">Hume.ai</div>
+          <div class="tool-desc"><a href="https://hume.ai" target="_blank">hume.ai</a> - Emotion AI for voice prosody</div>
+        </div>
+        <div class="tool-card">
+          <div class="tool-name">Claude Code</div>
+          <div class="tool-desc"><a href="https://claude.ai/code" target="_blank">claude.ai/code</a> - AI coding assistant</div>
+        </div>
+      </div>
+    </div>
   </div>
 </body>
 </html>`;
@@ -3380,11 +3834,214 @@ app.get('/dashboard/mission-control', (_req, res) => {
       color: var(--green);
       text-shadow: 0 0 10px var(--green);
     }
+
+    /* Navigation links */
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: var(--cyan);
+      text-decoration: none;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      padding: 8px 12px;
+      border: 1px solid var(--cyan);
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+
+    .nav-link:hover {
+      background: var(--cyan);
+      color: var(--bg-dark);
+      box-shadow: 0 0 15px var(--cyan);
+    }
+
+    /* RESPONSIVE - Tablet (max 1024px) */
+    @media (max-width: 1024px) {
+      .mission-grid {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto auto;
+        height: auto;
+        min-height: calc(100vh - 70px);
+      }
+
+      .main-display {
+        grid-column: 1 / 3;
+        grid-row: 1;
+      }
+
+      .footer-bar {
+        grid-column: 1 / 3;
+      }
+
+      .header {
+        flex-wrap: wrap;
+        gap: 15px;
+      }
+
+      .header-status {
+        flex-wrap: wrap;
+        gap: 15px;
+      }
+
+      .hero-number {
+        font-size: 80px;
+      }
+
+      .footer-stats {
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+
+      .nav-links {
+        display: none;
+      }
+    }
+
+    /* RESPONSIVE - Phone (max 768px) */
+    @media (max-width: 768px) {
+      .mission-grid {
+        grid-template-columns: 1fr;
+        padding: 10px;
+        gap: 10px;
+      }
+
+      .main-display {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
+      .footer-bar {
+        grid-column: 1;
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+      }
+
+      .header {
+        padding: 10px 15px;
+        flex-direction: column;
+        text-align: center;
+      }
+
+      .logo {
+        font-size: 18px;
+        letter-spacing: 2px;
+      }
+
+      .header-status {
+        justify-content: center;
+      }
+
+      .status-indicator {
+        font-size: 10px;
+      }
+
+      .hero-number {
+        font-size: 48px;
+      }
+
+      .hero-label {
+        font-size: 10px;
+        letter-spacing: 4px;
+      }
+
+      .panel-title {
+        font-size: 10px;
+        letter-spacing: 2px;
+      }
+
+      .gauge {
+        width: 80px;
+        height: 80px;
+      }
+
+      .gauge-value {
+        font-size: 16px;
+      }
+
+      .gauge-label {
+        font-size: 9px;
+      }
+
+      .button-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .fake-button {
+        font-size: 8px;
+        padding: 10px 6px;
+      }
+
+      .light-panel {
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .footer-stats {
+        justify-content: center;
+      }
+
+      .footer-stat-value {
+        font-size: 14px;
+      }
+
+      .big-number {
+        font-size: 32px;
+      }
+
+      .radar-container {
+        max-width: 120px;
+      }
+
+      .waveform {
+        height: 40px;
+      }
+
+      .data-stream {
+        height: 100px;
+        font-size: 9px;
+      }
+    }
+
+    /* RESPONSIVE - Small phone (max 480px) */
+    @media (max-width: 480px) {
+      .hero-number {
+        font-size: 36px;
+      }
+
+      .gauge {
+        width: 60px;
+        height: 60px;
+      }
+
+      .gauge-value {
+        font-size: 12px;
+      }
+
+      .button-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .light-panel {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="logo">MEMO<span>RABLE</span> // MISSION CONTROL</div>
+    <div class="logo"><a href="/" style="color: inherit; text-decoration: none;">MEMO<span>RABLE</span></a> // MISSION CONTROL</div>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Home</a>
+      <a href="/docs" class="nav-link">Docs</a>
+      <a href="/dashboard" class="nav-link">Dashboard</a>
+    </div>
     <div class="header-status">
       <div class="status-indicator">
         <div class="blink-dot green"></div>
