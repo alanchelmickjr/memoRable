@@ -6593,12 +6593,14 @@ async function main() {
   // Initialize database/API connection FIRST
   await initializeDb();
 
-  // Initialize LLM client
-  llmClient = createLLMClient();
-  if (llmClient) {
-    console.error('[MCP] LLM client initialized');
-  } else {
-    console.error('[MCP] No LLM API key found, using heuristic mode');
+  // Initialize LLM client (only needed in direct mode - REST mode uses backend LLM)
+  if (connectionMode !== 'rest') {
+    llmClient = createLLMClient();
+    if (llmClient) {
+      console.error('[MCP] LLM client initialized');
+    } else {
+      console.error('[MCP] No LLM API key found, using heuristic mode');
+    }
   }
 
   const server = createServer();
