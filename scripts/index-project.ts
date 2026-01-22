@@ -31,8 +31,19 @@ const DOC_EXTENSIONS = ['md', 'txt', 'rst'];
 const CODE_EXTENSIONS = ['ts', 'js', 'tsx', 'jsx', 'py', 'go', 'rs', 'java', 'kt', 'dart', 'swift', 'c', 'cpp', 'h', 'rb', 'php'];
 const CONFIG_EXTENSIONS = ['json', 'yaml', 'yml', 'toml'];
 
-// Directories to ignore
-const IGNORE_DIRS = ['node_modules', '.git', 'dist', 'build', '.terraform', 'coverage', '__pycache__', '.gradle', '.idea', '.vscode'];
+// Directories to ignore (dependencies, build artifacts, IDE configs)
+const IGNORE_DIRS = [
+  // Package managers
+  'node_modules', 'Pods', 'vendor', '.pub-cache',
+  // Build artifacts
+  'dist', 'build', '.dart_tool', 'target', 'DerivedData',
+  // VCS and IDE
+  '.git', '.idea', '.vscode',
+  // Infrastructure and test
+  '.terraform', 'coverage',
+  // Language-specific caches
+  '__pycache__', '.gradle', '.cargo', 'venv', '.venv'
+];
 
 // ============================================================================
 // AUTH
