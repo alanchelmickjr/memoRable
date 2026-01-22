@@ -180,6 +180,62 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 
 ---
 
+## The ENGINE - A New Approach to Code Intelligence
+
+**"Why are there 3 auth implementations?"** - The question that started it all.
+
+Flat search finds needles. Graph shows paths. Neither answers the hard questions. The ENGINE does.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     THE THREE WAYS - Code Intelligence                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐  │
+│   │   USE CASE →       │   │   IMPLEMENTATION   │   │   QUALITY GATE     │  │
+│   │   IMPLEMENTATION   │   │   → USE CASE       │   │                    │  │
+│   │                    │   │                    │   │   "Is it good?"    │  │
+│   │   "I need auth"    │   │   "What does this  │   │                    │  │
+│   │    → finds all     │   │    auth code do?"  │   │   • Security       │  │
+│   │      auth code     │   │    → finds the     │   │   • Patterns       │  │
+│   │                    │   │      business why  │   │   • Standards      │  │
+│   └────────────────────┘   └────────────────────┘   └────────────────────┘  │
+│                                                                              │
+│   BIDIRECTIONAL: Not just "find code" but "understand purpose"              │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                         THREE LAYERS OF INTELLIGENCE                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Layer 1: FLAT SEARCH ✅ Complete                                           │
+│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                  │
+│   │   Sources    │───▶│   Chunker    │───▶│    Sinks     │                  │
+│   │  .git repos  │    │  Adaptive:   │    │ MemoRable API│                  │
+│   │  docs, code  │    │  markdown    │    │ Weaviate     │                  │
+│   │              │    │  code        │    │ Console      │                  │
+│   └──────────────┘    │  prose       │    └──────────────┘                  │
+│                       └──────────────┘                                       │
+│                                                                              │
+│   Layer 2: GRAPH (Future) - Show paths through the forest                    │
+│   Layer 3: ENGINE (Future) - The Three Ways + Quality Gate                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Index any git repo in seconds:**
+```bash
+npx tsx scripts/index-project.ts ~/dev/my-project my_project_entity
+```
+
+Then query across ALL your projects from ANY Claude session:
+```bash
+curl -H "X-API-Key: $KEY" "$API/memory?entity=my_project_entity&query=authentication"
+```
+
+See [ENGINE Layer Design](./docs/ENGINE_LAYER_DESIGN.md) for the full vision.
+
+---
+
 ## Fort Knox Security: Your Data, Your Rules
 
 **Grandma's credit card number stays on grandma's RFID bracelet.** MemoRable implements military-grade, tiered security so sensitive data never leaves your control.
@@ -1321,69 +1377,17 @@ docker-compose up -d
 npm test
 ```
 
-#### Developer Tools - Living Documentation
+#### Developer Tools
 
-MemoRable is a **self-documenting, self-indexing** codebase. The indexer indexes itself.
+See [The ENGINE](#the-engine---a-new-approach-to-code-intelligence) for our code intelligence architecture.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            ENGINE ARCHITECTURE                               │
-│                        Three Layers of Intelligence                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Layer 1: FLAT SEARCH ✅ Complete                                            │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
-│  │   Sources    │───▶│   Chunker    │───▶│    Sinks     │                   │
-│  │  .git repos  │    │  Adaptive:   │    │ MemoRable API│                   │
-│  │  docs, code  │    │  • markdown  │    │ Weaviate     │                   │
-│  │              │    │  • code      │    │ Console      │                   │
-│  └──────────────┘    │  • prose     │    └──────────────┘                   │
-│                      └──────────────┘                                        │
-│                                                                              │
-│  Layer 2: GRAPH (Future)                                                     │
-│  ┌──────────────────────────────────────────────────────┐                   │
-│  │  Doc A ──references──▶ Doc B ──flows into──▶ Doc C   │                   │
-│  │  Show paths through the forest, not just trees       │                   │
-│  └──────────────────────────────────────────────────────┘                   │
-│                                                                              │
-│  Layer 3: ENGINE - The Three Ways (Future)                                   │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐                 │
-│  │ Use Case →     │  │ Implementation │  │ Quality Gate   │                 │
-│  │ Implementation │  │ → Use Case     │  │                │                 │
-│  │                │  │                │  │ "Is it good?"  │                 │
-│  │ "I need auth"  │  │ "What does     │  │ • Security     │                 │
-│  │  → finds code  │  │  this do?"     │  │ • Patterns     │                 │
-│  │                │  │  → finds why   │  │ • Standards    │                 │
-│  └────────────────┘  └────────────────┘  └────────────────┘                 │
-│                                                                              │
-│  "Why are there 3 auth implementations?" - The question that started it all │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Index any git repo:**
 ```bash
-# Index MemoRable itself
+# Index this repo to cloud
 npx tsx scripts/index-simple.ts --memorable
 
-# Index ANY project (detects .git, absorbs docs+code)
-npx tsx scripts/index-project.ts /path/to/repo project_name
-
-# Examples
-npx tsx scripts/index-project.ts ~/dev/android-bot android_bot
-npx tsx scripts/index-project.ts . memorable_project
+# Index any git repo
+npx tsx scripts/index-project.ts /path/to/repo entity_name
 ```
-
-**Query indexed content:**
-```bash
-curl -H "X-API-Key: $KEY" "$API/memory?entity=android_bot&query=grpc"
-```
-
-| Component | File | Purpose |
-|-----------|------|---------|
-| Chunker | `src/services/ingestion_pipeline/index.ts` | Adaptive chunking (markdown, code, prose) |
-| Sinks | `src/services/ingestion_pipeline/sinks.ts` | Pluggable storage (API, Weaviate, Console) |
-| Project Indexer | `scripts/index-project.ts` | Index any git repo by path |
-| Simple Indexer | `scripts/index-simple.ts` | Index MemoRable repo |
 
 ---
 
