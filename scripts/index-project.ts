@@ -79,6 +79,36 @@ async function authenticate(): Promise<string | null> {
 }
 
 // ============================================================================
+// GITIGNORE PARSER
+// ============================================================================
+
+function parseGitignore(repoPath: string): Set<string> {
+  const ignoreSet = new Set<string>();
+  const gitignorePath = path.join(repoPath, '.gitignore');
+
+  if (!fs.existsSync(gitignorePath)) return ignoreSet;
+
+  try {
+    const content = fs.readFileSync(gitignorePath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      // Skip comments and empty lines
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      // Skip negation patterns (too complex)
+      if (trimmed.startsWith('!')) continue;
+      // Extract directory name from patterns like "dir/", "dir/**", "/dir"
+      const cleaned = trimmed.replace(/^\//, '').replace(/\/\*\*$/, '').replace(/\/$/, '');
+      // Only add simple directory names (no wildcards in the name itself)
+      if (cleaned && !cleaned.includes('*') && !cleaned.includes('/')) {
+        ignoreSet.add(cleaned);
+      }
+    }
+  } catch {}
+
+  return ignoreSet;
+}
+
+// ============================================================================
 // FILE SCANNER
 // ============================================================================
 
@@ -91,6 +121,10 @@ interface FileSource {
 function scanRepo(repoPath: string): FileSource[] {
   const files: FileSource[] = [];
   const allExtensions = [...DOC_EXTENSIONS, ...CODE_EXTENSIONS, ...CONFIG_EXTENSIONS];
+
+  // Merge default ignores with .gitignore
+  const gitignoreDirs = parseGitignore(repoPath);
+  const ignoreDirs = new Set([...IGNORE_DIRS, ...gitignoreDirs]);
 
   function getType(ext: string): 'doc' | 'code' | 'config' {
     if (DOC_EXTENSIONS.includes(ext)) return 'doc';
@@ -107,7 +141,7 @@ function scanRepo(repoPath: string): FileSource[] {
 
       // Skip ignored directories
       if (entry.isDirectory()) {
-        if (!IGNORE_DIRS.includes(entry.name)) {
+        if (!ignoreDirs.has(entry.name)) {
           walk(full);
         }
         continue;
