@@ -150,7 +150,7 @@ jobs:
           terraform init \
             -backend-config="bucket=memorable-terraform-state-${{ github.event.inputs.environment || 'staging' }}" \
             -backend-config="key=terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}"
+            -backend-config="region=us-east-1"  # State bucket is in us-east-1
 
       - name: Terraform Plan
         id: plan
