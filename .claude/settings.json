@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/user/memoRable/.claude/hooks/session-start-memorable.js"
+            "command": "/home/user/memoRable/.claude/hooks/session-start-memorable.cjs"
           }
         ]
       }
