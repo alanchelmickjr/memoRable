@@ -60,7 +60,7 @@
 | Semantic similarity search | **Commitment Tracking** — Obligation graph management |
 | Memory persistence | **Relationship Intelligence** — Computed from memories, not stored graphs |
 | | **Predictive Memory** — Surface what you need before you ask |
-| | **Pressure Tracking** — Butterfly → Hurricane early warning (Hume.ai distress detection) |
+| | **Pressure Tracking** — [Hume.ai](https://hume.ai) emotion detection for early warning (voice prosody, facial expressions, text sentiment) |
 | | **Multi-Device Synchronization** — Unified context across endpoints |
 | | **Tiered Security** — Granular encryption and LLM access controls |
 | | **35 MCP Tools** — Native Claude Code integration |
@@ -572,11 +572,35 @@ Or with Docker:
 ```
 
 Now in Claude Code you can say:
+
+**Memory Operations:**
 - *"Remember that Sarah mentioned her startup is closing Series B next month"*
-- *"What do I owe Mike?"*
-- *"I'm meeting with the engineering team - what's relevant?"*
+- *"What do I know about the payment refactor?"*
 - *"Forget everything about Project X"*
+
+**Commitment Tracking:**
+- *"What do I owe Mike?"*
+- *"What's owed to me?"*
+- *"Mark the API review as done"*
+
+**Context Awareness:**
+- *"I'm meeting with the engineering team - what's relevant?"*
+- *"I'm at the coffee shop with Sarah"*
+- *"What should I know right now?"*
+
+**Briefings & Predictions:**
+- *"Brief me on Sarah before our 1:1"*
 - *"What's my day outlook?"* (after 21 days of learning)
+- *"What patterns have you learned about my Mondays?"*
+
+**Emotion & Relationships:**
+- *"How's my relationship with the engineering team?"*
+- *"Check the emotional tone of my last conversation with Mike"*
+- *"That wasn't anger, it was sarcasm - fix the emotion tag"*
+
+**Care & Safety:**
+- *"Set up alerts for my mom - notify me and Dr. Smith if she seems distressed"*
+- *"What's grandma's emotional pressure looking like?"*
 
 ---
 
@@ -643,6 +667,65 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 
 ---
 
+## Emotion Intelligence (Hume.ai)
+
+MemoRable integrates with [Hume.ai](https://hume.ai) for multimodal emotion detection - the same AI that powers emotion-aware experiences across healthcare, gaming, and customer service.
+
+### What Hume.ai Adds
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     MULTIMODAL EMOTION DETECTION                             │
+│                                                                              │
+│   Voice Prosody  ──┐                                                         │
+│   (tone, pace)     │     ┌─────────────┐     ┌─────────────────────────┐    │
+│                    ├────▶│  Hume.ai    │────▶│  48 Emotion Dimensions  │    │
+│   Facial Expr.   ──┤     │  Fusion     │     │  joy, anger, confusion, │    │
+│   (expressions)    │     └─────────────┘     │  distress, interest...  │    │
+│                    │                          └─────────────────────────┘    │
+│   Text Sentiment ──┘                                    │                    │
+│                                                         ▼                    │
+│                                          ┌──────────────────────────────┐   │
+│                                          │  MemoRable Integration       │   │
+│                                          │  • Tag memories with emotion │   │
+│                                          │  • Track pressure over time  │   │
+│                                          │  • Alert care circle         │   │
+│                                          │  • Filter by emotional state │   │
+│                                          └──────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### The Butterfly Effect (Pressure Tracking)
+
+Small emotional disturbances cascade. MemoRable tracks this:
+
+```
+Day 1: Grandma gets stressful call from bank      [pressure: +15]
+Day 1: Second call about insurance                 [pressure: +12]
+Day 2: Struggles with new medication routine      [pressure: +20]
+Day 2: THRESHOLD EXCEEDED                          [total: 47/40]
+       → Care Circle Alert sent to daughter + Dr. Smith
+```
+
+**Care Circles** receive alerts via SMS, Email, Push, or Webhook when:
+- Emotional pressure exceeds thresholds
+- Distress patterns emerge (multiple bad days)
+- Unusual emotional shifts detected
+
+### Configuration
+
+```env
+# Enable Hume.ai integration
+HUME_API_KEY=your-hume-api-key
+
+# Care circle alert thresholds
+PRESSURE_THRESHOLD_MONITOR=20    # Start watching
+PRESSURE_THRESHOLD_CONCERN=40    # Alert care circle
+PRESSURE_THRESHOLD_URGENT=70     # Immediate notification
+```
+
+---
+
 ## MCP Tools Reference (35 Tools)
 
 ### Context Management (Multi-Device)
@@ -689,7 +772,15 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 | `deep_work` | Focus tasks for peak energy periods |
 | `triage_task` | Classify a task by energy requirements |
 
-### Emotion & Prosody
+### Emotion & Prosody (Hume.ai Integration)
+
+MemoRable integrates with [Hume.ai](https://hume.ai) for real-time emotion detection from voice prosody, facial expressions, and text. This enables:
+
+- **Distress Detection**: Identify when users are stressed, anxious, or struggling
+- **Care Circle Alerts**: Automatically notify caregivers when concerning patterns emerge
+- **Emotion-Aware Memory**: Tag memories with emotional context for better recall
+- **Sarcasm Correction**: Override false positives when tone doesn't match words
+
 | Tool | Description |
 |------|-------------|
 | `analyze_emotion` | Analyze emotional content of text or memory (Hume.ai) |
@@ -701,6 +792,11 @@ For detailed setup instructions, see [docs/claude-ai-integration.md](docs/claude
 | `clarify_intent` | Annotate what was meant vs what was said |
 
 ### Relationship Intelligence
+
+MemoRable computes relationships on-demand from shared memories rather than storing static graphs. This means relationships evolve naturally as memories accumulate.
+
+**Pressure Tracking (Butterfly → Hurricane)**: Small emotional disturbances can cascade. If grandma receives 3 stressful calls in a day, that pressure accumulates. If she then transmits that stress to her daughter, the system tracks the cascade. When pressure exceeds thresholds, the Care Circle (family, doctors) gets alerted via SMS/Email/Push/Webhook.
+
 | Tool | Description |
 |------|-------------|
 | `get_relationship` | Synthesize relationship from shared memories (no stored graph) |
