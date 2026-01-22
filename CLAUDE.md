@@ -12,9 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 3. **LISTS BEFORE CODE** - When given a multi-part task, FIRST create a comprehensive list of what needs to be done. Audit the codebase, read the docs, then MAKE THE LIST. Only start coding AFTER the list is complete and reviewed. Don't jump straight to implementation.
 
-4. **DOCUMENT BEFORE CODE** - Always create a document before you code. Always make sure the document fits into the overall plan. If you haven't followed the document creation and planning steps, you should not be coding.
-
-5. **DON'T ASSUME, ASK** - Do not assume what the human means. Ask. Alan is happy to fill in the blanks. Do not interpret, do not categorize. When unclear, ask. Humans communicate differently - do not sanitize them into one path.
+4. **DOCUMENT BEFORE CODE** - Always create a document before you code. Always make sure the document fits into the overall plan. If you haven't followed the document creation and planning steps you should not be coding.
 
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
