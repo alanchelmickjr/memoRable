@@ -2,19 +2,19 @@
  * API Client for MemoRable - REST Mode
  *
  * ╔══════════════════════════════════════════════════════════════════╗
- * ║  🔒 HTTPS REQUIRED - NO HTTP EVER                                ║
+ * ║  🔒 HTTPS REQUIRED IN PRODUCTION                                 ║
  * ║                                                                   ║
- * ║  All API communication MUST use TLS encryption.                  ║
- * ║  HTTP URLs will be rejected at connection time.                  ║
+ * ║  All API communication MUST use TLS encryption in production.    ║
+ * ║  HTTP allowed only when ALLOW_HTTP_DEV=true or NODE_ENV=dev.     ║
  * ╚══════════════════════════════════════════════════════════════════╝
  *
  * Two modes of operation:
  * - DIRECT MODE (default): MCP connects directly to MongoDB (TLS required)
- * - REST MODE (API_BASE_URL set): MCP calls HTTPS API
+ * - REST MODE (API_BASE_URL set): MCP calls HTTPS API (or HTTP in dev)
  *
  * REST mode requires:
- * - Domain with ACM certificate on ALB
- * - API_BASE_URL starting with https://
+ * - Domain with ACM certificate on ALB (production)
+ * - API_BASE_URL starting with https:// (or http:// with ALLOW_HTTP_DEV=true)
  * - See docs/REST_MODE_SECURITY.md for setup
  */
 
@@ -71,15 +71,20 @@ export class ApiClient {
   constructor(config: ApiClientConfig) {
     const url = config.baseUrl.replace(/\/$/, ''); // Remove trailing slash
 
-    // SECURITY: HTTPS REQUIRED - NO HTTP EVER
+    // SECURITY: HTTPS REQUIRED - NO HTTP EVER (except dev mode)
     // The "weakest router" problem means any unencrypted hop can read traffic
-    if (!url.startsWith('https://')) {
+    const allowHttpDev = process.env.ALLOW_HTTP_DEV === 'true' || process.env.NODE_ENV === 'development';
+    if (!url.startsWith('https://') && !allowHttpDev) {
       throw new Error(
         'SECURITY ERROR: API_BASE_URL must use HTTPS. HTTP is not allowed.\n' +
         'Received: ' + url + '\n' +
         'Required: https://your-domain.com\n' +
+        'Set ALLOW_HTTP_DEV=true for local development.\n' +
         'See docs/REST_MODE_SECURITY.md for HTTPS setup instructions.'
       );
+    }
+    if (!url.startsWith('https://') && allowHttpDev) {
+      console.error('[ApiClient] WARNING: Using HTTP in dev mode. Do NOT use in production.');
     }
 
     this.baseUrl = url;
