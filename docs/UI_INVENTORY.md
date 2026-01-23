@@ -13,6 +13,8 @@
 | `/metrics/dashboard` | HTML | Terminal-style metrics view |
 | `/dashboard` | HTML | Intelligence dashboard |
 | `/dashboard/interactive` | HTML | Gamified dashboard |
+| `/dashboard/mission-control` | HTML | Space shuttle system overview |
+| `/dashboard/synthetic` | HTML | Synthetic pipeline FFT status |
 | `/dashboard/json` | JSON | Dashboard data export |
 | `/viewer/:modelId` | HTML | 3D STL viewer (Three.js) |
 
@@ -97,7 +99,57 @@
 - **Features**: Level system, XP bar, achievements, quality tiers
 - **Tech**: CSS animations, floating particles, Google Fonts (Orbitron)
 
-### 4. 3D Viewer (`/viewer/:modelId`)
+### 4. Mission Control (`/dashboard/mission-control`)
+
+**File**: `src/server.js:3628-4937`
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  MEMORABLE MISSION CONTROL              [●] ONLINE          │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────┐  ┌─────────────────────────────┐  ┌────────┐ │
+│  │ GAUGES  │  │                             │  │ RADAR  │ │
+│  │ CPU:34% │  │         1,234               │  │ ○ ○    │ │
+│  │ MEM:82% │  │    TOTAL MEMORIES           │  │   ○  ○ │ │
+│  │ NET:78% │  │                             │  │  ○     │ │
+│  └─────────┘  └─────────────────────────────┘  └────────┘ │
+│  [INDICATOR ARRAY] ● ● ● ● ● ● ● ● ● ● ● ● ●           │
+│  [WAVEFORM] ║║│║║│║║│║║│║║│║║│║║│║║│║║│║║│                 │
+│  [CONTROLS] ENGAGE RECALL SYNC PURGE HEAL PULSE            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **Style**: Space shuttle (cyan neon, scanlines, animated)
+- **Features**: Gauges, radar, indicator lights, waveform, control buttons
+- **Tech**: CSS Grid, SVG gauges, CSS animations, auto-refresh 5s
+
+### 5. Synthetic Pipeline (`/dashboard/synthetic`)
+
+**File**: `src/server.js` (after calendar dashboard)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  SYNTHETIC PIPELINE                                         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌─────────────────────┐  ┌───────────────┐ │
+│  │ WINDOWS  │  │        84           │  │  STATS        │ │
+│  │ 21d ████ │  │   DAYS OBSERVED     │  │  316 records  │ │
+│  │ 63d ██   │  │   Pipeline Active   │  │  8 patterns   │ │
+│  │ 84d █    │  │                     │  │  316 memories │ │
+│  └──────────┘  └─────────────────────┘  └───────────────┘ │
+│  [PIPELINE] ● INGEST ● ACCESS ● FFT ● 21D ● 63D ● STABLE │
+│  [HEATMAP] ░░▓▓████▓▓░░░░░░░░░░░░▓▓████░░  (hourly)      │
+│  [DOW] Mon████ Tue██ Wed████████ Thu███ Fri████            │
+│  [FFT] DAILY 91% STABLE | WEEKLY 64% FORMING              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **Style**: Space shuttle (magenta accent, scanlines, animated)
+- **Features**: 21/63/84 day gauges, pipeline stage lights, hourly heatmap, DOW chart, FFT results
+- **Tech**: CSS Grid, MongoDB aggregation queries, auto-refresh 10s
+- **Public**: No auth required (pattern data only, no memory content)
+
+### 6. 3D Viewer (`/viewer/:modelId`)
 
 **File**: `src/services/viewer_gui/index.ts` (782 lines)
 
@@ -201,7 +253,7 @@
 
 | Category | Count |
 |----------|-------|
-| HTML Dashboards | 4 |
+| HTML Dashboards | 6 |
 | JSON Endpoints | 3 |
 | Auth Endpoints | 5 |
 | Memory Endpoints | 6 |
