@@ -4960,6 +4960,10 @@ app.get('/dashboard/synthetic', async (_req, res) => {
     hourlyDistribution: [],
     dowDistribution: [],
     patternDocs: [],
+    patternBreakdown: [],
+    patternHourVariance: [],
+    entityFrequency: [],
+    dailyEventCounts: [],
   };
 
   if (mongoConnected) {
@@ -5011,8 +5015,154 @@ app.get('/dashboard/synthetic', async (_req, res) => {
         { $sort: { _id: 1 } },
       ]).toArray();
 
+      // ─── PREDICTION METRICS ───────────────────────────────────────────
+      // Group by pattern (contextFrame.activity) to compute per-pattern stats
+      mongoData.patternBreakdown = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true, 'contextFrame.activity': { $exists: true } } },
+        { $group: {
+          _id: '$contextFrame.activity',
+          count: { $sum: 1 },
+          avgHour: { $avg: { $hour: '$timestamp' } },
+          minHour: { $min: { $hour: '$timestamp' } },
+          maxHour: { $max: { $hour: '$timestamp' } },
+          firstEvent: { $min: '$timestamp' },
+          lastEvent: { $max: '$timestamp' },
+          people: { $addToSet: '$contextFrame.people' },
+        }},
+        { $sort: { count: -1 } },
+      ]).toArray();
+
+      // Per-pattern hourly variance (for temporal precision)
+      mongoData.patternHourVariance = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true, 'contextFrame.activity': { $exists: true } } },
+        { $group: {
+          _id: '$contextFrame.activity',
+          hours: { $push: { $hour: '$timestamp' } },
+        }},
+      ]).toArray();
+
+      // Entity interaction frequency (who appears in access patterns)
+      mongoData.entityFrequency = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true, 'contextFrame.people': { $exists: true, $ne: null } } },
+        { $unwind: '$contextFrame.people' },
+        { $group: { _id: '$contextFrame.people', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]).toArray();
+
+      // Daily event counts (for hit-rate calculation)
+      mongoData.dailyEventCounts = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true } },
+        { $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          count: { $sum: 1 },
+          patterns: { $addToSet: '$contextFrame.activity' },
+        }},
+        { $sort: { _id: 1 } },
+      ]).toArray();
+
     } catch (err) {
       console.error('[Synthetic Dashboard] MongoDB query error:', err.message);
+    }
+  }
+
+  // ─── COMPUTE PREDICTION ACCURACY METRICS ───────────────────────────────
+  const predictionMetrics = {
+    hitRate: 0,          // % of predicted windows that had actual events
+    temporalPrecision: 0, // mean hours offset from predicted time
+    patternCoverage: 0,  // % of events explained by a known pattern
+    anticipationScore: 0, // combined quality metric (0-100)
+    entityPredictionScore: 0, // how well we predict entity interactions
+    patternsAnalyzed: 0,
+    totalPredictions: 0,
+    correctPredictions: 0,
+    missedPredictions: 0,
+    nextPredicted: null,
+  };
+
+  if (mongoData.patternBreakdown && mongoData.patternBreakdown.length > 0) {
+    const breakdown = mongoData.patternBreakdown;
+    const varianceMap = {};
+    (mongoData.patternHourVariance || []).forEach(p => { varianceMap[p._id] = p.hours; });
+
+    let totalOffset = 0;
+    let offsetCount = 0;
+    let coveredEvents = 0;
+
+    for (const pattern of breakdown) {
+      const expectedHour = Math.round(pattern.avgHour);
+      const hours = varianceMap[pattern._id] || [];
+      const patternSpanDays = pattern.firstEvent && pattern.lastEvent
+        ? Math.ceil((new Date(pattern.lastEvent).getTime() - new Date(pattern.firstEvent).getTime()) / (24 * 60 * 60 * 1000))
+        : 0;
+
+      // Temporal precision: mean absolute offset from expected hour
+      if (hours.length > 0) {
+        for (const h of hours) {
+          const offset = Math.abs(h - expectedHour);
+          totalOffset += Math.min(offset, 24 - offset); // wrap-around aware
+          offsetCount++;
+        }
+      }
+
+      // Pattern coverage: events with a known activity pattern
+      coveredEvents += pattern.count;
+
+      // Hit rate: expected events (one per period) vs actual
+      // Daily patterns: expect ~1/day, weekly: ~1/7days
+      let expectedEvents = 0;
+      if (pattern.count >= 21 && patternSpanDays >= 21) {
+        // Likely daily pattern
+        expectedEvents = patternSpanDays;
+      } else if (pattern.count >= 3 && patternSpanDays >= 21) {
+        // Likely weekly or longer
+        expectedEvents = Math.floor(patternSpanDays / 7);
+      }
+
+      if (expectedEvents > 0) {
+        predictionMetrics.totalPredictions += expectedEvents;
+        predictionMetrics.correctPredictions += Math.min(pattern.count, expectedEvents);
+        predictionMetrics.missedPredictions += Math.max(0, expectedEvents - pattern.count);
+      }
+    }
+
+    predictionMetrics.patternsAnalyzed = breakdown.length;
+    predictionMetrics.temporalPrecision = offsetCount > 0 ? (totalOffset / offsetCount) : 0;
+    predictionMetrics.patternCoverage = mongoData.accessRecords > 0
+      ? (coveredEvents / mongoData.accessRecords) * 100 : 0;
+    predictionMetrics.hitRate = predictionMetrics.totalPredictions > 0
+      ? (predictionMetrics.correctPredictions / predictionMetrics.totalPredictions) * 100 : 0;
+
+    // Anticipation score: hit_rate weighted by temporal precision
+    // Perfect = 100 (all predictions hit, 0 hour offset)
+    const precisionFactor = Math.max(0, 1 - predictionMetrics.temporalPrecision / 12);
+    predictionMetrics.anticipationScore = predictionMetrics.hitRate * precisionFactor;
+
+    // Entity prediction: how concentrated are entity interactions?
+    if (mongoData.entityFrequency && mongoData.entityFrequency.length > 0) {
+      const totalEntityEvents = mongoData.entityFrequency.reduce((s, e) => s + e.count, 0);
+      const topEntityEvents = mongoData.entityFrequency.slice(0, 3).reduce((s, e) => s + e.count, 0);
+      predictionMetrics.entityPredictionScore = totalEntityEvents > 0
+        ? (topEntityEvents / totalEntityEvents) * 100 : 0;
+    }
+
+    // Next predicted: find patterns and predict next occurrence
+    const now = new Date();
+    const predictions = [];
+    for (const pattern of breakdown) {
+      if (pattern.lastEvent) {
+        const lastEvent = new Date(pattern.lastEvent);
+        const periodDays = pattern.count > 20 ? 1 : pattern.count > 5 ? 7 : 21;
+        const nextExpected = new Date(lastEvent.getTime() + periodDays * 24 * 60 * 60 * 1000);
+        nextExpected.setHours(Math.round(pattern.avgHour), 0, 0, 0);
+        if (nextExpected > now) {
+          predictions.push({ pattern: pattern._id, when: nextExpected, hour: Math.round(pattern.avgHour) });
+        }
+      }
+    }
+    predictions.sort((a, b) => a.when.getTime() - b.when.getTime());
+    if (predictions.length > 0) {
+      predictionMetrics.nextPredicted = predictions[0];
     }
   }
 
@@ -5537,6 +5687,95 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       .nav-links { display: none; }
       .header { padding: 10px 15px; }
     }
+
+    /* Prediction metrics */
+    .metric-detail {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      font-size: 11px;
+    }
+
+    .metric-label { color: var(--text-dim); }
+    .metric-value { font-family: 'Orbitron', sans-serif; font-size: 12px; color: var(--cyan); }
+
+    .entity-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .entity-row {
+      display: grid;
+      grid-template-columns: 80px 1fr 30px;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .entity-name {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .entity-bar-track {
+      height: 6px;
+      background: var(--bg-card);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .entity-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 1s ease;
+      box-shadow: 0 0 5px currentColor;
+    }
+
+    .entity-count {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-align: right;
+    }
+
+    .next-prediction {
+      text-align: center;
+      padding: 15px 0;
+    }
+
+    .next-pattern {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      color: var(--cyan);
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    .next-time {
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .next-hour {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--green);
+      text-shadow: 0 0 15px var(--green);
+      margin-top: 5px;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 20px;
+      color: var(--text-dim);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
   </style>
 </head>
 <body>
@@ -5647,6 +5886,100 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       </div>
     </div>
 
+    <!-- PREDICTION ACCURACY ROW -->
+    <div class="panel">
+      <div class="panel-title">Prediction Accuracy</div>
+      <div class="gauge-row">
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">Hit Rate</span>
+            <span class="gauge-percent" style="color: ${predictionMetrics.hitRate >= 80 ? 'var(--green)' : predictionMetrics.hitRate >= 50 ? 'var(--yellow)' : 'var(--red)'};">${predictionMetrics.hitRate.toFixed(1)}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill ${predictionMetrics.hitRate >= 80 ? 'green' : predictionMetrics.hitRate >= 50 ? 'yellow' : 'cyan'}" style="width: ${predictionMetrics.hitRate}%;"></div>
+          </div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">Pattern Coverage</span>
+            <span class="gauge-percent">${predictionMetrics.patternCoverage.toFixed(1)}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill cyan" style="width: ${predictionMetrics.patternCoverage}%;"></div>
+          </div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">Anticipation Score</span>
+            <span class="gauge-percent" style="color: var(--magenta);">${predictionMetrics.anticipationScore.toFixed(1)}</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill magenta" style="width: ${predictionMetrics.anticipationScore}%;"></div>
+          </div>
+        </div>
+        <div class="metric-detail">
+          <span class="metric-label">Temporal Precision:</span>
+          <span class="metric-value" style="color: ${predictionMetrics.temporalPrecision <= 1 ? 'var(--green)' : predictionMetrics.temporalPrecision <= 2 ? 'var(--yellow)' : 'var(--orange)'};">±${predictionMetrics.temporalPrecision.toFixed(1)}h</span>
+        </div>
+        <div class="metric-detail">
+          <span class="metric-label">Predictions Made:</span>
+          <span class="metric-value">${predictionMetrics.correctPredictions}/${predictionMetrics.totalPredictions}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENTITY PREDICTIONS -->
+    <div class="panel">
+      <div class="panel-title">Entity Interaction Predictions</div>
+      ${(mongoData.entityFrequency || []).length > 0 ? `
+        <div class="entity-list">
+          ${(mongoData.entityFrequency || []).slice(0, 6).map((e, i) => {
+            const barWidth = mongoData.entityFrequency[0].count > 0 ? (e.count / mongoData.entityFrequency[0].count) * 100 : 0;
+            const colors = ['var(--cyan)', 'var(--magenta)', 'var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--blue)'];
+            return `<div class="entity-row">
+              <div class="entity-name">${e._id || 'unknown'}</div>
+              <div class="entity-bar-track">
+                <div class="entity-bar-fill" style="width: ${barWidth}%; background: ${colors[i % 6]};"></div>
+              </div>
+              <div class="entity-count">${e.count}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="metric-detail" style="margin-top: 10px;">
+          <span class="metric-label">Entity Prediction Score:</span>
+          <span class="metric-value" style="color: var(--cyan);">${predictionMetrics.entityPredictionScore.toFixed(0)}%</span>
+        </div>
+      ` : '<div class="no-data">No entity data yet</div>'}
+    </div>
+
+    <!-- NEXT PREDICTED -->
+    <div class="panel">
+      <div class="panel-title">Next Predicted Event</div>
+      ${predictionMetrics.nextPredicted ? `
+        <div class="next-prediction">
+          <div class="next-pattern">${predictionMetrics.nextPredicted.pattern.replace(/_/g, ' ').toUpperCase()}</div>
+          <div class="next-time">${new Date(predictionMetrics.nextPredicted.when).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+          <div class="next-hour">${String(predictionMetrics.nextPredicted.hour).padStart(2, '0')}:00</div>
+          <div class="next-countdown" style="margin-top: 10px; font-size: 10px; color: var(--text-dim);">
+            ${Math.max(0, Math.floor((predictionMetrics.nextPredicted.when.getTime() - Date.now()) / 3600000))}h from now
+          </div>
+        </div>
+      ` : `
+        <div class="no-data">
+          <div style="font-size: 24px; margin-bottom: 10px;">◌</div>
+          No patterns detected yet
+        </div>
+      `}
+      <div class="metric-detail" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+        <span class="metric-label">Patterns Analyzed:</span>
+        <span class="metric-value">${predictionMetrics.patternsAnalyzed}</span>
+      </div>
+      <div class="metric-detail">
+        <span class="metric-label">Missed Predictions:</span>
+        <span class="metric-value" style="color: ${predictionMetrics.missedPredictions > 0 ? 'var(--orange)' : 'var(--green)'};">${predictionMetrics.missedPredictions}</span>
+      </div>
+    </div>
+
     <!-- FOOTER -->
     <div class="footer-bar">
       <div class="footer-stats">
@@ -5655,21 +5988,25 @@ app.get('/dashboard/synthetic', async (_req, res) => {
           <div class="footer-stat-label">Span</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">${Math.floor(uptimeSeconds / 3600)}h</div>
-          <div class="footer-stat-label">Uptime</div>
+          <div class="footer-stat-value">${predictionMetrics.hitRate.toFixed(0)}%</div>
+          <div class="footer-stat-label">Hit Rate</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">${mongoData.accessRecords}</div>
-          <div class="footer-stat-label">Records</div>
+          <div class="footer-stat-value">±${predictionMetrics.temporalPrecision.toFixed(1)}h</div>
+          <div class="footer-stat-label">Precision</div>
+        </div>
+        <div class="footer-stat">
+          <div class="footer-stat-value">${predictionMetrics.anticipationScore.toFixed(0)}</div>
+          <div class="footer-stat-label">Anticipation</div>
         </div>
         <div class="footer-stat">
           <div class="footer-stat-value">${mongoData.detectedPatterns}</div>
           <div class="footer-stat-label">Patterns</div>
         </div>
       </div>
-      <div class="status-text ${mongoData.accessRecords > 0 ? (mongoData.timeSpanDays >= 63 ? '' : 'warn') : 'off'}">
+      <div class="status-text ${mongoData.accessRecords > 0 ? (predictionMetrics.anticipationScore >= 70 ? '' : 'warn') : 'off'}">
         ${mongoData.accessRecords > 0
-          ? (mongoData.timeSpanDays >= 63 ? 'PATTERNS STABLE' : mongoData.timeSpanDays >= 21 ? 'FORMING PATTERNS' : 'COLLECTING DATA')
+          ? (predictionMetrics.anticipationScore >= 70 ? 'PREDICTIONS ACCURATE' : predictionMetrics.anticipationScore >= 30 ? 'LEARNING PATTERNS' : 'COLLECTING DATA')
           : 'NO SYNTHETIC DATA LOADED'}
       </div>
     </div>
