@@ -26,7 +26,8 @@ on:
     paths:
       - 'src/**'
       - 'docker/**'
-      - 'terraform/**'
+      - 'cloudformation/**'
+      - '.github/workflows/**'
 
 env:
   AWS_REGION: us-west-2
