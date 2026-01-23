@@ -3658,6 +3658,31 @@ function createServer(): Server {
         }
 
         case 'get_status': {
+          // REST MODE: Get status from remote API
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const healthy = await apiClient.healthCheck();
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    mode: 'rest',
+                    connected: healthy,
+                    apiUrl: process.env.API_BASE_URL || process.env.MEMORABLE_API_URL,
+                    message: healthy
+                      ? 'MemoRable API connected and healthy'
+                      : 'MemoRable API unreachable',
+                  }, null, 2),
+                }],
+              };
+            } catch (err) {
+              throw new McpError(
+                ErrorCode.InternalError,
+                `REST mode status check failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+              );
+            }
+          }
+
           const status = await getSalienceStatus(CONFIG.defaultUserId);
           const metrics = getMetricsSummary();
 
@@ -6195,6 +6220,23 @@ function createServer(): Server {
 
     switch (uri) {
       case 'memory://recent': {
+        // REST MODE: Use API recall
+        if (connectionMode === 'rest' && apiClient) {
+          const result = await apiClient.recall('recent', { limit: 20 });
+          return {
+            contents: [{
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(result.memories.map(m => ({
+                id: m.id,
+                text: m.content?.slice(0, 300),
+                salience: m.salience,
+                createdAt: m.createdAt,
+              })), null, 2),
+            }],
+          };
+        }
+
         const memories = await retrieveMemoriesByQuery(
           CONFIG.defaultUserId,
           '', // Empty query = recent
@@ -6223,6 +6265,18 @@ function createServer(): Server {
       }
 
       case 'memory://loops': {
+        // REST MODE: Use API for loops
+        if (connectionMode === 'rest' && apiClient) {
+          const loops = await apiClient.listLoops();
+          return {
+            contents: [{
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify(loops, null, 2),
+            }],
+          };
+        }
+
         const loops = await getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true });
 
         return {
@@ -6248,6 +6302,17 @@ function createServer(): Server {
       }
 
       case 'memory://contacts': {
+        // REST MODE: Not available without direct DB
+        if (connectionMode === 'rest') {
+          return {
+            contents: [{
+              uri,
+              mimeType: 'application/json',
+              text: JSON.stringify({ mode: 'rest', message: 'Contacts resource not available in REST mode' }),
+            }],
+          };
+        }
+
         const [active, cold] = await Promise.all([
           getActiveRelationships(CONFIG.defaultUserId),
           getColdRelationships(CONFIG.defaultUserId),
@@ -6315,6 +6380,20 @@ function createServer(): Server {
 
     switch (name) {
       case 'daily_briefing': {
+        // REST MODE: Simplified briefing
+        if (connectionMode === 'rest' && apiClient) {
+          const healthy = await apiClient.healthCheck();
+          return {
+            messages: [{
+              role: 'user',
+              content: {
+                type: 'text',
+                text: `Daily briefing (REST mode):\n\nAPI Status: ${healthy ? 'Connected' : 'Unreachable'}\nMode: Cloud API\n\nUse recall and store_memory tools to interact with memories.`,
+              },
+            }],
+          };
+        }
+
         const [status, loops] = await Promise.all([
           getSalienceStatus(CONFIG.defaultUserId),
           getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true }),
@@ -6358,6 +6437,20 @@ What would you like to focus on?`,
         const person = args?.person as string;
         if (!person) {
           throw new McpError(ErrorCode.InvalidParams, 'person argument is required');
+        }
+
+        // REST MODE: Use API recall for person context
+        if (connectionMode === 'rest' && apiClient) {
+          const result = await apiClient.recall(`context ${person}`, { entity: person, limit: 10 });
+          return {
+            messages: [{
+              role: 'user',
+              content: {
+                type: 'text',
+                text: `Context for ${person} (REST mode):\n\n${result.memories.length ? result.memories.map(m => `- ${m.content.slice(0, 150)}`).join('\n') : 'No memories found for ' + person}`,
+              },
+            }],
+          };
         }
 
         const briefing = await generateBriefing(CONFIG.defaultUserId, person) as any;

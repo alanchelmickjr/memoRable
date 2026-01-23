@@ -6840,13 +6840,28 @@ app.post('/memory', async (req, res) => {
       fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
     };
 
-    // Store in memory (or DB when connected)
+    // Store in memory
     memoryStore.set(memory.id, memory);
+
+    // Persist to MongoDB if connected
+    if (mongoConnected) {
+      try {
+        const db = getDatabase();
+        await db.collection('memories').updateOne(
+          { id: memory.id },
+          { $set: memory },
+          { upsert: true }
+        );
+      } catch (dbErr) {
+        console.error('[Memory] MongoDB persist failed (in-memory still stored):', dbErr.message);
+      }
+    }
 
     metrics.inc('memory_store_total', { entityType });
     metrics.observe('memory_store_latency_ms', {}, Date.now() - start);
 
     res.status(201).json({
+      stored: true,
       success: true,
       memory,
     });
@@ -6884,12 +6899,18 @@ app.get('/memory', (req, res) => {
       memories = memories.filter(m => m.entityType === entityType);
     }
 
-    // Simple text search if query provided
+    // Word-based search scoring (not exact substring)
     if (query) {
-      const q = query.toLowerCase();
-      memories = memories.filter(m =>
-        m.content.toLowerCase().includes(q)
-      );
+      const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+      memories = memories
+        .map(m => {
+          const contentLower = m.content.toLowerCase();
+          const matchCount = queryTokens.filter(token => contentLower.includes(token)).length;
+          const matchRatio = queryTokens.length > 0 ? matchCount / queryTokens.length : 0;
+          return { ...m, _searchScore: matchRatio };
+        })
+        .filter(m => m._searchScore > 0.3) // At least 30% of query tokens must match
+        .sort((a, b) => b._searchScore - a._searchScore);
     }
 
     // Apply temporal perspective to each memory
@@ -7989,6 +8010,30 @@ async function start() {
         await bootstrapClaudeUser();
         mongoConnected = true;
         console.log('[Server] MongoDB user system initialized');
+
+        // Ensure indexes on memories collection
+        try {
+          await db.collection('memories').createIndex({ id: 1 }, { unique: true });
+          await db.collection('memories').createIndex({ entities: 1 });
+          await db.collection('memories').createIndex({ timestamp: -1 });
+        } catch (idxErr) {
+          // Indexes may already exist
+        }
+
+        // Load persisted memories into in-memory store
+        try {
+          const memoryCursor = db.collection('memories').find({}).sort({ timestamp: -1 }).limit(10000);
+          let loadedCount = 0;
+          for await (const doc of memoryCursor) {
+            memoryStore.set(doc.id, doc);
+            loadedCount++;
+          }
+          if (loadedCount > 0) {
+            console.log(`[Server] Loaded ${loadedCount} memories from MongoDB`);
+          }
+        } catch (memLoadErr) {
+          console.warn('[Server] Failed to load memories from MongoDB:', memLoadErr.message);
+        }
       } else {
         console.log('[Server] No MONGODB_URI - using in-memory auth (dev mode)');
       }
