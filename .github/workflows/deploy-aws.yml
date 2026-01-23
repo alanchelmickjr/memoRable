@@ -11,15 +11,6 @@ on:
         options:
           - staging
           - production
-      action:
-        description: 'Terraform action'
-        required: true
-        default: 'apply'
-        type: choice
-        options:
-          - plan
-          - apply
-          - destroy
   push:
     branches:
       - main
@@ -31,7 +22,8 @@ on:
 
 env:
   AWS_REGION: us-west-2
-  TF_VERSION: 1.6.0
+  # CloudFormation stack name (determines ECS cluster/service names)
+  STACK_NAME: memorable
 
 # Required for OIDC authentication with AWS
 permissions:
@@ -119,82 +111,111 @@ jobs:
           docker push $ECR_REGISTRY/memorable-mcp:latest
           echo "mcp_image=$ECR_REGISTRY/memorable-mcp:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-  terraform:
+  ecs-deploy:
     needs: [check-aws-config, build-images]
     if: needs.check-aws-config.outputs.aws_configured == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
-
-    defaults:
-      run:
-        working-directory: terraform
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # OIDC Authentication
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/memorable-github-actions-memoRable
-          role-session-name: github-actions-terraform-${{ github.run_id }}
+          role-session-name: github-actions-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Terraform Init
-        run: |
-          terraform init \
-            -backend-config="bucket=memorable-terraform-state-${{ github.event.inputs.environment || 'staging' }}" \
-            -backend-config="key=terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}"
-
-      - name: Terraform Plan
-        id: plan
+      - name: Deploy app service to ECS
         env:
-          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          # Use latest tag - built images are always tagged as latest
-          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
+          CLUSTER: ${{ env.STACK_NAME }}-cluster
+          SERVICE: ${{ env.STACK_NAME }}-app
+          NEW_IMAGE: ${{ needs.build-images.outputs.app_image }}
         run: |
-          terraform plan \
-            -var-file="environments/${{ github.event.inputs.environment || 'staging' }}.tfvars" \
-            -out=tfplan \
-            -no-color
+          echo "Deploying $NEW_IMAGE to $CLUSTER/$SERVICE"
 
-      - name: Terraform Apply
-        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
+          # Get the current task definition ARN from the running service
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)
+
+          echo "Current task definition: $TASK_DEF_ARN"
+
+          # Get the full task definition
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF_ARN" \
+            --query 'taskDefinition' > task-def.json
+
+          # Update the container image to the new build
+          jq --arg IMAGE "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $IMAGE' \
+            task-def.json > updated-task-def.json
+
+          # Strip runtime-only fields that can't be passed to register-task-definition
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
+            updated-task-def.json > register-task-def.json
+
+          # Register the new task definition revision
+          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://register-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "New task definition: $NEW_TASK_DEF_ARN"
+
+          # Update the ECS service with the new task definition
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --task-definition "$NEW_TASK_DEF_ARN" \
+            --force-new-deployment
+
+          echo "ECS service update initiated"
+
+      - name: Wait for deployment to stabilize
         env:
-          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-          # Use latest tag - built images are always tagged as latest
-          TF_VAR_app_image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:latest
-        run: terraform apply -auto-approve tfplan
-
-      - name: Get outputs
-        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
-        id: outputs
+          CLUSTER: ${{ env.STACK_NAME }}-cluster
+          SERVICE: ${{ env.STACK_NAME }}-app
         run: |
-          echo "alb_dns=$(terraform output -raw alb_dns_name)" >> $GITHUB_OUTPUT
+          echo "Waiting for ECS service to stabilize..."
+          # Wait up to 5 minutes for the new deployment to become stable
+          for i in $(seq 1 30); do
+            STATUS=$(aws ecs describe-services \
+              --cluster "$CLUSTER" \
+              --services "$SERVICE" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+              --output text)
+
+            echo "[$i/30] Deployment status: $STATUS"
+
+            if [ "$STATUS" = "COMPLETED" ]; then
+              echo "Deployment completed successfully!"
+              break
+            elif [ "$STATUS" = "FAILED" ]; then
+              echo "Deployment failed! Check ECS console for details."
+              exit 1
+            fi
+
+            sleep 10
+          done
 
       - name: Health check
-        if: github.event.inputs.action == 'apply' || github.event_name == 'push'
         run: |
-          echo "Waiting for deployment to stabilize..."
-          sleep 60
-
-          ALB_DNS="${{ steps.outputs.outputs.alb_dns }}"
-          if [ -n "$ALB_DNS" ]; then
-            echo "Testing health endpoint..."
-            curl -f "http://${ALB_DNS}/health/live" || echo "Health check pending..."
-          fi
+          ALB_DNS="memorable-alb-1679440696.${{ env.AWS_REGION }}.elb.amazonaws.com"
+          echo "Testing health endpoint at $ALB_DNS..."
+          # Allow a few retries for the new task to register with the target group
+          for i in $(seq 1 5); do
+            if curl -sf "http://${ALB_DNS}/health/live" > /dev/null 2>&1; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i/5 - waiting..."
+            sleep 10
+          done
+          echo "Health check did not pass within timeout - service may still be starting"
 
   notify:
-    needs: [check-aws-config, build-images, terraform]
+    needs: [check-aws-config, build-images, ecs-deploy]
     runs-on: ubuntu-latest
     if: always()
 
@@ -208,14 +229,17 @@ jobs:
             echo "**Status:** Deployment skipped (AWS_ACCOUNT_ID not configured)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "To enable deployment, add the AWS_ACCOUNT_ID secret to this repository." >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.terraform.result }}" == "success" ]; then
+          elif [ "${{ needs.ecs-deploy.result }}" == "success" ]; then
             echo "**Status:** Deployment successful!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
             echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Image:** ${{ needs.build-images.outputs.app_image }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Authentication" >> $GITHUB_STEP_SUMMARY
-            echo "Used OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
+            echo "### Infrastructure" >> $GITHUB_STEP_SUMMARY
+            echo "- Auth: OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
+            echo "- IaC: CloudFormation (stack: memorable)" >> $GITHUB_STEP_SUMMARY
+            echo "- Deploy: ECS force-new-deployment" >> $GITHUB_STEP_SUMMARY
           else
             echo "**Status:** Deployment failed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
