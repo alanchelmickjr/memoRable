@@ -9,11 +9,24 @@
 | I want to... | Go to... |
 |--------------|----------|
 | Understand the architecture | [Architecture](#architecture--system-design) |
+| Check readiness status | [Readiness](#readiness--status) |
 | Deploy MemoRable | [Operations](#deployment--operations) |
 | Integrate with Claude | [Integration](#integration--external-systems) |
 | Understand security | [Security](#security-privacy--encryption) |
-| Learn the data models | [Data Models](#data-models--schemas) |
+| Test the pipeline | [Testing & Synthetic Data](#testing--synthetic-data) |
 | Explore research | [Research](#research--advanced-concepts) |
+
+---
+
+## Readiness & Status
+
+| Document | Description |
+|----------|-------------|
+| [READINESS_ANALYSIS.md](./READINESS_ANALYSIS.md) | Current system state, what works, what's untested, blockers |
+| [NEXT_STEPS_SYNTHETIC_PIPELINE.md](./NEXT_STEPS_SYNTHETIC_PIPELINE.md) | Synthetic data plan for 21/63-day pattern validation |
+| [WIRING_STATUS.md](./WIRING_STATUS.md) | Component integration status (43 MCP tools) |
+| [DOCUMENTATION_GAPS.md](./DOCUMENTATION_GAPS.md) | Gap analysis: built vs documented |
+| [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) | Pre-launch assessment (293 tests passing) |
 
 ---
 
@@ -22,10 +35,8 @@
 ### Core Architecture
 | Document | Description |
 |----------|-------------|
-| [technical-architecture.md](./technical-architecture.md) | Complete system overview, microservices, Docker orchestration |
 | [DATA_FLOW_DIAGRAM.md](./DATA_FLOW_DIAGRAM.md) | Data flow from ingestion through storage to retrieval |
 | [SYSTEM_FLOW_DIAGRAM.md](./SYSTEM_FLOW_DIAGRAM.md) | Process orchestration and service interactions |
-| [total_recall_specification.md](./total_recall_specification.md) | Memory Memento structure, temporal/spatial/emotional contexts |
 
 ### Advanced Patterns
 | Document | Description |
@@ -34,18 +45,6 @@
 | [specialist-ensemble.md](./specialist-ensemble.md) | Seven specialists architecture (digital twin) |
 | [where-transforms-meaning.md](./where-transforms-meaning.md) | WHERE as context transformer |
 | [ENGINE_LAYER_DESIGN.md](./ENGINE_LAYER_DESIGN.md) | Core processing engine design |
-
----
-
-## Data Models & Schemas
-
-| Document | Description |
-|----------|-------------|
-| [ingestion_service_domain_model.md](./ingestion_service_domain_model.md) | MemoryMemento, RawInputData, ProcessedInputData |
-| [ingestion_service_architecture.md](./ingestion_service_architecture.md) | Pipeline: API → Preprocessing → Memento → Storage |
-| [ingestion_service_requirements.md](./ingestion_service_requirements.md) | Functional requirements for ingestion |
-| [ingestion_service_pseudocode.md](./ingestion_service_pseudocode.md) | Implementation reference |
-| [embedding_service_strategy.md](./embedding_service_strategy.md) | Embedding model strategies |
 
 ---
 
@@ -78,7 +77,6 @@
 |----------|-------------|
 | [deployment-guide.md](./deployment-guide.md) | Docker Compose, environment config, monitoring |
 | [DEPLOYMENT_DIAGNOSTIC.md](./DEPLOYMENT_DIAGNOSTIC.md) | Troubleshooting and validation |
-| [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) | Pre-launch assessment |
 | [SCALABILITY_ANALYSIS.md](./SCALABILITY_ANALYSIS.md) | Scale projections (1K-1M users), cost models |
 | [metrics-framework.md](./metrics-framework.md) | 3x7 temporal model, tuning levers |
 | [metrics-landscape.md](./metrics-landscape.md) | CloudWatch integration, alert tiers |
@@ -97,13 +95,22 @@
 
 ---
 
+## Testing & Synthetic Data
+
+| Document | Description |
+|----------|-------------|
+| [NEXT_STEPS_SYNTHETIC_PIPELINE.md](./NEXT_STEPS_SYNTHETIC_PIPELINE.md) | Full plan: generators, verification, pipeline analysis |
+| [ROAD_TEST_PLAN.md](./ROAD_TEST_PLAN.md) | Real-world testing plan |
+| [example-prompts.md](./example-prompts.md) | Sample prompts for testing |
+
+---
+
 ## User Experience
 
 | Document | Description |
 |----------|-------------|
 | [UI_AND_USER_SYSTEM_PLAN.md](./UI_AND_USER_SYSTEM_PLAN.md) | UI and system planning |
 | [UI_INVENTORY.md](./UI_INVENTORY.md) | UI component catalog |
-| [ROAD_TEST_PLAN.md](./ROAD_TEST_PLAN.md) | Real-world testing plan |
 | [README_USER_TESTING_NOTES.md](./README_USER_TESTING_NOTES.md) | User feedback |
 | [PORTAL_SPEC.md](./PORTAL_SPEC.md) | Portal specification |
 
@@ -124,16 +131,23 @@
 | Document | Description |
 |----------|-------------|
 | [PROJECT_FLOW.md](./PROJECT_FLOW.md) | Development workflow |
-| [WIRING_STATUS.md](./WIRING_STATUS.md) | Component integration status |
-| [DOCUMENTATION_GAPS.md](./DOCUMENTATION_GAPS.md) | Gap analysis: built vs documented |
 | [REPO_INDEXING_DESIGN.md](./REPO_INDEXING_DESIGN.md) | Code search and retrieval |
 
 ---
 
-## Archive (Historical)
+## Archive (Historical - NNNA/Batch Era)
+
+> These documents describe the deprecated NNNA (Nocturnal batch processing) architecture.
+> Real-time processing replaced batch as of 2025. Kept for reference only.
 
 | Document | Description |
 |----------|-------------|
+| [archive/total_recall_specification.md](./archive/total_recall_specification.md) | Memory Memento spec (NNNA-era) |
+| [archive/technical-architecture.md](./archive/technical-architecture.md) | Old system overview with NNNA |
+| [archive/ingestion_service_architecture.md](./archive/ingestion_service_architecture.md) | Old pipeline with NNNA schema updates |
+| [archive/ingestion_service_requirements.md](./archive/ingestion_service_requirements.md) | Old requirements referencing NNNA |
+| [archive/ingestion_service_domain_model.md](./archive/ingestion_service_domain_model.md) | Old data model with NNNA dependency |
+| [archive/ingestion_service_pseudocode.md](./archive/ingestion_service_pseudocode.md) | Old implementation reference |
 | [archive/memoRable_implementation_plan.md](./archive/memoRable_implementation_plan.md) | Original implementation plan |
 | [archive/3_core_concepts.md](./archive/3_core_concepts.md) | Historical core concepts |
 | [archive/4_user_guide.md](./archive/4_user_guide.md) | Historical user guide |
@@ -142,14 +156,15 @@
 
 ---
 
-## Key Insights
+## Key Principles
 
-1. **Real-Time Processing**: NNNA (batch) deprecated → Real-Time Relevance Engine at ingest
-2. **Security-First**: Three encryption tiers with zero-knowledge for Tier3
-3. **Seven Specialists**: Digital twin with specialized micro-models
-4. **Research-Backed**: Continual learning, Engram patterns, 3x7 temporal model
-5. **Self-Documenting**: The indexer indexes itself (living project)
+1. **Real-Time Processing**: All salience scoring, pattern learning at ingest time (not batch)
+2. **Cloud-First**: AWS us-west-2 staging, us-west-1 production. Push to deploy.
+3. **Security-First**: Three encryption tiers with zero-knowledge for Tier3
+4. **21/63-Day Pattern Windows**: Formation at 21 days, stability at 63 days (3x7 temporal model)
+5. **43 MCP Tools**: Full memory intelligence accessible from any Claude Code project
+6. **Self-Documenting**: The indexer indexes itself (living project)
 
 ---
 
-*Last indexed: Auto-updated by `scripts/index-simple.ts`*
+*Last updated: 2026-01-23*
