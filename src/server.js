@@ -182,6 +182,7 @@ const PUBLIC_PATHS = [
   '/dashboard/mission-control',
   '/dashboard/calendar',
   '/dashboard/calendar/view',
+  '/dashboard/synthetic',
   '/dashboard/json',
   '/auth/knock',
   '/auth/exchange',
@@ -1211,6 +1212,7 @@ app.get('/', (_req, res) => {
       <a href="/register" class="btn btn-primary">Register</a>
       <a href="/docs" class="btn btn-secondary">Documentation</a>
       <a href="/dashboard/mission-control" class="btn btn-secondary">Mission Control</a>
+      <a href="/dashboard/synthetic" class="btn btn-secondary">Synthetic Pipeline</a>
     </div>
     <div class="status">
       <div class="status-dot"></div>
@@ -1456,6 +1458,7 @@ app.get('/docs', (_req, res) => {
     <div class="nav-links">
       <a href="/" class="nav-link">Home</a>
       <a href="/dashboard/mission-control" class="nav-link">Mission Control</a>
+      <a href="/dashboard/synthetic" class="nav-link">Synthetic</a>
       <a href="/login" class="nav-link">Login</a>
       <a href="/register" class="nav-link">Register</a>
     </div>
@@ -4359,6 +4362,7 @@ app.get('/dashboard/mission-control', (_req, res) => {
       <a href="/" class="nav-link">Home</a>
       <a href="/docs" class="nav-link">Docs</a>
       <a href="/dashboard" class="nav-link">Dashboard</a>
+      <a href="/dashboard/synthetic" class="nav-link">Synthetic</a>
     </div>
     <div class="header-status">
       <div class="status-indicator">
@@ -4929,6 +4933,747 @@ app.get('/dashboard/calendar/view', (_req, res) => {
     loadData();
     setInterval(loadData, 5000);
   </script>
+</body>
+</html>`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// =============================================================================
+// SYNTHETIC PIPELINE DASHBOARD - "Space Shuttle meets FFT"
+// Public view of pattern detection pipeline status
+// =============================================================================
+
+app.get('/dashboard/synthetic', async (_req, res) => {
+  const memories = Array.from(memoryStore.values());
+  const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+
+  // Try to get real data from MongoDB
+  let mongoData = {
+    accessRecords: 0,
+    syntheticMemories: 0,
+    timeSpanDays: 0,
+    earliestRecord: null,
+    latestRecord: null,
+    detectedPatterns: 0,
+    hourlyDistribution: [],
+    dowDistribution: [],
+    patternDocs: [],
+  };
+
+  if (mongoConnected) {
+    try {
+      const db = getDatabase();
+
+      // Access records
+      mongoData.accessRecords = await db.collection('accessHistory').countDocuments({ synthetic: true });
+
+      // Synthetic memories
+      mongoData.syntheticMemories = await db.collection('memories').countDocuments({
+        'metadata.synthetic': true,
+      });
+
+      // Time span
+      const earliest = await db.collection('accessHistory').findOne(
+        { synthetic: true },
+        { sort: { timestamp: 1 } }
+      );
+      const latest = await db.collection('accessHistory').findOne(
+        { synthetic: true },
+        { sort: { timestamp: -1 } }
+      );
+
+      if (earliest && latest) {
+        mongoData.earliestRecord = earliest.timestamp;
+        mongoData.latestRecord = latest.timestamp;
+        mongoData.timeSpanDays = Math.ceil(
+          (new Date(latest.timestamp).getTime() - new Date(earliest.timestamp).getTime()) / (24 * 60 * 60 * 1000)
+        );
+      }
+
+      // Detected patterns
+      mongoData.detectedPatterns = await db.collection('patterns').countDocuments({});
+      mongoData.patternDocs = await db.collection('patterns').find({}).limit(10).toArray();
+
+      // Hourly distribution (top 5)
+      mongoData.hourlyDistribution = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true } },
+        { $group: { _id: { $hour: '$timestamp' }, count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 8 },
+      ]).toArray();
+
+      // Day-of-week distribution
+      mongoData.dowDistribution = await db.collection('accessHistory').aggregate([
+        { $match: { synthetic: true } },
+        { $group: { _id: { $dayOfWeek: '$timestamp' }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]).toArray();
+
+    } catch (err) {
+      console.error('[Synthetic Dashboard] MongoDB query error:', err.message);
+    }
+  }
+
+  // Calculate pipeline stages
+  const formationProgress = Math.min(100, (mongoData.timeSpanDays / 21) * 100);
+  const stabilityProgress = Math.min(100, (mongoData.timeSpanDays / 63) * 100);
+  const maxWindowProgress = Math.min(100, (mongoData.timeSpanDays / 84) * 100);
+
+  // Pattern confidence levels
+  const patternTypes = [
+    { name: 'DAILY', period: '24h', minEvents: 21, icon: '◉' },
+    { name: 'WEEKLY', period: '168h', minEvents: 9, icon: '◎' },
+    { name: 'TRI-WEEKLY', period: '504h', minEvents: 3, icon: '○' },
+    { name: 'MONTHLY', period: '720h', minEvents: 2, icon: '◌' },
+  ];
+
+  // Build hourly heatmap data
+  const hourlyData = Array(24).fill(0);
+  mongoData.hourlyDistribution.forEach(h => {
+    if (h._id >= 0 && h._id < 24) hourlyData[h._id] = h.count;
+  });
+  const maxHourly = Math.max(1, ...hourlyData);
+
+  // Build day-of-week bars
+  const dowNames = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dowData = Array(8).fill(0);
+  mongoData.dowDistribution.forEach(d => { if (d._id >= 1 && d._id <= 7) dowData[d._id] = d.count; });
+  const maxDow = Math.max(1, ...dowData);
+
+  // Generate indicator lights for pipeline stages
+  const pipelineStages = [
+    { name: 'INGEST', status: mongoData.syntheticMemories > 0 ? 'on' : 'off', color: 'c2' },
+    { name: 'ACCESS', status: mongoData.accessRecords > 0 ? 'on' : 'off', color: 'c2' },
+    { name: 'FFT', status: mongoData.timeSpanDays >= 7 ? 'on' : 'off', color: 'c1' },
+    { name: '21-DAY', status: mongoData.timeSpanDays >= 21 ? 'on' : 'slow', color: 'c3' },
+    { name: '42-DAY', status: mongoData.timeSpanDays >= 42 ? 'on' : 'off', color: 'c6' },
+    { name: '63-DAY', status: mongoData.timeSpanDays >= 63 ? 'on' : 'off', color: 'c5' },
+    { name: 'STABLE', status: mongoData.detectedPatterns > 0 ? 'on' : 'off', color: 'c1' },
+    { name: 'PREDICT', status: mongoData.detectedPatterns >= 2 ? 'on' : 'off', color: 'c2' },
+  ];
+
+  const pipelineLightsHtml = pipelineStages.map(s =>
+    `<div class="pipeline-stage">
+      <div class="indicator-light ${s.color} ${s.status}"></div>
+      <div class="stage-label">${s.name}</div>
+    </div>`
+  ).join('');
+
+  // Hourly heatmap
+  const heatmapHtml = hourlyData.map((count, hour) => {
+    const intensity = count / maxHourly;
+    const opacity = 0.1 + intensity * 0.9;
+    return `<div class="heat-cell" style="opacity: ${opacity};" title="Hour ${hour}: ${count} events">
+      <div class="heat-value">${count > 0 ? count : ''}</div>
+      <div class="heat-label">${hour}</div>
+    </div>`;
+  }).join('');
+
+  // DOW chart
+  const dowBarsHtml = dowData.slice(1).map((count, i) => {
+    const height = (count / maxDow) * 100;
+    return `<div class="dow-col">
+      <div class="dow-bar" style="height: ${height}%;"></div>
+      <div class="dow-label">${dowNames[i + 1]}</div>
+      <div class="dow-count">${count}</div>
+    </div>`;
+  }).join('');
+
+  // Pattern detection results
+  const patternResultsHtml = patternTypes.map(pt => {
+    const detected = mongoData.patternDocs.find(p =>
+      p.period === pt.period || p.patternType === pt.name.toLowerCase()
+    );
+    const confidence = detected ? (detected.confidence * 100).toFixed(0) : '0';
+    const status = detected ? (detected.confidence >= 0.8 ? 'stable' : detected.confidence >= 0.4 ? 'forming' : 'weak') : 'none';
+    const statusColor = status === 'stable' ? 'var(--green)' : status === 'forming' ? 'var(--yellow)' : status === 'weak' ? 'var(--orange)' : 'var(--text-dim)';
+    return `<div class="pattern-row">
+      <div class="pattern-icon" style="color: ${statusColor};">${pt.icon}</div>
+      <div class="pattern-name">${pt.name}</div>
+      <div class="pattern-period">${pt.period}</div>
+      <div class="pattern-confidence" style="color: ${statusColor};">${confidence}%</div>
+      <div class="pattern-status" style="color: ${statusColor};">${status.toUpperCase()}</div>
+    </div>`;
+  }).join('');
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Synthetic Pipeline // MemoRable</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="10">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --bg-card: #161b22;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --yellow: #ffff00;
+      --green: #00ff41;
+      --red: #ff0040;
+      --orange: #ff8800;
+      --blue: #0088ff;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px);
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .header {
+      background: linear-gradient(180deg, #1a1a2e 0%, var(--bg-dark) 100%);
+      border-bottom: 2px solid var(--magenta);
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 0 30px rgba(255, 0, 255, 0.2);
+    }
+
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--magenta);
+      text-shadow: 0 0 10px var(--magenta), 0 0 20px var(--magenta);
+      letter-spacing: 3px;
+    }
+
+    .logo span { color: var(--cyan); text-shadow: 0 0 10px var(--cyan); }
+
+    .nav-links {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+
+    .nav-link {
+      color: var(--cyan);
+      text-decoration: none;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      padding: 6px 12px;
+      border: 1px solid var(--cyan);
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+
+    .nav-link:hover {
+      background: var(--cyan);
+      color: var(--bg-dark);
+      box-shadow: 0 0 15px var(--cyan);
+    }
+
+    .nav-link.active {
+      background: var(--magenta);
+      border-color: var(--magenta);
+      color: #fff;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 15px;
+      padding: 20px;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--magenta), var(--cyan), var(--magenta));
+      animation: borderGlow 3s linear infinite;
+    }
+
+    @keyframes borderGlow {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+
+    .panel-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--cyan);
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Gauges */
+    .gauge-row {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .gauge-item {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .gauge-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .gauge-label { color: var(--text-dim); }
+    .gauge-percent { color: var(--cyan); font-family: 'Orbitron', sans-serif; }
+
+    .gauge-track {
+      height: 8px;
+      background: var(--bg-card);
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .gauge-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s ease;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .gauge-fill.cyan { background: var(--cyan); }
+    .gauge-fill.magenta { background: var(--magenta); }
+    .gauge-fill.green { background: var(--green); }
+    .gauge-fill.yellow { background: var(--yellow); }
+
+    /* Pipeline lights */
+    .pipeline-row {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 8px;
+    }
+
+    .pipeline-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .indicator-light {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+    }
+
+    .indicator-light.on { animation: lightBlink 1.5s infinite; }
+    .indicator-light.slow { animation: lightBlink 3s infinite; }
+    .indicator-light.off { opacity: 0.2; }
+
+    .indicator-light.c1 { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+    .indicator-light.c2 { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .indicator-light.c3 { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .indicator-light.c4 { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .indicator-light.c5 { background: var(--magenta); box-shadow: 0 0 8px var(--magenta); }
+    .indicator-light.c6 { background: var(--orange); box-shadow: 0 0 8px var(--orange); }
+
+    @keyframes lightBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .stage-label {
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    /* Big stats */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+    }
+
+    .stat-card {
+      text-align: center;
+      padding: 15px 10px;
+      background: var(--bg-card);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+    }
+
+    .stat-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      margin-top: 5px;
+    }
+
+    /* Heatmap */
+    .heatmap {
+      display: grid;
+      grid-template-columns: repeat(24, 1fr);
+      gap: 2px;
+    }
+
+    .heat-cell {
+      aspect-ratio: 1;
+      background: var(--cyan);
+      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+    }
+
+    .heat-value {
+      font-size: 8px;
+      color: var(--bg-dark);
+      font-weight: bold;
+    }
+
+    .heat-label {
+      font-size: 7px;
+      color: var(--bg-dark);
+      opacity: 0.7;
+    }
+
+    /* DOW chart */
+    .dow-chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      height: 100px;
+      padding: 10px 0;
+      gap: 5px;
+    }
+
+    .dow-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+    }
+
+    .dow-bar {
+      width: 100%;
+      background: linear-gradient(180deg, var(--cyan), var(--magenta));
+      border-radius: 3px 3px 0 0;
+      min-height: 2px;
+      box-shadow: 0 0 5px var(--cyan);
+      transition: height 1s ease;
+    }
+
+    .dow-label {
+      font-size: 9px;
+      color: var(--text-dim);
+      margin-top: 5px;
+      text-transform: uppercase;
+    }
+
+    .dow-count {
+      font-size: 8px;
+      color: var(--cyan);
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    /* Pattern results */
+    .pattern-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .pattern-row {
+      display: grid;
+      grid-template-columns: 20px 1fr 50px 40px 60px;
+      align-items: center;
+      padding: 8px 10px;
+      background: var(--bg-card);
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      gap: 10px;
+    }
+
+    .pattern-icon { font-size: 14px; text-align: center; }
+    .pattern-name { font-size: 11px; font-family: 'Orbitron', sans-serif; letter-spacing: 1px; }
+    .pattern-period { font-size: 10px; color: var(--text-dim); }
+    .pattern-confidence { font-size: 12px; font-family: 'Orbitron', sans-serif; text-align: right; }
+    .pattern-status { font-size: 9px; letter-spacing: 1px; text-align: right; }
+
+    /* Hero section */
+    .hero-panel {
+      grid-column: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+      background: radial-gradient(ellipse at center, rgba(255, 0, 255, 0.05) 0%, transparent 70%);
+    }
+
+    .hero-number {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 80px;
+      font-weight: 900;
+      color: var(--magenta);
+      text-shadow: 0 0 20px var(--magenta), 0 0 40px var(--magenta);
+      line-height: 1;
+    }
+
+    .hero-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 6px;
+      color: var(--text-dim);
+      margin-top: 10px;
+    }
+
+    .hero-sub {
+      font-size: 11px;
+      color: var(--cyan);
+      margin-top: 15px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+
+    /* Footer */
+    .footer-bar {
+      grid-column: 1 / 4;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-stats {
+      display: flex;
+      gap: 30px;
+    }
+
+    .footer-stat { text-align: center; }
+    .footer-stat-value { font-family: 'Orbitron', sans-serif; font-size: 14px; color: var(--cyan); }
+    .footer-stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 2px; color: var(--text-dim); }
+
+    .status-text {
+      font-size: 11px;
+      color: var(--green);
+      text-shadow: 0 0 5px var(--green);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .status-text.warn { color: var(--yellow); text-shadow: 0 0 5px var(--yellow); }
+    .status-text.off { color: var(--text-dim); text-shadow: none; }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .hero-panel { grid-column: 1 / 3; }
+      .footer-bar { grid-column: 1 / 3; }
+      .hero-number { font-size: 60px; }
+      .pipeline-row { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; padding: 10px; }
+      .hero-panel { grid-column: 1; }
+      .footer-bar { grid-column: 1; }
+      .hero-number { font-size: 48px; }
+      .heatmap { grid-template-columns: repeat(12, 1fr); }
+      .nav-links { display: none; }
+      .header { padding: 10px 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">SYNTHETIC <span>PIPELINE</span></div>
+    <div class="nav-links">
+      <a href="/dashboard/mission-control" class="nav-link">Mission Control</a>
+      <a href="/dashboard/synthetic" class="nav-link active">Synthetic</a>
+      <a href="/dashboard" class="nav-link">Intelligence</a>
+      <a href="/docs" class="nav-link">Docs</a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT COLUMN: Progress Gauges -->
+    <div class="panel">
+      <div class="panel-title">Pattern Windows</div>
+      <div class="gauge-row">
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">21-Day Formation</span>
+            <span class="gauge-percent">${formationProgress.toFixed(0)}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill cyan" style="width: ${formationProgress}%;"></div>
+          </div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">63-Day Stability</span>
+            <span class="gauge-percent">${stabilityProgress.toFixed(0)}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill magenta" style="width: ${stabilityProgress}%;"></div>
+          </div>
+        </div>
+        <div class="gauge-item">
+          <div class="gauge-header">
+            <span class="gauge-label">84-Day Max Window</span>
+            <span class="gauge-percent">${maxWindowProgress.toFixed(0)}%</span>
+          </div>
+          <div class="gauge-track">
+            <div class="gauge-fill green" style="width: ${maxWindowProgress}%;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: Hero + Pipeline -->
+    <div class="hero-panel panel">
+      <div class="hero-number">${mongoData.timeSpanDays}</div>
+      <div class="hero-label">Days Observed</div>
+      <div class="hero-sub">${mongoData.accessRecords > 0 ? 'Pipeline Active' : 'Awaiting Data'}</div>
+    </div>
+
+    <!-- RIGHT COLUMN: Stats -->
+    <div class="panel">
+      <div class="panel-title">Data Counts</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value">${mongoData.accessRecords}</div>
+          <div class="stat-label">Access Records</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${mongoData.syntheticMemories}</div>
+          <div class="stat-label">Memories</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${mongoData.detectedPatterns}</div>
+          <div class="stat-label">Patterns</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${memories.length}</div>
+          <div class="stat-label">Total Store</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIPELINE STATUS -->
+    <div class="panel" style="grid-column: 1 / 4;">
+      <div class="panel-title">Pipeline Stages</div>
+      <div class="pipeline-row">
+        ${pipelineLightsHtml}
+      </div>
+    </div>
+
+    <!-- LEFT: DOW Chart -->
+    <div class="panel">
+      <div class="panel-title">Day of Week</div>
+      <div class="dow-chart">
+        ${dowBarsHtml}
+      </div>
+    </div>
+
+    <!-- CENTER: Hourly Heatmap -->
+    <div class="panel">
+      <div class="panel-title">Hourly Distribution (24h)</div>
+      <div class="heatmap">
+        ${heatmapHtml}
+      </div>
+    </div>
+
+    <!-- RIGHT: Pattern Detection -->
+    <div class="panel">
+      <div class="panel-title">FFT Detections</div>
+      <div class="pattern-list">
+        ${patternResultsHtml}
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer-bar">
+      <div class="footer-stats">
+        <div class="footer-stat">
+          <div class="footer-stat-value">${mongoData.timeSpanDays}d</div>
+          <div class="footer-stat-label">Span</div>
+        </div>
+        <div class="footer-stat">
+          <div class="footer-stat-value">${Math.floor(uptimeSeconds / 3600)}h</div>
+          <div class="footer-stat-label">Uptime</div>
+        </div>
+        <div class="footer-stat">
+          <div class="footer-stat-value">${mongoData.accessRecords}</div>
+          <div class="footer-stat-label">Records</div>
+        </div>
+        <div class="footer-stat">
+          <div class="footer-stat-value">${mongoData.detectedPatterns}</div>
+          <div class="footer-stat-label">Patterns</div>
+        </div>
+      </div>
+      <div class="status-text ${mongoData.accessRecords > 0 ? (mongoData.timeSpanDays >= 63 ? '' : 'warn') : 'off'}">
+        ${mongoData.accessRecords > 0
+          ? (mongoData.timeSpanDays >= 63 ? 'PATTERNS STABLE' : mongoData.timeSpanDays >= 21 ? 'FORMING PATTERNS' : 'COLLECTING DATA')
+          : 'NO SYNTHETIC DATA LOADED'}
+      </div>
+    </div>
+  </div>
 </body>
 </html>`;
 
