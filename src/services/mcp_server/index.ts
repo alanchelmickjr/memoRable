@@ -6696,30 +6696,91 @@ async function main() {
     }
   }
 
-  const server = createServer();
   console.error('[MCP] MemoRable Memory Server starting...');
 
   if (CONFIG.transportType === 'http') {
     // HTTP transport for remote deployment (Claude.ai web integration)
     const { app, validateToken } = createExpressApp();
 
-    // Create HTTP transport
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-    });
+    // Per-session transport+server management
+    // Each MCP client gets its own isolated session - no shared state
+    const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: Server }>();
+
+    // Cleanup stale sessions every 5 minutes
+    const SESSION_TTL_MS = parseInt(process.env.MCP_SESSION_TTL_MS || '1800000', 10); // 30 min default
+    const sessionLastSeen = new Map<string, number>();
+    setInterval(() => {
+      const now = Date.now();
+      for (const [id, lastSeen] of sessionLastSeen) {
+        if (now - lastSeen > SESSION_TTL_MS) {
+          const session = sessions.get(id);
+          if (session) {
+            session.transport.close?.();
+            sessions.delete(id);
+            sessionLastSeen.delete(id);
+            console.error(`[MCP] Cleaned up stale session ${id}`);
+          }
+        }
+      }
+    }, 300000);
 
     // Mount MCP endpoint with OAuth validation
     app.all('/mcp', validateToken, async (req: Request, res: Response) => {
       try {
-        await transport.handleRequest(req, res, req.body);
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+        // DELETE = explicit session teardown (MCP spec)
+        if (req.method === 'DELETE') {
+          if (sessionId && sessions.has(sessionId)) {
+            const session = sessions.get(sessionId)!;
+            await session.transport.close();
+            sessions.delete(sessionId);
+            sessionLastSeen.delete(sessionId);
+            console.error(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
+            res.status(200).json({ ok: true });
+          } else {
+            res.status(404).json({ error: 'Session not found' });
+          }
+          return;
+        }
+
+        if (sessionId && sessions.has(sessionId)) {
+          // Existing session - route to its transport
+          sessionLastSeen.set(sessionId, Date.now());
+          const { transport } = sessions.get(sessionId)!;
+          await transport.handleRequest(req, res, req.body);
+        } else if (!sessionId || req.method === 'POST') {
+          // New session - create fresh transport+server pair
+          const newTransport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+          });
+          const newServer = createServer();
+          await newServer.connect(newTransport);
+
+          // Handle the request (initialize) - this sets the session ID on the transport
+          await newTransport.handleRequest(req, res, req.body);
+
+          // Store session by the ID the transport generated
+          const newSessionId = newTransport.sessionId;
+          if (newSessionId) {
+            sessions.set(newSessionId, { transport: newTransport, server: newServer });
+            sessionLastSeen.set(newSessionId, Date.now());
+            console.error(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
+          }
+        } else {
+          // Session ID provided but not found (expired/invalid)
+          res.status(404).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Session expired or invalid. Send initialize to start a new session.' },
+          });
+        }
       } catch (error) {
         console.error('[MCP] HTTP transport error:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Internal server error' });
+        }
       }
     });
-
-    // Connect server to transport
-    await server.connect(transport);
 
     // Start HTTP server
     app.listen(CONFIG.httpPort, () => {
@@ -6733,6 +6794,7 @@ async function main() {
     });
   } else {
     // stdio transport for Claude Code / local development
+    const server = createServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error('[MCP] Server connected via stdio');
@@ -6805,13 +6867,26 @@ export async function mountMcpEndpoint(
     }
   }
 
-  // Create MCP server with all tools
-  const server = createServer();
+  // Per-session transport+server management for mounted endpoint
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: Server }>();
+  const sessionLastSeen = new Map<string, number>();
+  const SESSION_TTL_MS = parseInt(process.env.MCP_SESSION_TTL_MS || '1800000', 10);
 
-  // Create HTTP transport
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-  });
+  // Cleanup stale sessions every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, lastSeen] of sessionLastSeen) {
+      if (now - lastSeen > SESSION_TTL_MS) {
+        const session = sessions.get(id);
+        if (session) {
+          session.transport.close?.();
+          sessions.delete(id);
+          sessionLastSeen.delete(id);
+          console.error(`[MCP] Cleaned up stale session ${id}`);
+        }
+      }
+    }
+  }, 300000);
 
   // Create auth middleware that supports both API key and OAuth
   const mcpAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
@@ -6845,20 +6920,60 @@ export async function mountMcpEndpoint(
     return res.status(401).json({ error: 'unauthorized' });
   };
 
-  // Mount MCP endpoint
+  // Mount MCP endpoint with per-session isolation
   app.all('/mcp', mcpAuthMiddleware, async (req: Request, res: Response) => {
     try {
-      await transport.handleRequest(req, res, req.body);
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+      // DELETE = explicit session teardown (MCP spec)
+      if (req.method === 'DELETE') {
+        if (sessionId && sessions.has(sessionId)) {
+          const session = sessions.get(sessionId)!;
+          await session.transport.close();
+          sessions.delete(sessionId);
+          sessionLastSeen.delete(sessionId);
+          console.error(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
+          res.status(200).json({ ok: true });
+        } else {
+          res.status(404).json({ error: 'Session not found' });
+        }
+        return;
+      }
+
+      if (sessionId && sessions.has(sessionId)) {
+        sessionLastSeen.set(sessionId, Date.now());
+        const { transport } = sessions.get(sessionId)!;
+        await transport.handleRequest(req, res, req.body);
+      } else if (!sessionId || req.method === 'POST') {
+        // New session
+        const newTransport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+        });
+        const newServer = createServer();
+        await newServer.connect(newTransport);
+        await newTransport.handleRequest(req, res, req.body);
+
+        const newSessionId = newTransport.sessionId;
+        if (newSessionId) {
+          sessions.set(newSessionId, { transport: newTransport, server: newServer });
+          sessionLastSeen.set(newSessionId, Date.now());
+          console.error(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
+        }
+      } else {
+        res.status(404).json({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Session expired or invalid. Send initialize to start a new session.' },
+        });
+      }
     } catch (error) {
       console.error('[MCP] HTTP transport error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal server error' });
+      }
     }
   });
 
-  // Connect server to transport
-  await server.connect(transport);
-
-  console.error('[MCP] MCP endpoint mounted at /mcp');
+  console.error('[MCP] MCP endpoint mounted at /mcp (per-session isolation)');
 }
 
 // Only run main() when executed directly (not when imported)

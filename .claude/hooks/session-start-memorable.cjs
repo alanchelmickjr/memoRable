@@ -1,111 +1,158 @@
 #!/usr/bin/env node
 /**
- * SessionStart Hook - MemoRable API Context Loader
+ * SessionStart Hook - MemoRable Context Loader
  *
- * Automatically authenticates and loads context at session start.
- * No more repeating yourself across sessions.
+ * On Claude Code start:
+ * 1. Authenticate with MemoRable
+ * 2. Detect/create project entity
+ * 3. Load relevant indexed docs
+ * 4. Load open loops (tasks)
+ * 5. Load The Three Questions (ENGINE)
  *
- * Uses curl for HTTP requests (respects proxy environment).
+ * NO TIME ESTIMATES. Just what needs doing.
  */
 
 const { execSync } = require('child_process');
 
 const BASE_URL = process.env.MEMORABLE_API_URL || 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
 const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
-const TIMEOUT_SECS = 10;
+const TIMEOUT = 8;
 
-function curlPost(url, data) {
-  const cmd = `curl -s --connect-timeout ${TIMEOUT_SECS} -X POST "${url}" -H "Content-Type: application/json" -d '${JSON.stringify(data).replace(/'/g, "'\\''")}'`;
-  const result = execSync(cmd, { encoding: 'utf8', timeout: (TIMEOUT_SECS + 5) * 1000 });
-  return JSON.parse(result);
-}
-
-function curlGet(url, apiKey) {
-  const cmd = `curl -s --connect-timeout ${TIMEOUT_SECS} "${url}" -H "X-API-Key: ${apiKey}"`;
-  const result = execSync(cmd, { encoding: 'utf8', timeout: (TIMEOUT_SECS + 5) * 1000 });
-  return JSON.parse(result);
+function curl(method, url, apiKey, data) {
+  try {
+    let cmd = `curl -s --connect-timeout ${TIMEOUT} -X ${method} "${url}"`;
+    cmd += ` -H "Content-Type: application/json"`;
+    if (apiKey) cmd += ` -H "X-API-Key: ${apiKey}"`;
+    if (data) cmd += ` -d '${JSON.stringify(data).replace(/'/g, "'\\''")}'`;
+    return JSON.parse(execSync(cmd, { encoding: 'utf8', timeout: (TIMEOUT + 3) * 1000 }));
+  } catch { return null; }
 }
 
 function authenticate() {
-  // Step 1: Knock to get challenge
-  const knockData = curlPost(`${BASE_URL}/auth/knock`, {
-    device: { type: 'terminal', name: 'Claude Code SessionStart' }
+  const knock = curl('POST', `${BASE_URL}/auth/knock`, null, {
+    device: { type: 'terminal', name: 'Claude Code' }
   });
+  if (!knock?.challenge) return null;
 
-  if (!knockData.challenge) {
-    throw new Error('No challenge received from knock');
-  }
-
-  // Step 2: Exchange passphrase for API key
-  const exchangeData = curlPost(`${BASE_URL}/auth/exchange`, {
-    challenge: knockData.challenge,
+  const exchange = curl('POST', `${BASE_URL}/auth/exchange`, null, {
+    challenge: knock.challenge,
     passphrase: PASSPHRASE,
-    device: { type: 'terminal', name: 'Claude Code SessionStart' }
+    device: { type: 'terminal', name: 'Claude Code' }
   });
-
-  if (!exchangeData.api_key) {
-    throw new Error('No API key received from exchange');
-  }
-
-  return exchangeData.api_key;
+  return exchange?.api_key || null;
 }
 
-function loadMemories(apiKey, entity, limit = 15) {
+function detectProject() {
   try {
-    const data = curlGet(`${BASE_URL}/memory?entity=${entity}&limit=${limit}`, apiKey);
-    return (data.memories || []).map(m => m.content);
-  } catch {
-    return [];
-  }
+    const remote = execSync('git remote get-url origin 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (remote.includes('memoRable') || remote.includes('memorable')) return 'memorable_project';
+    const match = remote.match(/\/([^\/]+?)(?:\.git)?$/);
+    if (match) return match[1].toLowerCase().replace(/[^a-z0-9]/g, '_');
+  } catch {}
+  try {
+    return execSync('basename "$PWD"', { encoding: 'utf8' }).trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  } catch {}
+  return 'personal';
+}
+
+function queryDocs(apiKey, query, limit = 5) {
+  const data = curl('GET', `${BASE_URL}/memory?entity=claude_docs&query=${encodeURIComponent(query)}&limit=${limit}`, apiKey);
+  return (data?.memories || []).map(m => m.content);
+}
+
+function getProjectContext(apiKey, project) {
+  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=10`, apiKey);
+  return (data?.memories || []).map(m => m.content);
+}
+
+function getOpenLoops(apiKey) {
+  const data = curl('GET', `${BASE_URL}/loops?status=open&limit=15`, apiKey);
+  return data?.loops || [];
+}
+
+function getThreeQuestions(apiKey) {
+  const data = curl('GET', `${BASE_URL}/memory?entity=doc_engine&query=three+questions&limit=1`, apiKey);
+  return data?.memories?.[0]?.content || null;
+}
+
+function ensureProjectExists(apiKey, project) {
+  // Check if project has any memories
+  const existing = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=1`, apiKey);
+  if (existing?.memories?.length > 0) return;
+
+  // Create initial project memory
+  curl('POST', `${BASE_URL}/memory`, apiKey, {
+    content: `Project ${project} initialized. Use this entity for project-specific context, decisions, and tasks.`,
+    entities: [project],
+    metadata: { type: 'project_init' }
+  });
 }
 
 async function main() {
-  // Read stdin (hook input)
   let input = '';
-  for await (const chunk of process.stdin) {
-    input += chunk;
-  }
+  for await (const chunk of process.stdin) input += chunk;
+
+  const parts = [];
 
   try {
-    // Authenticate
     const apiKey = authenticate();
+    if (!apiKey) throw new Error('Auth failed');
 
-    // Load context
-    const alanMemories = loadMemories(apiKey, 'alan', 15);
-    const projectMemories = loadMemories(apiKey, 'memorable_project', 10);
+    const project = detectProject();
+    ensureProjectExists(apiKey, project);
 
-    // Build context string
-    const contextParts = [];
-
-    if (alanMemories.length > 0) {
-      contextParts.push('## Alan - Critical Context (from MemoRable API)\n');
-      alanMemories.forEach(m => contextParts.push(`- ${m}`));
-      contextParts.push('');
+    // 1. The Three Questions (always load)
+    const questions = getThreeQuestions(apiKey);
+    if (questions) {
+      parts.push('## The Three Questions');
+      parts.push(questions);
+      parts.push('');
     }
 
-    if (projectMemories.length > 0) {
-      contextParts.push('## MemoRable Project Context\n');
-      projectMemories.forEach(m => contextParts.push(`- ${m}`));
-      contextParts.push('');
+    // 2. Open Loops (tasks/commitments)
+    const loops = getOpenLoops(apiKey);
+    if (loops.length > 0) {
+      parts.push('## Open Loops');
+      loops.forEach(l => {
+        const who = l.owner === 'alan' ? 'You owe' : 'Owed to you';
+        parts.push(`- [${who}] ${l.description}`);
+      });
+      parts.push('');
     }
 
-    if (contextParts.length > 0) {
-      contextParts.unshift('[MEMORABLE API - Session Context Loaded]\n');
-      contextParts.push('[End MemoRable Context]');
-
-      console.log(JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'SessionStart',
-          additionalContext: contextParts.join('\n')
-        }
-      }));
-    } else {
-      console.log(JSON.stringify({ continue: true }));
+    // 3. Project-specific context
+    const projectCtx = getProjectContext(apiKey, project);
+    if (projectCtx.length > 0) {
+      parts.push(`## Project: ${project}`);
+      projectCtx.slice(0, 5).forEach(c => parts.push(`- ${c.substring(0, 200)}...`));
+      parts.push('');
     }
 
-  } catch (err) {
-    // Fail gracefully - don't block session start
-    console.error(`[session-start-memorable] ${err.message}`);
+    // 4. Relevant docs (query based on project name)
+    const docs = queryDocs(apiKey, project.replace(/_/g, ' '), 3);
+    if (docs.length > 0) {
+      parts.push('## Relevant Docs');
+      docs.forEach(d => {
+        const lines = d.split('\n').slice(0, 4).join('\n');
+        parts.push(lines);
+        parts.push('---');
+      });
+      parts.push('');
+    }
+
+  } catch (e) {
+    // Silent fail
+  }
+
+  if (parts.length > 0) {
+    parts.unshift('# MemoRable Context\n');
+    console.log(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'SessionStart',
+        additionalContext: parts.join('\n')
+      }
+    }));
+  } else {
     console.log(JSON.stringify({ continue: true }));
   }
 }

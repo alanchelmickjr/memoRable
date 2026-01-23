@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/user/memoRable/.claude/hooks/session-start-memorable.cjs"
+            "command": ".claude/hooks/session-start-memorable.cjs"
           }
         ]
       }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/user/memoRable/.claude/hooks/love-filter.js"
+            "command": ".claude/hooks/love-filter.js"
           }
         ]
       }
