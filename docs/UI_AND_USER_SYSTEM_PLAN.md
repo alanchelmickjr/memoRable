@@ -409,22 +409,242 @@ The user system adds:
 **Memory portability**: Preferences have `exportPreferences`/`importPreferences`.
 Memory export can follow the same pattern.
 
-### Completed (2026-01-19)
+### Completed (2026-01-19 → 2026-01-23)
 
+#### Phase 1: Models & Auth ✅
 1. ✅ **Models created** - `src/models/user.ts`, `device.ts`, `preference.ts`, `index.ts`
 2. ✅ **Server startup integration** - MongoDB connection + user models init
 3. ✅ **Auth flow migrated** - MongoDB first, in-memory fallback
 4. ✅ **Registration endpoint** - `POST /auth/register`
-5. ✅ **All 532 tests passing**
 
-### Next Steps
+#### Phase 2: User-Facing Pages ✅
+5. ✅ **Home/Hero page** - `/` with CTA buttons, feature cards, status indicator
+6. ✅ **Login page** - `/login` with passphrase input, knock/exchange flow, error handling
+7. ✅ **Register page** - `/register` with username + passphrase, strength meter, terms checkbox
+8. ✅ **Privacy Policy** - `/privacy` with three-tier security model, temporal control
+9. ✅ **Terms of Service** - `/terms` with care applications clause, data ownership
+10. ✅ **Documentation page** - `/docs` with 35 MCP tools listed, auth flow, quick links
+11. ✅ **User Profile** - `/user/profile` (GET + POST) - display name, email
+12. ✅ **User Devices** - `/user/devices` (GET + POST /revoke) - list and revoke device keys
+13. ✅ **User Preferences** - `/user/preferences` (GET + POST) - privacy, salience weights
+14. ✅ **User Passphrase** - `/user/passphrase` (GET + POST) - change passphrase
 
-1. **Memory export/import** - Data portability for users
-2. **User-entity mapping** - Link userId to entity for relationship tracking
-3. **Basic admin dashboard** - Server-rendered HTML with user/device counts
+#### Phase 3: Admin Panel ✅
+15. ✅ **Admin Dashboard** - `/admin/dashboard` - user count, device count, memories, uptime, logs
+16. ✅ **Admin Users** - `/admin/users` - user management with tier badges, status
+17. ✅ **Admin User Actions** - `/admin/users/:userId/action` - suspend, tier change
+18. ✅ **Admin Devices** - `/admin/devices` - all device management, revoke
+19. ✅ **Admin Settings** - `/admin/settings` - system configuration
+
+#### Phase 4: Dashboards ✅
+20. ✅ **Intelligence Dashboard** - `/dashboard` - salience distribution, entities, fidelity
+21. ✅ **Interactive Dashboard** - `/dashboard/interactive` - expandable sections, tabs
+22. ✅ **Mission Control** - `/dashboard/mission-control` - radar, indicators, system vitals
+23. ✅ **JSON Export** - `/dashboard/json` - machine-readable metrics
+24. ⬜ **Calendar** - `/dashboard/calendar` - route exists, minimal content
+
+---
+
+## Phase 5: UX Gaps & Polish (CURRENT PHASE)
+
+### Critical UX Issues
+
+| # | Issue | Severity | Location | Problem |
+|---|-------|----------|----------|---------|
+| 1 | **No onboarding flow** | HIGH | `/register` → ? | After registration, user gets an API key but no guidance on what to do next |
+| 2 | **No memory browser** | HIGH | Missing | Users can't view/search/delete their own memories from a web UI |
+| 3 | **No error pages** | MEDIUM | Missing | 404, 500, auth-failed get raw JSON - no styled error pages |
+| 4 | **No account deletion** | MEDIUM | `/user/profile` | GDPR/privacy requires ability to delete account + all data |
+| 5 | **Calendar dashboard stub** | LOW | `/dashboard/calendar` | Route exists but content is minimal |
+| 6 | **No mobile nav** | MEDIUM | All pages | Hamburger menu missing, nav breaks on small screens |
+| 7 | **Cookie-only auth** | MEDIUM | Browser sessions | API key in cookie is httpOnly but not SameSite=Strict everywhere |
+| 8 | **No password reset** | HIGH | Missing | If user forgets passphrase, no recovery path |
+| 9 | **No email verification** | MEDIUM | `/auth/register` | Anyone can register with any username, no verification |
+| 10 | **No audit log UI** | LOW | `/admin/` | Admin has no visibility into auth events, memory access |
+
+### Missing User Journeys
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     USER JOURNEY GAPS                                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  1. NEW USER:                                                             │
+│     /register → API key shown → ??? (no next step)                       │
+│     SHOULD BE: /register → welcome → setup guide → first memory          │
+│                                                                           │
+│  2. RETURNING USER:                                                       │
+│     /login → /dashboard/mission-control                                  │
+│     SHOULD BE: /login → personalized home (their memories, patterns)     │
+│                                                                           │
+│  3. CLAUDE CODE USER:                                                     │
+│     Gets API key → configures .mcp.json → done                          │
+│     SHOULD BE: /setup/claude-code → copy-paste config → verify working   │
+│                                                                           │
+│  4. DEVICE SETUP:                                                         │
+│     POST /auth/knock + /auth/exchange (API only)                         │
+│     SHOULD BE: /devices/add → QR code / setup wizard                     │
+│                                                                           │
+│  5. MEMORY MANAGEMENT:                                                    │
+│     Only via API or MCP tools                                            │
+│     SHOULD BE: /memories → browse, search, delete, export                │
+│                                                                           │
+│  6. FORGOT PASSPHRASE:                                                    │
+│     No path exists                                                       │
+│     SHOULD BE: /forgot → email verification → reset                      │
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Phase 5 Task Breakdown
+
+### 5.1 Post-Registration Onboarding (P0)
+| Task | Description |
+|------|-------------|
+| Welcome page | `/welcome` - shows after registration, explains what MemoRable does |
+| Setup guide | `/setup` - choose integration path (Claude Code, API, devices) |
+| Claude Code setup | `/setup/claude-code` - copy-paste .mcp.json config with API key pre-filled |
+| First memory prompt | Encourage user to store first memory to verify it works |
+| Redirect chain | Register → Welcome → Setup → Dashboard |
+
+### 5.2 Memory Browser (P0)
+| Task | Description |
+|------|-------------|
+| Memory list | `/memories` - paginated list of user's memories with search |
+| Memory detail | `/memories/:id` - view single memory with metadata, salience score |
+| Memory delete | DELETE button with confirmation modal |
+| Memory export | `/memories/export` - download all memories as JSON |
+| Memory search | Full-text search across content, entities, tags |
+| Filters | By security tier, date range, entity, salience threshold |
+
+### 5.3 Error & Status Pages (P1)
+| Task | Description |
+|------|-------------|
+| 404 page | Styled "memory not found" page |
+| 500 page | "Something went wrong" with support link |
+| Auth required | Styled redirect to login (not raw JSON) |
+| Rate limited | 429 page with retry-after info |
+| Maintenance | 503 page for planned downtime |
+
+### 5.4 Account Management (P1)
+| Task | Description |
+|------|-------------|
+| Account deletion | `/user/delete` - confirm + delete all data (GDPR) |
+| Data export | `/user/export` - download all user data (GDPR) |
+| Passphrase recovery | `/forgot` - email-based reset (requires email on file) |
+| Email verification | Optional email verification at registration |
+| Session management | List active sessions, logout from all devices |
+
+### 5.5 Mobile Responsiveness (P1)
+| Task | Description |
+|------|-------------|
+| Hamburger nav | Collapsible navigation on mobile |
+| Touch-friendly | Larger tap targets, swipe gestures |
+| Viewport meta | Ensure proper mobile viewport on all pages |
+| Test breakpoints | 320px, 375px, 768px, 1024px |
+
+### 5.6 Security Hardening (P1)
+| Task | Description |
+|------|-------------|
+| SameSite cookies | `SameSite=Strict` on all auth cookies |
+| CSP headers | Content-Security-Policy to prevent XSS |
+| Rate limiting UI | Show remaining attempts on login page |
+| CSRF tokens | Add to all POST forms |
+| Session timeout | Auto-logout after inactivity |
+
+### 5.7 Admin Enhancements (P2)
+| Task | Description |
+|------|-------------|
+| Audit log viewer | `/admin/audit` - auth events, memory access, admin actions |
+| User search | Search by userId, email, device type |
+| Bulk actions | Suspend/activate multiple users |
+| System alerts | Show warnings (disk full, high error rate, etc.) |
+| Export users | CSV/JSON export of user list |
+
+### 5.8 Integration Setup Wizards (P2)
+| Task | Description |
+|------|-------------|
+| Claude Code wizard | `/setup/claude-code` - step-by-step with verification |
+| API key management | `/user/api-keys` - create, view, revoke API keys |
+| Device QR pairing | `/devices/pair` - generate QR for mobile/AR device setup |
+| Webhook config | `/user/webhooks` - configure notification webhooks |
+
+---
+
+## Implementation Priority Order
+
+```
+P0 (Before Users):
+  5.1 Onboarding flow (register → welcome → setup → dashboard)
+  5.2 Memory browser (users MUST be able to see their own data)
+
+P1 (Before Scale):
+  5.3 Error pages (professional experience)
+  5.4 Account management (GDPR compliance)
+  5.5 Mobile responsive (phones are primary device)
+  5.6 Security hardening (cookies, CSRF, CSP)
+
+P2 (Growth):
+  5.7 Admin enhancements (audit, search, bulk)
+  5.8 Integration wizards (Claude Code, device pairing)
+```
+
+---
+
+## Technology Decisions (Unchanged)
+
+- **Server-rendered HTML** (consistent with existing dashboards)
+- **No frontend framework** (Express templates, inline CSS/JS)
+- **HTMX if needed** for dynamic updates without page reload
+- **CDN fonts** (Orbitron, Share Tech Mono, Inter)
+- **Dark theme only** (cyberpunk aesthetic, accessibility-friendly contrast)
+
+---
+
+## Current Route Inventory (48 endpoints)
+
+### Public (No Auth)
+| Route | Method | Page |
+|-------|--------|------|
+| `/` | GET | Hero/landing page |
+| `/login` | GET | Login form |
+| `/register` | GET | Registration form |
+| `/privacy` | GET | Privacy policy |
+| `/terms` | GET | Terms of service |
+| `/docs` | GET | Documentation |
+| `/health` | GET | Health check (JSON) |
+| `/metrics` | GET | Prometheus metrics |
+| `/auth/knock` | POST | Get challenge |
+| `/auth/exchange` | POST | Trade passphrase for key |
+| `/auth/register` | POST | Create account |
+
+### User Auth Required
+| Route | Method | Page |
+|-------|--------|------|
+| `/user/profile` | GET/POST | Profile view/edit |
+| `/user/devices` | GET | Device list |
+| `/user/devices/revoke` | POST | Revoke device |
+| `/user/preferences` | GET/POST | Preferences |
+| `/user/passphrase` | GET/POST | Change passphrase |
+| `/dashboard/*` | GET | All dashboards |
+| `/memory` | GET/POST | Memory CRUD |
+| `/memory/:id` | GET/DELETE | Single memory |
+
+### Admin Auth Required
+| Route | Method | Page |
+|-------|--------|------|
+| `/admin/dashboard` | GET | Admin overview |
+| `/admin/users` | GET | User management |
+| `/admin/users/:id/action` | POST | User actions |
+| `/admin/devices` | GET | All devices |
+| `/admin/devices/:id/revoke` | POST | Revoke any device |
+| `/admin/settings` | GET | System settings |
 
 ---
 
 *Document created: 2026-01-19*
-*Status: Phase 1 - COMPLETE*
-*Models: ✅ | Integration: ✅ | Auth: ✅ | Tests: ✅*
+*Last updated: 2026-01-23*
+*Status: Phases 1-4 COMPLETE | Phase 5 IN PLANNING*
+*Models: ✅ | Auth: ✅ | User Pages: ✅ | Admin: ✅ | Dashboards: ✅ | Onboarding: ⬜ | Memory Browser: ⬜*
