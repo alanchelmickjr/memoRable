@@ -3645,6 +3645,15 @@ function createServer(): Server {
         case 'close_loop': {
           const { loopId, note } = args as { loopId: string; note?: string };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.closeLoop(loopId, note);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode close_loop failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           await closeLoop(loopId, note);
 
           return {
@@ -3709,6 +3718,15 @@ function createServer(): Server {
           // Generate device ID if not provided (for consistent tracking)
           const effectiveDeviceId = deviceId || `mcp_${Date.now().toString(36)}`;
           const effectiveDeviceType = deviceType || 'mcp';
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.setContext({ location, people, activity, deviceId: effectiveDeviceId, deviceType: effectiveDeviceType });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode set_context failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           const memories = await setContext(
             CONFIG.defaultUserId,
@@ -3850,6 +3868,15 @@ function createServer(): Server {
             deviceId?: string;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.clearContext(deviceId, dimensions);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode clear_context failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const frame = await clearContextFrame(CONFIG.defaultUserId, dimensions, deviceId);
 
           return {
@@ -3871,6 +3898,15 @@ function createServer(): Server {
         }
 
         case 'list_devices': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.listDevices();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', devices: result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode list_devices failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const contexts = await getAllDeviceContexts(CONFIG.defaultUserId);
 
           if (contexts.length === 0) {
@@ -3915,6 +3951,15 @@ function createServer(): Server {
             reason?: string;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.forgetMemory(memoryId, mode, reason);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode forget failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const result = await forgetMemory(CONFIG.defaultUserId, memoryId, {
             mode,
             reason,
@@ -3940,6 +3985,15 @@ function createServer(): Server {
             alsoForgetEvents?: boolean;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.forgetPerson(person, { mode, alsoForgetEvents, alsoForgetLoops });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode forget_person failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const result = await forgetPerson(CONFIG.defaultUserId, person, {
             mode,
             alsoForgetLoops,
@@ -3961,6 +4015,15 @@ function createServer(): Server {
 
         case 'restore': {
           const { memoryId } = args as { memoryId: string };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.restoreMemory(memoryId);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode restore failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           const result = await restoreMemory(CONFIG.defaultUserId, memoryId);
 
@@ -3994,6 +4057,15 @@ function createServer(): Server {
             removeTags?: string[];
             setProject?: string;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.reassociateMemory(memoryId, { addPeople, removePeople, addTags, removeTags, addTopics, removeTopics, setProject });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode reassociate failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           const result = await reassociateMemory(CONFIG.defaultUserId, memoryId, {
             addPeople,
@@ -4035,6 +4107,15 @@ function createServer(): Server {
             includeTimeline?: boolean;
             password?: string;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.exportMemories({ password, fromDate, toDate, people, topics, project, includeLoops, includeTimeline });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode export_memories failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           const memories = await exportMemories(CONFIG.defaultUserId, {
             people,
@@ -4121,6 +4202,15 @@ function createServer(): Server {
             source?: 'mem0' | 'file' | 'api';
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.importMemories({ memories: memoriesInput, encryptedData, password, source, skipDuplicates, targetProject, idPrefix });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode import_memories failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           let memoriesToImport = memoriesInput;
 
           // Handle encrypted import
@@ -4191,6 +4281,15 @@ function createServer(): Server {
             lookAheadMinutes?: number;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.anticipate(calendar, lookAheadMinutes);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode anticipate failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const anticipated = await getAnticipatedContext(
             CONFIG.defaultUserId,
             calendar,
@@ -4229,6 +4328,15 @@ function createServer(): Server {
         case 'day_outlook': {
           const { calendar = [] } = args as { calendar?: CalendarEvent[] };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.dayOutlook(calendar);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode day_outlook failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const outlook = await generateDayAnticipation(CONFIG.defaultUserId, calendar);
 
           return {
@@ -4253,6 +4361,15 @@ function createServer(): Server {
         }
 
         case 'pattern_stats': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.patternStats();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode pattern_stats failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const stats = await getPatternStats(CONFIG.defaultUserId);
 
           return {
@@ -4276,6 +4393,15 @@ function createServer(): Server {
             memoryId?: string;
             action: 'used' | 'ignored' | 'dismissed';
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.memoryFeedback(patternId, action, memoryId);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode memory_feedback failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           const now = new Date();
           const feedback: FeedbackSignal = {
@@ -4317,6 +4443,15 @@ function createServer(): Server {
             message: string;
             candidateUsers?: string[];
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.identifyUser(message, candidateUsers);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode identify_user failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           // Analyze behavioral signals from message
           const signals = analyzeBehavioralSignals(message);
@@ -4370,6 +4505,15 @@ function createServer(): Server {
             timeRange?: '1h' | '24h' | '7d' | '30d' | 'all';
             includeGraph?: boolean;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.behavioralMetrics(timeRange, userId);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode behavioral_metrics failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           // Calculate time filter
           const timeMs = {
@@ -4529,6 +4673,15 @@ function createServer(): Server {
             actualUserId?: string;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.behavioralFeedback(predictionId, correct, actualUserId);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode behavioral_feedback failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const predictions = db!.collection('behavioral_predictions');
           const fingerprints = db!.collection('behavioral_fingerprints');
 
@@ -4604,6 +4757,15 @@ function createServer(): Server {
             max_memories?: number;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getAnticipatedContext(context_frame, max_memories);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_anticipated_context failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           // Import predictive anticipation service
           const { getAnticipatedForUser } = await import('../salience_service/predictive_anticipation.js');
 
@@ -4643,6 +4805,15 @@ function createServer(): Server {
               pattern_type?: string;
             };
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.searchMemories(query, filters, limit);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode search_memories failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           // Use existing retrieval with predictive memory collection
           const predictiveMemories = collections.predictiveMemories();
@@ -4695,6 +4866,15 @@ function createServer(): Server {
             resolution_note?: string;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.resolveOpenLoop(memory_id, resolution_note);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode resolve_open_loop failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const predictiveMemories = collections.predictiveMemories();
 
           // Update the open loop in the memory
@@ -4739,6 +4919,15 @@ function createServer(): Server {
         }
 
         case 'get_pattern_stats': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getPatternStats();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_pattern_stats failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const { getPatternDetector } = await import('../salience_service/pattern_detector.js');
           const detector = getPatternDetector();
 
@@ -4787,6 +4976,15 @@ function createServer(): Server {
         }
 
         case 'get_tier_stats': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getTierStats();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_tier_stats failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const { getTierManager } = await import('../salience_service/tier_manager.js');
           const tierManager = getTierManager();
 
@@ -4823,6 +5021,15 @@ function createServer(): Server {
             text?: string;
             memory_id?: string;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.analyzeEmotion(text, memory_id);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode analyze_emotion failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!text && !memory_id) {
             throw new McpError(ErrorCode.InvalidParams, 'Either text or memory_id is required');
@@ -4907,6 +5114,15 @@ function createServer(): Server {
         case 'get_emotional_context': {
           const { session_id } = args as { session_id?: string };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getEmotionalContext(session_id);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_emotional_context failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const redis = getRedisClient();
           const contextId = session_id || CONFIG.defaultUserId;
 
@@ -4960,6 +5176,15 @@ function createServer(): Server {
             use_evi?: boolean;
             buffer_size?: number;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.startEmotionalSession(session_id, { entityId: entity_id, useVoice: use_voice, useVideo: use_video, useEvi: use_evi, bufferSize: buffer_size });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode start_emotional_session failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!session_id) {
             throw new McpError(ErrorCode.InvalidParams, 'session_id is required');
@@ -5032,6 +5257,15 @@ function createServer(): Server {
         case 'stop_emotional_session': {
           const { session_id } = args as { session_id: string };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.stopEmotionalSession(session_id);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode stop_emotional_session failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           if (!session_id) {
             throw new McpError(ErrorCode.InvalidParams, 'session_id is required');
           }
@@ -5074,6 +5308,15 @@ function createServer(): Server {
         }
 
         case 'list_emotional_sessions': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.listEmotionalSessions();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode list_emotional_sessions failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const db = getDb();
 
           // Get active sessions from MongoDB
@@ -5114,6 +5357,15 @@ function createServer(): Server {
             action: 'flag' | 'suppress' | 'block' | 'notify';
             enabled?: boolean;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.setEmotionFilter(emotions, action, { threshold, enabled });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode set_emotion_filter failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!emotions || !Array.isArray(emotions) || emotions.length === 0) {
             throw new McpError(ErrorCode.InvalidParams, 'emotions array is required');
@@ -5156,6 +5408,15 @@ function createServer(): Server {
         }
 
         case 'get_emotion_filters': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getEmotionFilters();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_emotion_filters failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const redis = getRedisClient();
           const db = getDb();
 
@@ -5187,6 +5448,15 @@ function createServer(): Server {
             limit?: number;
             exclude_suppressed?: boolean;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getMemoriesByEmotion(emotions, { minIntensity: min_intensity, limit, excludeSuppressed: exclude_suppressed });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_memories_by_emotion failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!emotions || !Array.isArray(emotions) || emotions.length === 0) {
             throw new McpError(ErrorCode.InvalidParams, 'emotions array is required (e.g., ["love", "angry", "worried"])');
@@ -5258,6 +5528,15 @@ function createServer(): Server {
             reason?: string;
             clear_all?: boolean;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.correctEmotion(memory_id, { correctedEmotions: corrected_emotions, clearAll: clear_all, reason });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode correct_emotion failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!memory_id) {
             throw new McpError(ErrorCode.InvalidParams, 'memory_id is required');
@@ -5342,6 +5621,15 @@ function createServer(): Server {
             pattern?: string;
             visibility?: 'private' | 'therapist' | 'trusted' | 'open';
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.clarifyIntent(memory_id, what_i_meant, { whatISaid: what_i_said, whyTheGap: why_the_gap, pattern, visibility });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode clarify_intent failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!memory_id) {
             throw new McpError(ErrorCode.InvalidParams, 'memory_id is required');
@@ -5444,6 +5732,15 @@ function createServer(): Server {
             force_refresh?: boolean;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getRelationship(entity_a, entity_b, { context: relationshipContext, forceRefresh: force_refresh });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_relationship failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           if (!entity_a || !entity_b) {
             throw new McpError(ErrorCode.InvalidParams, 'Both entity_a and entity_b are required');
           }
@@ -5518,6 +5815,15 @@ function createServer(): Server {
             include_vectors?: boolean;
             days?: number;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getEntityPressure(entity_id, { includeVectors: include_vectors, days });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_entity_pressure failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!entity_id) {
             throw new McpError(ErrorCode.InvalidParams, 'entity_id is required');
@@ -5597,6 +5903,15 @@ function createServer(): Server {
             };
             max_results?: number;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getPredictions(predictionContext, max_results);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_predictions failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!predictionContext) {
             throw new McpError(ErrorCode.InvalidParams, 'context is required');
@@ -5709,6 +6024,15 @@ function createServer(): Server {
             interaction: 'dismissed' | 'viewed' | 'acted_on' | 'saved' | 'blocked';
             context?: string;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.recordPredictionFeedback(hook_id, interaction, feedbackContext);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode record_prediction_feedback failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!hook_id || !interaction) {
             throw new McpError(ErrorCode.InvalidParams, 'hook_id and interaction are required');
@@ -5867,6 +6191,15 @@ function createServer(): Server {
             alert_threshold?: 'monitor' | 'concern' | 'urgent';
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.setCareCircle(entity_id, care_circle, alert_threshold);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode set_care_circle failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           if (!entity_id || !care_circle || !Array.isArray(care_circle)) {
             throw new McpError(ErrorCode.InvalidParams, 'entity_id and care_circle array are required');
           }
@@ -5943,6 +6276,15 @@ function createServer(): Server {
             };
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.ingestEvent({ type, entity_id, device_id, payload, metadata });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode ingest_event failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           if (!type || !entity_id) {
             throw new McpError(ErrorCode.InvalidParams, 'type and entity_id are required');
           }
@@ -6018,6 +6360,15 @@ function createServer(): Server {
             message?: string;
           };
 
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.scheduleCheck(entity_id, check_type, delay_minutes, message);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode schedule_check failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           if (!entity_id || !check_type || !delay_minutes) {
             throw new McpError(ErrorCode.InvalidParams, 'entity_id, check_type, and delay_minutes are required');
           }
@@ -6053,6 +6404,15 @@ function createServer(): Server {
         }
 
         case 'get_daemon_status': {
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.getDaemonStatus();
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_daemon_status failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
           const status = eventDaemon.getStatus();
 
           // Get recent actions
@@ -6102,6 +6462,15 @@ function createServer(): Server {
             vulnerability: 'normal' | 'moderate' | 'high';
             notes?: string;
           };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.setEntityVulnerability(entity_id, vulnerability, notes);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode set_entity_vulnerability failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
 
           if (!entity_id || !vulnerability) {
             throw new McpError(ErrorCode.InvalidParams, 'entity_id and vulnerability are required');

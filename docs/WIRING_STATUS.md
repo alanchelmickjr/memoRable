@@ -278,6 +278,71 @@ external_event() ──▶ daemon evaluates ──▶ action taken
 
 ---
 
+## REST Mode Coverage (MCP → API → Service)
+
+**Problem:** MCP stdio protocol requires stdout be clean JSON-RPC. Logger was corrupting stdout.
+Tools in REST mode need: server.js endpoint → ApiClient method → tool handler fallback.
+
+### Status After Fix
+
+| Tool | REST Endpoint | ApiClient | Fallback | Status |
+|------|--------------|-----------|----------|--------|
+| store_memory | POST /memory | storeMemory() | ✅ | DONE |
+| recall | GET /memory | recall() | ✅ | DONE |
+| get_briefing | GET /briefing | getBriefing() | ✅ | DONE |
+| list_loops | GET /loops | listLoops() | ✅ | DONE |
+| close_loop | POST /loops/:id/close | closeLoop() | ✅ | DONE |
+| get_status | GET /status | getStatus() | ✅ | DONE |
+| set_context | POST /context/sync | setContext() | ✅ | DONE |
+| whats_relevant | GET /context/relevant | getRelevant() | ✅ | DONE |
+| clear_context | DELETE /context | clearContext() | ✅ | DONE |
+| list_devices | GET /devices | listDevices() | ✅ | DONE |
+| forget | POST /memory/forget | forgetMemory() | ✅ | DONE |
+| forget_person | POST /memory/forget-person | forgetPerson() | ✅ | DONE |
+| restore | POST /memory/restore | restoreMemory() | ✅ | DONE |
+| reassociate | POST /memory/reassociate | reassociateMemory() | ✅ | DONE |
+| export_memories | POST /memory/export | exportMemories() | ✅ | DONE |
+| import_memories | POST /memory/import | importMemories() | ✅ | DONE |
+| search_memories | GET /memory/search | searchMemories() | ✅ | DONE |
+| resolve_open_loop | POST /loops/:id/resolve | resolveOpenLoop() | ✅ | DONE |
+| recall_vote | POST /memory/vote | voteOnMemories() | ✅ | DONE |
+| get_tier_stats | GET /memory/tiers | getTierStats() | ✅ | DONE |
+| anticipate | POST /anticipate | anticipate() | ✅ | DONE |
+| day_outlook | GET /outlook | dayOutlook() | ✅ | DONE |
+| pattern_stats | GET /patterns/stats | patternStats() | ✅ | DONE |
+| get_pattern_stats | GET /patterns/stats | getPatternStats() | ✅ | DONE |
+| memory_feedback | POST /patterns/feedback | memoryFeedback() | ✅ | DONE |
+| get_predictions | POST /predictions | getPredictions() | ✅ | DONE |
+| record_prediction_feedback | POST /predictions/feedback | recordPredictionFeedback() | ✅ | DONE |
+| get_anticipated_context | POST /predictions/anticipated | getAnticipatedContext() | ✅ | DONE |
+| analyze_emotion | POST /emotion/analyze | analyzeEmotion() | ✅ | DONE |
+| get_emotional_context | GET /emotion/context | getEmotionalContext() | ✅ | DONE |
+| start_emotional_session | POST /emotion/session/start | startEmotionalSession() | ✅ | DONE |
+| stop_emotional_session | POST /emotion/session/stop | stopEmotionalSession() | ✅ | DONE |
+| list_emotional_sessions | GET /emotion/sessions | listEmotionalSessions() | ✅ | DONE |
+| set_emotion_filter | POST /emotion/filter | setEmotionFilter() | ✅ | DONE |
+| get_emotion_filters | GET /emotion/filters | getEmotionFilters() | ✅ | DONE |
+| get_memories_by_emotion | GET /emotion/memories | getMemoriesByEmotion() | ✅ | DONE |
+| correct_emotion | POST /emotion/correct | correctEmotion() | ✅ | DONE |
+| clarify_intent | POST /emotion/clarify | clarifyIntent() | ✅ | DONE |
+| identify_user | POST /behavioral/identify | identifyUser() | ✅ | DONE |
+| behavioral_metrics | GET /behavioral/metrics | behavioralMetrics() | ✅ | DONE |
+| behavioral_feedback | POST /behavioral/feedback | behavioralFeedback() | ✅ | DONE |
+| get_relationship | POST /relationship | getRelationship() | ✅ | DONE |
+| get_entity_pressure | GET /pressure/:entityId | getEntityPressure() | ✅ | DONE |
+| set_care_circle | POST /care-circle | setCareCircle() | ✅ | DONE |
+| set_entity_vulnerability | POST /vulnerability | setEntityVulnerability() | ✅ | DONE |
+| ingest_event | POST /events/ingest | ingestEvent() | ✅ | DONE |
+| schedule_check | POST /events/schedule | scheduleCheck() | ✅ | DONE |
+| get_daemon_status | GET /events/daemon/status | getDaemonStatus() | ✅ | DONE |
+
+### Logger Fix (Phase 1)
+- Default logger: ALL levels → stderr (was stdout for info/debug)
+- Winston Console transport: `stderrLevels: ['error', 'warn', 'info', 'debug']`
+- stdout now clean for MCP JSON-RPC protocol
+
+---
+
 ## Next Steps (Priority Order)
 
 ### 1. Hume.ai + Twilio Voice

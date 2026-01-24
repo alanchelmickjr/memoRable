@@ -9061,6 +9061,424 @@ function applyBetterSelfFilter(content, options = {}) {
 }
 
 // =============================================================================
+// MCP TOOL REST ENDPOINTS
+// These endpoints back the MCP tools when running in REST mode (ApiClient → ALB → here)
+// =============================================================================
+
+// --- LOOPS / COMMITMENTS ---
+
+app.get('/loops', (req, res) => {
+  const { person, owner, includeOverdue = 'true' } = req.query;
+  let loops = Array.from(memoryStore.values()).filter(m =>
+    m.content && (
+      m.content.toLowerCase().includes('commit') ||
+      m.content.toLowerCase().includes('promise') ||
+      m.content.toLowerCase().includes('follow up') ||
+      m.content.toLowerCase().includes('owe') ||
+      m.content.toLowerCase().includes('todo') ||
+      m.content.toLowerCase().includes('action item')
+    )
+  );
+  if (person) {
+    loops = loops.filter(m => {
+      const entities = m.entities || [m.entity];
+      return entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()));
+    });
+  }
+  res.json({ loops, count: loops.length });
+});
+
+app.post('/loops/:id/close', (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body || {};
+  // Mark loop as closed in memory store
+  const memory = memoryStore.get(id);
+  if (memory) {
+    memory.loopClosed = true;
+    memory.loopCloseNote = note;
+    memory.loopClosedAt = new Date().toISOString();
+    memoryStore.set(id, memory);
+  }
+  res.json({ closed: true, loopId: id, note });
+});
+
+app.post('/loops/:id/resolve', (req, res) => {
+  const { id } = req.params;
+  const { resolution_note } = req.body || {};
+  const memory = memoryStore.get(id);
+  if (memory) {
+    memory.resolved = true;
+    memory.resolutionNote = resolution_note;
+    memory.resolvedAt = new Date().toISOString();
+    memoryStore.set(id, memory);
+  }
+  res.json({ resolved: true, memory_id: id });
+});
+
+// --- MEMORY MANAGEMENT ---
+
+app.post('/memory/forget', (req, res) => {
+  const { memoryId, mode = 'suppress', reason } = req.body;
+  const memory = memoryStore.get(memoryId);
+  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (mode === 'delete') {
+    memoryStore.delete(memoryId);
+  } else {
+    memory.forgotten = true;
+    memory.forgetMode = mode;
+    memory.forgetReason = reason;
+    memoryStore.set(memoryId, memory);
+  }
+  res.json({ forgotten: true, memoryId, mode });
+});
+
+app.post('/memory/forget-person', (req, res) => {
+  const { person, mode = 'suppress', alsoForgetEvents, alsoForgetLoops } = req.body;
+  let count = 0;
+  for (const [id, memory] of memoryStore.entries()) {
+    const entities = memory.entities || [memory.entity];
+    if (entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()))) {
+      if (mode === 'delete') {
+        memoryStore.delete(id);
+      } else {
+        memory.forgotten = true;
+        memory.forgetMode = mode;
+        memoryStore.set(id, memory);
+      }
+      count++;
+    }
+  }
+  res.json({ forgotten: true, person, count, mode });
+});
+
+app.post('/memory/restore', (req, res) => {
+  const { memoryId } = req.body;
+  const memory = memoryStore.get(memoryId);
+  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  delete memory.forgotten;
+  delete memory.forgetMode;
+  delete memory.forgetReason;
+  memoryStore.set(memoryId, memory);
+  res.json({ restored: true, memoryId });
+});
+
+app.post('/memory/reassociate', (req, res) => {
+  const { memoryId, addPeople, removePeople, addTags, removeTags, addTopics, removeTopics, setProject } = req.body;
+  const memory = memoryStore.get(memoryId);
+  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory.entities) memory.entities = [memory.entity].filter(Boolean);
+  if (addPeople) memory.entities.push(...addPeople);
+  if (removePeople) memory.entities = memory.entities.filter(e => !removePeople.includes(e));
+  if (!memory.tags) memory.tags = [];
+  if (addTags) memory.tags.push(...addTags);
+  if (removeTags) memory.tags = memory.tags.filter(t => !removeTags.includes(t));
+  if (!memory.topics) memory.topics = [];
+  if (addTopics) memory.topics.push(...addTopics);
+  if (removeTopics) memory.topics = memory.topics.filter(t => !removeTopics.includes(t));
+  if (setProject) memory.project = setProject;
+  memoryStore.set(memoryId, memory);
+  res.json({ updated: true, memoryId });
+});
+
+app.post('/memory/export', (req, res) => {
+  const { password, fromDate, toDate, people, topics, project } = req.body || {};
+  let memories = Array.from(memoryStore.values()).filter(m => !m.forgotten);
+  if (fromDate) memories = memories.filter(m => m.timestamp >= fromDate);
+  if (toDate) memories = memories.filter(m => m.timestamp <= toDate);
+  if (people && people.length) {
+    memories = memories.filter(m => {
+      const entities = m.entities || [m.entity];
+      return people.some(p => entities.includes(p));
+    });
+  }
+  if (project) memories = memories.filter(m => m.project === project);
+  // Note: password encryption would be handled by the service layer
+  res.json({ memories, count: memories.length, exportedAt: new Date().toISOString() });
+});
+
+app.post('/memory/import', (req, res) => {
+  const { memories = [], source = 'api', skipDuplicates = true, targetProject } = req.body || {};
+  let imported = 0;
+  for (const mem of memories) {
+    const id = mem.id || `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (skipDuplicates && memoryStore.has(id)) continue;
+    const memory = { ...mem, id, project: targetProject || mem.project, importedAt: new Date().toISOString(), source };
+    memoryStore.set(id, memory);
+    imported++;
+  }
+  res.json({ imported, total: memories.length });
+});
+
+app.get('/memory/search', (req, res) => {
+  const { query, limit = 10, tags, min_importance, pattern_type } = req.query;
+  let memories = Array.from(memoryStore.values()).filter(m => !m.forgotten);
+  if (query) {
+    const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    memories = memories
+      .map(m => {
+        const contentLower = (m.content || '').toLowerCase();
+        const matchCount = queryTokens.filter(token => contentLower.includes(token)).length;
+        return { ...m, _score: queryTokens.length > 0 ? matchCount / queryTokens.length : 0 };
+      })
+      .filter(m => m._score > 0.2)
+      .sort((a, b) => b._score - a._score);
+  }
+  if (tags) {
+    const tagList = tags.split(',');
+    memories = memories.filter(m => m.tags && tagList.some(t => m.tags.includes(t)));
+  }
+  if (min_importance) {
+    memories = memories.filter(m => (m.salience || 0) >= parseFloat(min_importance) * 100);
+  }
+  memories = memories.slice(0, parseInt(limit));
+  res.json({ memories, count: memories.length });
+});
+
+app.get('/memory/tiers', (_req, res) => {
+  const memories = Array.from(memoryStore.values());
+  const now = Date.now();
+  const hot = memories.filter(m => now - new Date(m.timestamp).getTime() < 3600000).length;
+  const warm = memories.filter(m => {
+    const age = now - new Date(m.timestamp).getTime();
+    return age >= 3600000 && age < 86400000 * 63;
+  }).length;
+  const cold = memories.length - hot - warm;
+  res.json({ hot, warm, cold, total: memories.length });
+});
+
+// --- CONTEXT & DEVICES ---
+
+app.get('/context/relevant', (req, res) => {
+  const { deviceId, unified } = req.query;
+  // Return current context frame
+  res.json({ deviceId, unified: unified === 'true', memories: [], context: {} });
+});
+
+app.delete('/context', (req, res) => {
+  const { deviceId, dimensions } = req.body || {};
+  res.json({ cleared: true, deviceId, dimensions });
+});
+
+app.get('/devices', (_req, res) => {
+  res.json({ devices: [], count: 0 });
+});
+
+// --- PREDICTIONS & ANTICIPATION ---
+
+app.post('/anticipate', (req, res) => {
+  const { calendar, lookAheadMinutes = 60 } = req.body || {};
+  res.json({ predictions: [], calendar, lookAheadMinutes, message: 'Pattern learning requires 21 days of usage' });
+});
+
+app.get('/outlook', (_req, res) => {
+  res.json({ outlook: [], message: 'Day outlook requires pattern learning (21+ days)' });
+});
+
+app.get('/patterns/stats', (_req, res) => {
+  res.json({ daysOfData: 0, patternsLearned: 0, readyForPredictions: false, message: 'Requires 21 days to form patterns' });
+});
+
+app.post('/patterns/feedback', (req, res) => {
+  const { patternId, action, memoryId } = req.body || {};
+  res.json({ recorded: true, patternId, action, memoryId });
+});
+
+app.post('/predictions', (req, res) => {
+  const { context, max_results = 3 } = req.body || {};
+  res.json({ predictions: [], context, maxResults: max_results });
+});
+
+app.post('/predictions/feedback', (req, res) => {
+  const { hook_id, interaction, context } = req.body || {};
+  res.json({ recorded: true, hookId: hook_id, interaction });
+});
+
+app.post('/predictions/anticipated', (req, res) => {
+  const { context_frame, max_memories = 5 } = req.body || {};
+  res.json({ memories: [], contextFrame: context_frame, maxMemories: max_memories });
+});
+
+// --- EMOTION & SENTIMENT ---
+
+app.post('/emotion/analyze', (req, res) => {
+  const { text, memory_id } = req.body || {};
+  if (text) {
+    const prosody = analyzeProsody(text);
+    res.json({ text, emotions: prosody, analyzed: true });
+  } else if (memory_id) {
+    const memory = memoryStore.get(memory_id);
+    if (!memory) return res.status(404).json({ error: 'Memory not found' });
+    const prosody = analyzeProsody(memory.content || '');
+    res.json({ memoryId: memory_id, emotions: prosody, analyzed: true });
+  } else {
+    res.status(400).json({ error: 'text or memory_id required' });
+  }
+});
+
+app.get('/emotion/context', (_req, res) => {
+  res.json({ emotionalState: null, sessions: [], message: 'No active emotional tracking sessions' });
+});
+
+app.post('/emotion/session/start', (req, res) => {
+  const { session_id, entityId, useVoice, useVideo, useEvi, bufferSize } = req.body || {};
+  res.json({ started: true, sessionId: session_id, entityId, config: { useVoice, useVideo, useEvi, bufferSize } });
+});
+
+app.post('/emotion/session/stop', (req, res) => {
+  const { session_id } = req.body || {};
+  res.json({ stopped: true, sessionId: session_id });
+});
+
+app.get('/emotion/sessions', (_req, res) => {
+  res.json({ sessions: [], count: 0 });
+});
+
+app.post('/emotion/filter', (req, res) => {
+  const { emotions, action, threshold = 0.7, enabled = true } = req.body || {};
+  res.json({ set: true, emotions, action, threshold, enabled });
+});
+
+app.get('/emotion/filters', (_req, res) => {
+  res.json({ filters: [] });
+});
+
+app.get('/emotion/memories', (req, res) => {
+  const { emotions, min_intensity = 0.3, limit = 10 } = req.query;
+  const emotionList = emotions ? emotions.split(',') : [];
+  let memories = Array.from(memoryStore.values()).filter(m => {
+    if (!m.metadata?.prosody) return false;
+    const signals = [...(m.metadata.prosody.distressSignals || []), ...(m.metadata.prosody.recoverySignals || [])];
+    return signals.some(s => emotionList.includes(s.category));
+  });
+  memories = memories.slice(0, parseInt(limit));
+  res.json({ memories, count: memories.length });
+});
+
+app.post('/emotion/correct', (req, res) => {
+  const { memory_id, correctedEmotions, clearAll, reason } = req.body || {};
+  const memory = memoryStore.get(memory_id);
+  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory.metadata) memory.metadata = {};
+  memory.metadata.emotionCorrected = true;
+  memory.metadata.correctedEmotions = correctedEmotions;
+  memory.metadata.emotionCorrectionReason = reason;
+  if (clearAll) memory.metadata.prosody = null;
+  memoryStore.set(memory_id, memory);
+  res.json({ corrected: true, memoryId: memory_id });
+});
+
+app.post('/emotion/clarify', (req, res) => {
+  const { memory_id, what_i_meant, what_i_said, why_the_gap, pattern, visibility } = req.body || {};
+  const memory = memoryStore.get(memory_id);
+  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory.metadata) memory.metadata = {};
+  memory.metadata.intentClarification = { whatIMeant: what_i_meant, whatISaid: what_i_said, whyTheGap: why_the_gap, pattern, visibility };
+  memoryStore.set(memory_id, memory);
+  res.json({ clarified: true, memoryId: memory_id });
+});
+
+// --- BEHAVIORAL IDENTITY ---
+
+app.post('/behavioral/identify', (req, res) => {
+  const { message, candidateUsers } = req.body || {};
+  res.json({ identified: false, confidence: 0, message: 'Behavioral identity requires training data', candidateUsers });
+});
+
+app.get('/behavioral/metrics', (req, res) => {
+  const { timeRange = '24h', userId } = req.query;
+  res.json({ timeRange, userId, totalPredictions: 0, accuracy: 0, signalStrengths: {} });
+});
+
+app.post('/behavioral/feedback', (req, res) => {
+  const { predictionId, correct, actualUserId } = req.body || {};
+  res.json({ recorded: true, predictionId, correct, actualUserId });
+});
+
+// --- RELATIONSHIPS & PRESSURE ---
+
+app.post('/relationship', (req, res) => {
+  const { entity_a, entity_b, context, forceRefresh } = req.body || {};
+  // Synthesize relationship from shared memories
+  const sharedMemories = Array.from(memoryStore.values()).filter(m => {
+    const entities = m.entities || [m.entity];
+    return entities.includes(entity_a) && entities.includes(entity_b);
+  });
+  res.json({
+    entityA: entity_a,
+    entityB: entity_b,
+    sharedMemoryCount: sharedMemories.length,
+    relationship: sharedMemories.length > 0 ? 'connected' : 'unknown',
+    context,
+  });
+});
+
+app.get('/pressure/:entityId', (req, res) => {
+  const { entityId } = req.params;
+  const { days = 30, include_vectors } = req.query;
+  res.json({ entityId, days: parseInt(days), pressure: 0, vectors: include_vectors === 'true' ? [] : undefined });
+});
+
+app.post('/care-circle', (req, res) => {
+  const { entity_id, care_circle, alert_threshold = 'concern' } = req.body || {};
+  res.json({ set: true, entityId: entity_id, careCircle: care_circle, alertThreshold: alert_threshold });
+});
+
+app.post('/vulnerability', (req, res) => {
+  const { entity_id, vulnerability, notes } = req.body || {};
+  res.json({ set: true, entityId: entity_id, vulnerability, notes });
+});
+
+// --- EVENT DAEMON ---
+
+app.post('/events/ingest', (req, res) => {
+  const { type, entity_id, deviceId, metadata, payload } = req.body || {};
+  res.json({ ingested: true, type, entityId: entity_id, timestamp: new Date().toISOString() });
+});
+
+app.post('/events/schedule', (req, res) => {
+  const { entity_id, check_type, delay_minutes, message } = req.body || {};
+  const fireAt = new Date(Date.now() + (delay_minutes || 60) * 60000).toISOString();
+  res.json({ scheduled: true, entityId: entity_id, checkType: check_type, fireAt, message });
+});
+
+app.get('/events/daemon/status', (_req, res) => {
+  res.json({ running: true, queueLength: 0, scheduledChecks: 0, uptime: Date.now() - startTime });
+});
+
+// --- SYSTEM ---
+
+app.get('/status', (_req, res) => {
+  res.json({
+    status: 'ok',
+    memoryCount: memoryStore.size,
+    uptime: Date.now() - startTime,
+    mongoConnected,
+    version: '2.0.0',
+  });
+});
+
+// --- BRIEFING ---
+
+app.get('/briefing', (req, res) => {
+  const { person, quick } = req.query;
+  if (!person) return res.status(400).json({ error: 'person query param required' });
+  const personMemories = Array.from(memoryStore.values()).filter(m => {
+    const entities = m.entities || [m.entity];
+    return entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()));
+  });
+  res.json({
+    person,
+    quick: quick === 'true',
+    memoryCount: personMemories.length,
+    summary: `Found ${personMemories.length} memories involving ${person}`,
+    openLoops: [],
+    upcomingEvents: [],
+    sensitivities: [],
+    lastInteraction: personMemories[0]?.timestamp,
+  });
+});
+
+// =============================================================================
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

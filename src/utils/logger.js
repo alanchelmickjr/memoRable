@@ -14,13 +14,13 @@ const logColors = {
   debug: 'blue',
 };
 
-// Default console logger for when setupLogger hasn't been called yet
+// ALL levels go to stderr - stdout is reserved for MCP JSON-RPC protocol
 let logger = {
-  info: (...args) => console.log('[INFO]', ...args),
-  warn: (...args) => console.warn('[WARN]', ...args),
+  info: (...args) => console.error('[INFO]', ...args),
+  warn: (...args) => console.error('[WARN]', ...args),
   error: (...args) => console.error('[ERROR]', ...args),
-  debug: (...args) => console.debug('[DEBUG]', ...args),
-  stream: { write: (msg) => console.log(msg.trim()) }
+  debug: (...args) => console.error('[DEBUG]', ...args),
+  stream: { write: (msg) => console.error(msg.trim()) }
 };
 
 let isWinstonSetup = false;
@@ -52,8 +52,10 @@ export async function setupLogger() {
     levels: logLevels,
     format,
     transports: [
-      // Console transport
-      new winston.transports.Console(),
+      // Console transport - ALL levels to stderr (stdout reserved for MCP JSON-RPC)
+      new winston.transports.Console({
+        stderrLevels: ['error', 'warn', 'info', 'debug'],
+      }),
       
       // File transport for errors
       new winston.transports.File({

@@ -346,6 +346,287 @@ export class ApiClient {
     return this.request('POST', '/memory/vote', { votes, query_context: queryContext });
   }
 
+  // =========================================================================
+  // LOOPS / COMMITMENTS
+  // =========================================================================
+
+  async closeLoop(loopId: string, note?: string): Promise<{ closed: boolean; loopId: string }> {
+    return this.request('POST', `/loops/${loopId}/close`, { note });
+  }
+
+  async resolveOpenLoop(memoryId: string, resolutionNote?: string): Promise<{ resolved: boolean }> {
+    return this.request('POST', `/loops/${memoryId}/resolve`, { resolution_note: resolutionNote });
+  }
+
+  // =========================================================================
+  // MEMORY MANAGEMENT
+  // =========================================================================
+
+  async forgetMemory(memoryId: string, mode?: string, reason?: string): Promise<{ forgotten: boolean }> {
+    return this.request('POST', '/memory/forget', { memoryId, mode, reason });
+  }
+
+  async forgetPerson(person: string, options?: {
+    mode?: string;
+    alsoForgetEvents?: boolean;
+    alsoForgetLoops?: boolean;
+  }): Promise<{ forgotten: boolean; count: number }> {
+    return this.request('POST', '/memory/forget-person', { person, ...options });
+  }
+
+  async restoreMemory(memoryId: string): Promise<{ restored: boolean }> {
+    return this.request('POST', '/memory/restore', { memoryId });
+  }
+
+  async reassociateMemory(memoryId: string, changes: {
+    addPeople?: string[];
+    removePeople?: string[];
+    addTags?: string[];
+    removeTags?: string[];
+    addTopics?: string[];
+    removeTopics?: string[];
+    setProject?: string;
+  }): Promise<{ updated: boolean }> {
+    return this.request('POST', '/memory/reassociate', { memoryId, ...changes });
+  }
+
+  async exportMemories(options?: {
+    password?: string;
+    fromDate?: string;
+    toDate?: string;
+    people?: string[];
+    topics?: string[];
+    project?: string;
+    includeLoops?: boolean;
+    includeTimeline?: boolean;
+  }): Promise<unknown> {
+    return this.request('POST', '/memory/export', options);
+  }
+
+  async importMemories(data: {
+    memories?: unknown[];
+    encryptedData?: string;
+    password?: string;
+    source?: string;
+    skipDuplicates?: boolean;
+    targetProject?: string;
+    idPrefix?: string;
+  }): Promise<{ imported: number }> {
+    return this.request('POST', '/memory/import', data);
+  }
+
+  async searchMemories(query: string, filters?: {
+    tags?: string[];
+    min_importance?: number;
+    pattern_type?: string;
+  }, limit?: number): Promise<{ memories: Memory[] }> {
+    return this.request('GET', '/memory/search', undefined, {
+      query,
+      limit,
+      tags: filters?.tags?.join(','),
+      min_importance: filters?.min_importance,
+      pattern_type: filters?.pattern_type,
+    });
+  }
+
+  async getTierStats(): Promise<unknown> {
+    return this.request('GET', '/memory/tiers');
+  }
+
+  // =========================================================================
+  // CONTEXT & DEVICES
+  // =========================================================================
+
+  async clearContext(deviceId?: string, dimensions?: string[]): Promise<{ cleared: boolean }> {
+    return this.request('DELETE', '/context', { deviceId, dimensions });
+  }
+
+  async listDevices(): Promise<unknown[]> {
+    return this.request('GET', '/devices');
+  }
+
+  // =========================================================================
+  // PREDICTIONS & ANTICIPATION
+  // =========================================================================
+
+  async anticipate(calendar?: unknown[], lookAheadMinutes?: number): Promise<unknown> {
+    return this.request('POST', '/anticipate', { calendar, lookAheadMinutes });
+  }
+
+  async dayOutlook(calendar?: unknown[]): Promise<unknown> {
+    return this.request('GET', '/outlook', undefined, {
+      calendar: calendar ? JSON.stringify(calendar) : undefined,
+    });
+  }
+
+  async patternStats(): Promise<unknown> {
+    return this.request('GET', '/patterns/stats');
+  }
+
+  async getPatternStats(): Promise<unknown> {
+    return this.request('GET', '/patterns/stats');
+  }
+
+  async memoryFeedback(patternId: string, action: string, memoryId?: string): Promise<{ recorded: boolean }> {
+    return this.request('POST', '/patterns/feedback', { patternId, action, memoryId });
+  }
+
+  async getPredictions(context: unknown, maxResults?: number): Promise<unknown> {
+    return this.request('POST', '/predictions', { context, max_results: maxResults });
+  }
+
+  async recordPredictionFeedback(hookId: string, interaction: string, context?: string): Promise<{ recorded: boolean }> {
+    return this.request('POST', '/predictions/feedback', { hook_id: hookId, interaction, context });
+  }
+
+  async getAnticipatedContext(contextFrame?: unknown, maxMemories?: number): Promise<unknown> {
+    return this.request('POST', '/predictions/anticipated', { context_frame: contextFrame, max_memories: maxMemories });
+  }
+
+  // =========================================================================
+  // EMOTION & SENTIMENT
+  // =========================================================================
+
+  async analyzeEmotion(text?: string, memoryId?: string): Promise<unknown> {
+    return this.request('POST', '/emotion/analyze', { text, memory_id: memoryId });
+  }
+
+  async getEmotionalContext(sessionId?: string): Promise<unknown> {
+    return this.request('GET', '/emotion/context', undefined, { session_id: sessionId });
+  }
+
+  async startEmotionalSession(sessionId: string, options?: {
+    entityId?: string;
+    useVoice?: boolean;
+    useVideo?: boolean;
+    useEvi?: boolean;
+    bufferSize?: number;
+  }): Promise<unknown> {
+    return this.request('POST', '/emotion/session/start', { session_id: sessionId, ...options });
+  }
+
+  async stopEmotionalSession(sessionId: string): Promise<unknown> {
+    return this.request('POST', '/emotion/session/stop', { session_id: sessionId });
+  }
+
+  async listEmotionalSessions(): Promise<unknown> {
+    return this.request('GET', '/emotion/sessions');
+  }
+
+  async setEmotionFilter(emotions: string[], action: string, options?: {
+    threshold?: number;
+    enabled?: boolean;
+  }): Promise<unknown> {
+    return this.request('POST', '/emotion/filter', { emotions, action, ...options });
+  }
+
+  async getEmotionFilters(): Promise<unknown> {
+    return this.request('GET', '/emotion/filters');
+  }
+
+  async getMemoriesByEmotion(emotions: string[], options?: {
+    minIntensity?: number;
+    limit?: number;
+    excludeSuppressed?: boolean;
+  }): Promise<unknown> {
+    return this.request('GET', '/emotion/memories', undefined, {
+      emotions: emotions.join(','),
+      min_intensity: options?.minIntensity,
+      limit: options?.limit,
+      exclude_suppressed: options?.excludeSuppressed,
+    });
+  }
+
+  async correctEmotion(memoryId: string, options?: {
+    correctedEmotions?: Array<{ name: string; confidence: number }>;
+    clearAll?: boolean;
+    reason?: string;
+  }): Promise<unknown> {
+    return this.request('POST', '/emotion/correct', { memory_id: memoryId, ...options });
+  }
+
+  async clarifyIntent(memoryId: string, whatIMeant: string, options?: {
+    whatISaid?: string;
+    whyTheGap?: string;
+    pattern?: string;
+    visibility?: string;
+  }): Promise<unknown> {
+    return this.request('POST', '/emotion/clarify', { memory_id: memoryId, what_i_meant: whatIMeant, ...options });
+  }
+
+  // =========================================================================
+  // BEHAVIORAL IDENTITY
+  // =========================================================================
+
+  async identifyUser(message: string, candidateUsers?: string[]): Promise<unknown> {
+    return this.request('POST', '/behavioral/identify', { message, candidateUsers });
+  }
+
+  async behavioralMetrics(timeRange?: string, userId?: string): Promise<unknown> {
+    return this.request('GET', '/behavioral/metrics', undefined, { timeRange, userId });
+  }
+
+  async behavioralFeedback(predictionId: string, correct: boolean, actualUserId?: string): Promise<unknown> {
+    return this.request('POST', '/behavioral/feedback', { predictionId, correct, actualUserId });
+  }
+
+  // =========================================================================
+  // RELATIONSHIPS & PRESSURE
+  // =========================================================================
+
+  async getRelationship(entityA: string, entityB: string, options?: {
+    context?: string;
+    forceRefresh?: boolean;
+  }): Promise<unknown> {
+    return this.request('POST', '/relationship', { entity_a: entityA, entity_b: entityB, ...options });
+  }
+
+  async getEntityPressure(entityId: string, options?: {
+    days?: number;
+    includeVectors?: boolean;
+  }): Promise<unknown> {
+    return this.request('GET', `/pressure/${entityId}`, undefined, {
+      days: options?.days,
+      include_vectors: options?.includeVectors,
+    });
+  }
+
+  async setCareCircle(entityId: string, careCircle: string[], alertThreshold?: string): Promise<unknown> {
+    return this.request('POST', '/care-circle', { entity_id: entityId, care_circle: careCircle, alert_threshold: alertThreshold });
+  }
+
+  async setEntityVulnerability(entityId: string, vulnerability: string, notes?: string): Promise<unknown> {
+    return this.request('POST', '/vulnerability', { entity_id: entityId, vulnerability, notes });
+  }
+
+  // =========================================================================
+  // EVENT DAEMON
+  // =========================================================================
+
+  async ingestEvent(type: string, entityId: string, options?: {
+    deviceId?: string;
+    metadata?: unknown;
+    payload?: unknown;
+  }): Promise<unknown> {
+    return this.request('POST', '/events/ingest', { type, entity_id: entityId, ...options });
+  }
+
+  async scheduleCheck(entityId: string, checkType: string, delayMinutes: number, message?: string): Promise<unknown> {
+    return this.request('POST', '/events/schedule', { entity_id: entityId, check_type: checkType, delay_minutes: delayMinutes, message });
+  }
+
+  async getDaemonStatus(): Promise<unknown> {
+    return this.request('GET', '/events/daemon/status');
+  }
+
+  // =========================================================================
+  // SYSTEM
+  // =========================================================================
+
+  async getStatus(): Promise<unknown> {
+    return this.request('GET', '/status');
+  }
+
   /**
    * Check if API is reachable
    */
