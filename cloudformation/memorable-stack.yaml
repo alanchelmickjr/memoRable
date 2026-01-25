@@ -23,6 +23,8 @@ Metadata:
         default: "LLM Provider"
       AnthropicApiKey:
         default: "Anthropic API Key (only if using Anthropic)"
+      MemorablePassphrase:
+        default: "Auth Passphrase (leave empty for public default)"
       Environment:
         default: "Environment Name"
       InstanceSize:
@@ -44,6 +46,12 @@ Parameters:
     NoEcho: true
     Default: ""
     Description: "Your Anthropic API key (only required if LLMProvider=anthropic)"
+
+  MemorablePassphrase:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: "Auth passphrase for API access. Leave empty for public default. Set for private deployments."
 
   GitHubRepo:
     Type: String
@@ -78,6 +86,8 @@ Conditions:
   UseBedrock: !Equals [!Ref LLMProvider, 'bedrock']
   # HTTPS enabled when certificate ARN is provided
   EnableHTTPS: !Not [!Equals [!Ref CertificateArn, ""]]
+  # Custom passphrase provided (not using public default)
+  UseCustomPassphrase: !Not [!Equals [!Ref MemorablePassphrase, ""]]
 
 Mappings:
   SizeConfig:
@@ -404,6 +414,14 @@ Resources:
       Description: Anthropic API Key
       SecretString: !Sub '{"api_key":"${AnthropicApiKey}"}'
 
+  PassphraseSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: UseCustomPassphrase
+    Properties:
+      Name: !Sub ${AWS::StackName}/passphrase
+      Description: MemoRable Auth Passphrase
+      SecretString: !Sub '{"passphrase":"${MemorablePassphrase}"}'
+
   MongoDBSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
@@ -627,6 +645,13 @@ Resources:
                     - secretsmanager:GetSecretValue
                   Resource: !Ref AnthropicSecret
                 - !Ref AWS::NoValue
+              - !If
+                - UseCustomPassphrase
+                - Effect: Allow
+                  Action:
+                    - secretsmanager:GetSecretValue
+                  Resource: !Ref PassphraseSecret
+                - !Ref AWS::NoValue
 
   ECSTaskRole:
     Type: AWS::IAM::Role
@@ -809,11 +834,21 @@ Resources:
               Value: !If [UseBedrock, 'true', 'false']
             - Name: AWS_REGION
               Value: !Ref AWS::Region
-          Secrets: !If
-            - UseAnthropic
-            - - Name: ANTHROPIC_API_KEY
+            # Allow HTTP until HTTPS certificate is configured
+            - Name: ALLOW_HTTP_DEV
+              Value: !If [EnableHTTPS, 'false', 'true']
+          Secrets:
+            # Conditionally add secrets based on what's configured
+            - !If
+              - UseAnthropic
+              - Name: ANTHROPIC_API_KEY
                 ValueFrom: !Sub '${AnthropicSecret}:api_key::'
-            - !Ref AWS::NoValue
+              - !Ref AWS::NoValue
+            - !If
+              - UseCustomPassphrase
+              - Name: MEMORABLE_PASSPHRASE
+                ValueFrom: !Sub '${PassphraseSecret}:passphrase::'
+              - !Ref AWS::NoValue
           LogConfiguration:
             LogDriver: awslogs
             Options:

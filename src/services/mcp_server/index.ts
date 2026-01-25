@@ -1181,6 +1181,14 @@ async function initializeDb(): Promise<void> {
       console.error('[MCP] WARNING: API health check failed - endpoint may be unreachable');
     }
 
+    // Pre-authenticate to catch auth failures early (and cache the API key)
+    try {
+      await apiClient.authenticate();
+      console.error('[MCP] REST mode: Authenticated successfully');
+    } catch (authErr) {
+      console.error('[MCP] WARNING: Authentication failed - requests will retry auth:', authErr);
+    }
+
     console.error(`[MCP] REST mode: Using HTTP API at ${process.env.API_BASE_URL || process.env.MEMORABLE_API_URL}`);
     console.error('[MCP] Skipping direct MongoDB/Redis connections');
     return;

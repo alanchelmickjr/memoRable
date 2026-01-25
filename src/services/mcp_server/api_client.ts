@@ -102,9 +102,12 @@ export class ApiClient {
    */
   async authenticate(): Promise<void> {
     if (this.apiKey) {
-      // Already have an API key
+      // Already have a valid API key
+      console.error('[ApiClient] Using existing API key');
       return;
     }
+
+    console.error('[ApiClient] No API key - initiating knock/exchange handshake...');
 
     try {
       // Step 1: Knock to get a challenge
@@ -653,9 +656,14 @@ export function getApiClient(): ApiClient | null {
   }
 
   if (!apiClientInstance) {
+    // Only use MEMORABLE_API_KEY if it looks like a valid key (starts with memorable_)
+    // Empty strings, undefined, or invalid-looking keys will trigger handshake auth
+    const envApiKey = process.env.MEMORABLE_API_KEY;
+    const validApiKey = envApiKey && envApiKey.startsWith('memorable_') ? envApiKey : undefined;
+
     apiClientInstance = new ApiClient({
       baseUrl,
-      apiKey: process.env.MEMORABLE_API_KEY,
+      apiKey: validApiKey,
       passphrase: process.env.MEMORABLE_PASSPHRASE,
       deviceType: 'mcp',
       deviceName: 'Claude Code MCP',
