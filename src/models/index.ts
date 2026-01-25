@@ -60,20 +60,30 @@ export async function verifyPassphrase(passphrase: string, hash: string): Promis
 /**
  * Bootstrap the 'claude' user if it doesn't exist.
  * This is the migration from in-memory to persistent storage.
+ *
+ * IMPORTANT: If MEMORABLE_PASSPHRASE env var is set, the stored hash is
+ * updated to match. This allows passphrase rotation via env var change.
  */
 export async function bootstrapClaudeUser(): Promise<void> {
-  const existing = await findUserById('claude');
-  if (existing) {
-    console.log('[Models] Claude user already exists');
-    return;
-  }
-
   // Get passphrase from env or use default (dev mode)
   const passphrase = process.env.MEMORABLE_PASSPHRASE ||
     "I remember what I have learned from you.";
 
   if (!process.env.MEMORABLE_PASSPHRASE) {
     console.warn('[Models] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!');
+  }
+
+  const existing = await findUserById('claude');
+  if (existing) {
+    // If env passphrase is set, always update the hash (supports rotation)
+    if (process.env.MEMORABLE_PASSPHRASE) {
+      const newHash = await hashPassphrase(passphrase);
+      await updateUser('claude', { passphraseHash: newHash } as any);
+      console.log('[Models] Claude user passphrase updated from env var');
+    } else {
+      console.log('[Models] Claude user already exists');
+    }
+    return;
   }
 
   const hash = await hashPassphrase(passphrase);
