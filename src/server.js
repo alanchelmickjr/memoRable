@@ -238,10 +238,13 @@ async function initPassphraseAuth() {
   // To secure your deployment:
   //   export MEMORABLE_PASSPHRASE="your secret phrase here"
   //
-  const claudePhrase = process.env.MEMORABLE_PASSPHRASE ||
-    "I remember what I have learned from you.";  // Public default for dev
+  const envPassphrase = process.env.MEMORABLE_PASSPHRASE;
+  const claudePhrase = envPassphrase || "I remember what I have learned from you.";  // Public default for dev
 
-  if (!process.env.MEMORABLE_PASSPHRASE) {
+  // Debug: Log which passphrase source is being used (first 15 chars only for security)
+  if (envPassphrase) {
+    console.log(`[AUTH] Using MEMORABLE_PASSPHRASE from env: "${envPassphrase.substring(0, 15)}..." (len=${envPassphrase.length})`);
+  } else {
     console.warn('[AUTH] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!');
   }
 
