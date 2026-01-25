@@ -13,7 +13,7 @@
  */
 
 import { Db } from 'mongodb';
-import { setupUsersCollection, UserDocument, findUserById, createUser } from './user';
+import { setupUsersCollection, UserDocument, findUserById, createUser, updateUser } from './user';
 import { setupDevicesCollection, DeviceDocument, createDevice, findDeviceByKey } from './device';
 import { setupPreferencesCollection, PreferenceDocument, initializeUserPreferences } from './preference';
 import argon2 from 'argon2';
