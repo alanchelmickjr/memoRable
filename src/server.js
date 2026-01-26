@@ -1475,6 +1475,7 @@ app.get('/docs', (_req, res) => {
       <a href="https://github.com/alanchelmickjr/memoRable" class="quick-link" target="_blank">GitHub Repository</a>
       <a href="https://github.com/alanchelmickjr/memoRable#quick-start-claude-code--vs-code" class="quick-link" target="_blank">Claude Code Setup</a>
       <a href="https://github.com/alanchelmickjr/memoRable#aws-one-click-deploy" class="quick-link" target="_blank">AWS Deploy</a>
+      <a href="https://github.com/alanchelmickjr/memoRable#api-endpoints" class="quick-link" target="_blank">API Reference</a>
       <a href="/dashboard/mission-control" class="quick-link">Live Dashboard</a>
     </div>
 
