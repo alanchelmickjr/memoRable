@@ -131,14 +131,13 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 
 ### Data Storage
 
-- **MongoDB**: Document storage for memories, relationships, patterns, open loops
+- **MongoDB Atlas**: Document storage + vector search (Atlas Search) for memories, relationships, patterns, open loops
 - **Redis**: Context frames, caching, session state
-- **Weaviate**: Vector database for semantic search
 
 ### Key Patterns
 
 - **ES Modules**: Project uses `"type": "module"` - use `import/export` syntax
-- **Dual Storage**: MongoDB for structured data, Weaviate for vectors
+- **MongoDB-First**: All data in MongoDB, vectors via Atlas Search
 - **Memory Windows**: Short (20min), Medium (1hr), Long (24hr) configurable via env
 - **LLM Providers**: Supports Anthropic, OpenAI, AWS Bedrock (auto-detected)
 
@@ -147,7 +146,7 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 The `docker-compose.yml` runs services across categories:
 - **Core**: memorable_app (3000), memorable_mcp_server, memorable_ingestion_service (8001)
 - **Processing**: memorable_embedding_service (3003), memorable_retrieval_service (3004)
-- **Data**: memorable_mongo (27017), memorable_redis (6379), memorable_weaviate (8080)
+- **Data**: memorable_mongo (27017), memorable_redis (6379)
 - **LLM**: memorable_ollama (11434)
 - **Monitoring**: memorable_prometheus (9090), memorable_grafana (3001), exporters
 

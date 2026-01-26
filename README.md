@@ -12,7 +12,7 @@
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
 
-**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![Weaviate](https://img.shields.io/badge/Weaviate-FF6F61?style=flat&logo=weaviate&logoColor=white)](https://weaviate.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/)
+**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -211,7 +211,7 @@ Flat search finds needles. Graph shows paths. Neither answers the hard questions
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                  │
 │   │   Sources    │───▶│   Chunker    │───▶│    Sinks     │                  │
 │   │  .git repos  │    │  Adaptive:   │    │ MemoRable API│                  │
-│   │  docs, code  │    │  markdown    │    │ Weaviate     │                  │
+│   │  docs, code  │    │  markdown    │    │ MongoDB Atlas│                  │
 │   │              │    │  code        │    │ Console      │                  │
 │   └──────────────┘    │  prose       │    └──────────────┘                  │
 │                       └──────────────┘                                       │
@@ -258,8 +258,8 @@ Every memory is classified into one of three security tiers:
 
 | Tier | Classification | Encryption | LLM Access | Vector Storage | Example Content |
 |------|---------------|------------|------------|----------------|-----------------|
-| **Tier 1** | General | AES-256-GCM | External OK | Yes (Weaviate) | Public notes, general context |
-| **Tier 2** | Personal | AES-256-GCM | Local Only (Ollama) | Yes (Weaviate) | Private conversations, preferences |
+| **Tier 1** | General | AES-256-GCM | External OK | Yes (Atlas Search) | Public notes, general context |
+| **Tier 2** | Personal | AES-256-GCM | Local Only (Ollama) | Yes (Atlas Search) | Private conversations, preferences |
 | **Tier 3** | Vault | AES-256-GCM + Hardware | **NEVER** | **NO** | Financial data, medical records, passwords |
 
 ### How It Works
@@ -339,7 +339,7 @@ MemoRable's tiered security makes it suitable for:
 
 | Capability | MemoRable Standalone | Mem0 Only | MemoRable + Mem0 |
 |------------|---------------------|-----------|------------------|
-| Vector storage & search | ✅ (Weaviate) | ✅ | ✅ (uses Mem0) |
+| Vector storage & search | ✅ (Atlas Search) | ✅ | ✅ (uses Mem0) |
 | Salience scoring (0-100) | ✅ | ❌ | ✅ |
 | Commitment tracking (open loops) | ✅ | ❌ | ✅ |
 | Relationship intelligence | ✅ | ❌ | ✅ |
@@ -533,12 +533,12 @@ MemoRable is a **complete memory system**. No Mem0, no external dependencies bey
 git clone https://github.com/alanchelmickjr/memoRable.git && cd memoRable
 npm install && npm run setup    # Generates .env with secure defaults
 
-# Start the full stack (MongoDB, Redis, Weaviate, App)
+# Start the full stack (MongoDB, Redis, App)
 docker-compose up -d
 
 # Verify everything is running:
 curl http://localhost:3000/health
-# → {"status":"ok","services":{"mongodb":"connected","redis":"connected","weaviate":"connected"}}
+# → {"status":"ok","services":{"mongodb":"connected","redis":"connected"}}
 
 # View logs:
 docker-compose logs -f memorable_app
@@ -549,9 +549,8 @@ docker-compose logs -f memorable_app
 |---------|------|---------|
 | memorable_app | 3000 | Main API |
 | memorable_mcp_server | stdio | For Claude Code |
-| memorable_mongo | 27017 | Document storage |
+| memorable_mongo | 27017 | Document storage + vectors |
 | memorable_redis | 6379 | Context caching |
-| memorable_weaviate | 8080 | Vector search |
 
 ---
 
@@ -1560,9 +1559,8 @@ https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateU
 | `memorable_app` | 3000 | Main application |
 | `memorable_mcp_server` | stdio | MCP server for Claude Code |
 | `memorable_ingestion_service` | 8001 | Memory ingestion API |
-| `memorable_mongo` | 27017 | Document storage |
+| `memorable_mongo` | 27017 | Document storage + vectors |
 | `memorable_redis` | 6379 | Context frames, caching |
-| `memorable_weaviate` | 8080 | Vector search |
 
 ---
 
@@ -1772,7 +1770,7 @@ High-throughput multimodal vectorization for docs and code:
 **Features:**
 - **Adaptive Chunking**: Markdown by headers, code by functions/classes
 - **Hybrid Embedding**: Multiple models (OpenAI, CodeBERT, local)
-- **Server-side Batching**: Weaviate backpressure for optimal throughput
+- **Server-side Batching**: MongoDB backpressure for optimal throughput
 - **Deterministic UUIDs**: Re-index without duplicates
 - **Parallel Workers**: Configurable concurrency
 
