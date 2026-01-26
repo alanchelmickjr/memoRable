@@ -247,7 +247,7 @@ async function loadMemory(apiKey: string, memory: SyntheticMemory): Promise<bool
         'X-API-Key': apiKey
       },
       body: JSON.stringify({
-        text: memory.content,
+        content: memory.content,
         entities: memory.entities,
         context: memory.context,
         metadata: memory.metadata,
