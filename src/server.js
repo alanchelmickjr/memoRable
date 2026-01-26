@@ -772,6 +772,11 @@ const rateLimitMiddleware = (req, res, next) => {
     return next();
   }
 
+  // Skip rate limiting for bulk synthetic loading (authenticated requests only)
+  if (req.headers['x-bulk-synthetic'] === 'true' && req.headers['x-api-key']) {
+    return next();
+  }
+
   const clientId = req.headers['x-api-key'] || req.ip || 'anonymous';
   const now = Date.now();
   const windowStart = now - RATE_LIMIT_WINDOW_MS;

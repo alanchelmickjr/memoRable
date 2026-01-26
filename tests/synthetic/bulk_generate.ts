@@ -7,7 +7,7 @@ const API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
 const PASSPHRASE = 'I remember what I have learned from you.';
 const TOTAL = 180_000;
 const DAYS = 66;
-const CONCURRENCY = 20;
+const CONCURRENCY = 5;
 
 const ACTIVITIES = ['standup', 'coding', 'review', 'meeting', 'planning', 'debugging', 'testing', 'deployment', 'research', 'design'];
 const LOCATIONS = ['office', 'home', 'conference_room', 'coffee_shop', 'remote'];
@@ -50,7 +50,11 @@ async function post(key: string, mem: any): Promise<boolean> {
   try {
     const r = await fetch(`${API_URL}/memory`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': key,
+        'X-Bulk-Synthetic': 'true'
+      },
       body: JSON.stringify(mem)
     });
     return r.ok;
@@ -61,39 +65,45 @@ async function main() {
   console.log(`\n=== BULK GENERATOR: ${TOTAL.toLocaleString()} memories ===\n`);
 
   let key = await auth();
-  console.log('Authenticated\n');
+  console.log('Authenticated');
+  console.log('Starting generation...');
 
   let done = 0, fail = 0, reauths = 0;
   const start = Date.now();
   const perDay = Math.ceil(TOTAL / DAYS);
 
+  console.log(`Per day target: ${perDay}`);
+
   for (let day = 0; day < DAYS; day++) {
-    const batch: Promise<boolean>[] = [];
+    let dayDone = 0;
 
-    for (let i = 0; i < perDay && done + fail < TOTAL; i++) {
-      batch.push(post(key, genMemory(day)));
+    while (dayDone < perDay && done + fail < TOTAL) {
+      // Create batch of promises
+      const batch: Promise<boolean>[] = [];
+      for (let j = 0; j < CONCURRENCY && dayDone + j < perDay; j++) {
+        batch.push(post(key, genMemory(day)));
+      }
 
-      if (batch.length >= CONCURRENCY) {
-        const results = await Promise.all(batch);
-        results.forEach(r => r ? done++ : fail++);
-        batch.length = 0;
+      // Execute batch
+      const results = await Promise.all(batch);
+      results.forEach(r => r ? done++ : fail++);
+      dayDone += batch.length;
 
-        // Re-auth on failures
-        if (fail > done * 0.1 && reauths < 50) {
-          key = await auth();
-          reauths++;
-        }
+      // Small delay
+      await new Promise(r => setTimeout(r, 100));
+
+      // Re-auth on high failures
+      if (fail > done * 0.2 && reauths < 100) {
+        console.log('Re-authenticating...');
+        key = await auth();
+        reauths++;
       }
     }
 
-    if (batch.length) {
-      const results = await Promise.all(batch);
-      results.forEach(r => r ? done++ : fail++);
-    }
-
-    const rate = done / ((Date.now() - start) / 1000);
-    const eta = (TOTAL - done - fail) / rate;
-    process.stdout.write(`\rDay ${day + 1}/${DAYS} | ${done.toLocaleString()} done | ${fail} fail | ${rate.toFixed(0)}/s | ETA: ${Math.ceil(eta / 60)}m    `);
+    const elapsed = (Date.now() - start) / 1000;
+    const rate = elapsed > 0 ? done / elapsed : 0;
+    const eta = rate > 0 ? (TOTAL - done - fail) / rate : 0;
+    console.log(`Day ${day + 1}/${DAYS} | ${done.toLocaleString()} ok | ${fail} fail | ${rate.toFixed(0)}/s | ETA: ${Math.ceil(eta / 60)}m`);
   }
 
   console.log(`\n\n=== COMPLETE ===`);
