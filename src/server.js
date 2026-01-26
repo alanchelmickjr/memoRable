@@ -1861,6 +1861,31 @@ app.get('/login', (_req, res) => {
     .back-link:hover {
       color: var(--cyan);
     }
+    .footer-links {
+      text-align: center;
+      margin-top: 24px;
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 11px;
+    }
+    .footer-links a:hover {
+      color: var(--cyan);
+    }
+    @media (max-width: 480px) {
+      .login-container { padding: 16px; }
+      .logo { font-size: 28px; margin-bottom: 24px; }
+      .login-box { padding: 24px 20px; }
+      .login-box h2 { font-size: 12px; letter-spacing: 2px; }
+      .form-group input { padding: 12px 14px; font-size: 16px; }
+      .btn { padding: 14px; font-size: 12px; letter-spacing: 2px; }
+      .footer-links { flex-direction: column; gap: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -1881,9 +1906,9 @@ app.get('/login', (_req, res) => {
       <p class="hint"><a href="/auth/recover">Forgot passphrase?</a></p>
     </div>
     <a href="/" class="back-link">&larr; Back to Home</a>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-dim)">
-      <a href="/privacy" style="color:var(--text-dim);text-decoration:none;margin-right:16px">Privacy Policy</a>
-      <a href="/terms" style="color:var(--text-dim);text-decoration:none">Terms of Service</a>
+    <div class="footer-links">
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
     </div>
   </div>
 
@@ -2632,6 +2657,75 @@ app.get('/register', (_req, res) => {
       font-size: 11px;
       text-align: center;
     }
+    .terms-checkbox {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .terms-checkbox input {
+      margin-top: 3px;
+      accent-color: var(--cyan);
+      flex-shrink: 0;
+    }
+    .terms-checkbox a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+    .terms-checkbox a:hover {
+      text-decoration: underline;
+    }
+    .footer-links {
+      text-align: center;
+      margin-top: 24px;
+      padding-top: 16px;
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .footer-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 11px;
+    }
+    .footer-links a:hover {
+      color: var(--cyan);
+    }
+    @media (max-width: 480px) {
+      .register-container {
+        padding: 16px;
+      }
+      .logo {
+        font-size: 28px;
+        margin-bottom: 24px;
+      }
+      .register-box {
+        padding: 24px 20px;
+      }
+      .register-box h2 {
+        font-size: 12px;
+        letter-spacing: 2px;
+      }
+      .form-group input {
+        padding: 12px 14px;
+        font-size: 16px; /* Prevents iOS zoom */
+      }
+      .btn {
+        padding: 14px;
+        font-size: 12px;
+        letter-spacing: 2px;
+      }
+      .terms-checkbox {
+        font-size: 11px;
+      }
+      .footer-links {
+        flex-direction: column;
+        gap: 12px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2660,10 +2754,10 @@ app.get('/register', (_req, res) => {
           <label for="confirm">Confirm Passphrase</label>
           <input type="password" id="confirm" name="confirm" placeholder="Repeat your passphrase" required>
         </div>
-        <div class="form-group" style="margin-top:16px">
-          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:12px">
-            <input type="checkbox" id="acceptTerms" required style="margin-top:2px;accent-color:var(--cyan)">
-            <span>I agree to the <a href="/privacy" target="_blank" style="color:var(--cyan)">Privacy Policy</a> and <a href="/terms" target="_blank" style="color:var(--cyan)">Terms of Service</a></span>
+        <div class="form-group" style="margin-top:20px">
+          <label class="terms-checkbox">
+            <input type="checkbox" id="acceptTerms" required>
+            <span>I agree to the <a href="/privacy" target="_blank">Privacy Policy</a> and <a href="/terms" target="_blank">Terms of Service</a></span>
           </label>
         </div>
         <button type="submit" class="btn" id="submitBtn">Create Account</button>
@@ -2671,9 +2765,9 @@ app.get('/register', (_req, res) => {
       <p class="hint">Already have an account? <a href="/login">Sign in</a></p>
     </div>
     <a href="/" class="back-link">&larr; Back to Home</a>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-dim)">
-      <a href="/privacy" style="color:var(--text-dim);text-decoration:none;margin-right:16px">Privacy Policy</a>
-      <a href="/terms" style="color:var(--text-dim);text-decoration:none">Terms of Service</a>
+    <div class="footer-links">
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
     </div>
   </div>
 
