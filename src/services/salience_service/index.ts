@@ -322,6 +322,24 @@ export {
   type LLMProviderConfig,
 } from './llm_providers';
 
+// Re-export Ollama client for GPU inference (Tier2_Personal)
+export {
+  OllamaClient,
+  createOllamaClient,
+  getSharedOllamaClient,
+  isGpuLLMReady,
+  isLocalLLMReady, // alias for backwards compat
+  type OllamaConfig,
+} from './ollama_client';
+
+// Re-export GPU extraction helpers (auto-routes based on availability)
+export {
+  extractWithGpu,
+  batchExtractWithGpu,
+  getGpuStatus,
+  recheckGpu,
+} from './gpu_extraction';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';

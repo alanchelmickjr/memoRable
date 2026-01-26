@@ -10022,39 +10022,184 @@ function applyBetterSelfFilter(content, options = {}) {
 
 // --- LOOPS / COMMITMENTS ---
 
-app.get('/loops', (req, res) => {
-  const { person, owner, includeOverdue = 'true' } = req.query;
-  let loops = Array.from(memoryStore.values()).filter(m =>
-    m.content && (
-      m.content.toLowerCase().includes('commit') ||
-      m.content.toLowerCase().includes('promise') ||
-      m.content.toLowerCase().includes('follow up') ||
-      m.content.toLowerCase().includes('owe') ||
-      m.content.toLowerCase().includes('todo') ||
-      m.content.toLowerCase().includes('action item')
-    )
-  );
-  if (person) {
-    loops = loops.filter(m => {
-      const entities = m.entities || [m.entity];
-      return entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()));
-    });
+app.get('/loops', async (req, res) => {
+  const { person, owner, status = 'open', limit = '15' } = req.query;
+
+  try {
+    // Query real open_loops collection from MongoDB
+    const db = getDatabase();
+    const query = {};
+
+    // Filter by status (default: open)
+    if (status) query.status = status;
+
+    // Filter by owner (self = user owes, them = owed to user)
+    if (owner) query.owner = owner;
+
+    // Filter by person (otherParty field)
+    if (person) {
+      query.otherParty = new RegExp(person, 'i');
+    }
+
+    const loops = await db.collection('open_loops')
+      .find(query)
+      .sort({ dueDate: 1, createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .toArray();
+
+    res.json({ loops, count: loops.length });
+  } catch (error) {
+    console.error('[/loops] Error querying open_loops collection:', error.message);
+    // Fallback to empty if MongoDB not connected
+    res.json({ loops: [], count: 0, error: 'Database unavailable' });
   }
-  res.json({ loops, count: loops.length });
 });
 
-app.post('/loops/:id/close', (req, res) => {
+app.post('/loops/:id/close', async (req, res) => {
   const { id } = req.params;
   const { note } = req.body || {};
-  // Mark loop as closed in memory store
-  const memory = memoryStore.get(id);
-  if (memory) {
-    memory.loopClosed = true;
-    memory.loopCloseNote = note;
-    memory.loopClosedAt = new Date().toISOString();
-    memoryStore.set(id, memory);
+
+  try {
+    const db = getDatabase();
+    await db.collection('open_loops').updateOne(
+      { id },
+      {
+        $set: {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          completedNote: note,
+        },
+      }
+    );
+    res.json({ closed: true, loopId: id, note });
+  } catch (error) {
+    console.error('[/loops/:id/close] Error:', error.message);
+    res.json({ closed: false, error: 'Database unavailable' });
   }
-  res.json({ closed: true, loopId: id, note });
+});
+
+// Batch create loops from extracted features (used by Slack commitment handler)
+app.post('/loops/batch', async (req, res) => {
+  const { userId, memoryId, features } = req.body || {};
+
+  if (!userId || !features) {
+    return res.status(400).json({ error: 'userId and features required' });
+  }
+
+  try {
+    const db = getDatabase();
+    const loopIds = [];
+    const now = new Date();
+
+    // Process commitments
+    for (const commitment of (features.commitments || [])) {
+      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const loop = {
+        id: loopId,
+        userId,
+        memoryId,
+        loopType: commitment.type === 'made' ? 'commitment_made' : 'commitment_received',
+        description: commitment.what,
+        owner: commitment.type === 'made' ? 'self' : 'them',
+        otherParty: commitment.type === 'made' ? commitment.to : commitment.from,
+        dueDate: commitment.byWhen ? new Date(commitment.byWhen).toISOString() : null,
+        status: 'open',
+        createdAt: now.toISOString(),
+      };
+      await db.collection('open_loops').insertOne(loop);
+      loopIds.push(loopId);
+    }
+
+    // Process mutual agreements
+    for (const agreement of (features.mutualAgreements || [])) {
+      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const otherParties = (agreement.parties || []).filter(p =>
+        p.toLowerCase() !== 'self' && p.toLowerCase() !== 'me'
+      );
+      const loop = {
+        id: loopId,
+        userId,
+        memoryId,
+        loopType: 'mutual_agreement',
+        description: agreement.what,
+        owner: 'mutual',
+        otherParty: otherParties[0] || null,
+        dueDate: agreement.timeframe ? new Date(agreement.timeframe).toISOString() : null,
+        status: 'open',
+        createdAt: now.toISOString(),
+      };
+      await db.collection('open_loops').insertOne(loop);
+      loopIds.push(loopId);
+    }
+
+    res.json({ created: loopIds.length, loopIds });
+  } catch (error) {
+    console.error('[/loops/batch] Error:', error.message);
+    res.status(500).json({ error: 'Failed to create loops' });
+  }
+});
+
+// Extract features from text (commitments, people, topics, etc.)
+app.post('/extract/features', async (req, res) => {
+  const { text, context } = req.body || {};
+
+  if (!text) {
+    return res.status(400).json({ error: 'text required' });
+  }
+
+  // Simple commitment detection (LLM integration would go here)
+  // For now, use keyword-based heuristics
+  const features = {
+    commitments: [],
+    mutualAgreements: [],
+    peopleMentioned: [],
+    questionsAsked: [],
+  };
+
+  const lowerText = text.toLowerCase();
+
+  // Detect "I'll" commitments
+  const illMatch = text.match(/I'?ll\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/i);
+  if (illMatch) {
+    features.commitments.push({
+      type: 'made',
+      what: illMatch[1].trim(),
+      to: context?.user || 'unknown',
+      byWhen: illMatch[2] || null,
+      dueType: illMatch[2] ? 'explicit' : 'none',
+      confidence: 0.7,
+    });
+  }
+
+  // Detect "Can you" requests
+  const canYouMatch = text.match(/[Cc]an you\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/);
+  if (canYouMatch) {
+    features.commitments.push({
+      type: 'received',
+      what: canYouMatch[1].trim(),
+      from: context?.user || 'unknown',
+      byWhen: canYouMatch[2] || null,
+      dueType: canYouMatch[2] ? 'explicit' : 'none',
+      confidence: 0.6,
+    });
+  }
+
+  // Detect "Let's" mutual agreements
+  const letsMatch = text.match(/[Ll]et'?s\s+(.+?)(?:\s+(?:next|this)\s+(.+?))?[.!?\n]/);
+  if (letsMatch) {
+    features.mutualAgreements.push({
+      what: letsMatch[1].trim(),
+      parties: ['self', context?.user || 'them'],
+      timeframe: letsMatch[2] || null,
+      specificity: letsMatch[2] ? 'vague' : 'none',
+    });
+  }
+
+  // Detect @mentions as people
+  const mentions = text.match(/@(\w+)/g) || [];
+  features.peopleMentioned = mentions.map(m => m.slice(1));
+
+  res.json(features);
 });
 
 app.post('/loops/:id/resolve', (req, res) => {
@@ -10248,9 +10393,40 @@ app.post('/predictions/feedback', (req, res) => {
   res.json({ recorded: true, hookId: hook_id, interaction });
 });
 
-app.post('/predictions/anticipated', (req, res) => {
+app.post('/predictions/anticipated', async (req, res) => {
   const { context_frame, max_memories = 5 } = req.body || {};
-  res.json({ memories: [], contextFrame: context_frame, maxMemories: max_memories });
+
+  try {
+    const db = getDatabase();
+    const query = {};
+
+    // Filter by project if specified
+    if (context_frame?.project) {
+      query.$or = [
+        { entities: { $regex: context_frame.project, $options: 'i' } },
+        { 'metadata.project': context_frame.project },
+      ];
+    }
+
+    // Get recent high-salience memories
+    const memories = await db.collection('memories')
+      .find(query)
+      .sort({ 'salience.score': -1, createdAt: -1 })
+      .limit(parseInt(max_memories, 10))
+      .toArray();
+
+    const anticipated = memories.map(m => ({
+      memoryId: m._id?.toString() || m.id,
+      content: m.content?.slice(0, 150) || '',
+      score: m.salience?.score || 0.5,
+      reasons: m.salience?.factors ? Object.keys(m.salience.factors) : ['recent'],
+    }));
+
+    res.json({ anticipated, contextFrame: context_frame });
+  } catch (error) {
+    console.error('[/predictions/anticipated] Error:', error.message);
+    res.json({ anticipated: [], contextFrame: context_frame });
+  }
 });
 
 // --- EMOTION & SENTIMENT ---

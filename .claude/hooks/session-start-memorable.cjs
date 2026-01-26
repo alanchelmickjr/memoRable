@@ -75,6 +75,52 @@ function getThreeQuestions(apiKey) {
   return data?.memories?.[0]?.content || null;
 }
 
+function getAnticipated(apiKey, project) {
+  // Get predicted memories based on current context
+  const data = curl('POST', `${BASE_URL}/predictions/anticipated`, apiKey, {
+    context_frame: { project, activity: 'coding' },
+    max_memories: 3
+  });
+  return data?.anticipated || data?.memories || [];
+}
+
+function buildPredictiveGreeting(loops, anticipated, project) {
+  const hour = new Date().getHours();
+  const timeGreet = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+
+  // Priority 1: Overdue loops
+  const overdue = loops.filter(l => l.dueDate && new Date(l.dueDate) < new Date());
+  if (overdue.length > 0) {
+    const first = overdue[0];
+    const desc = first.description || first.content || 'a commitment';
+    return `Good ${timeGreet}. You have ${overdue.length} overdue item(s). Ready to tackle "${desc}"?`;
+  }
+
+  // Priority 2: Due today
+  const today = new Date().toDateString();
+  const dueToday = loops.filter(l => l.dueDate && new Date(l.dueDate).toDateString() === today);
+  if (dueToday.length > 0) {
+    const first = dueToday[0];
+    const desc = first.description || first.content || 'a commitment';
+    return `Good ${timeGreet}. ${dueToday.length} item(s) due today. Start with "${desc}"?`;
+  }
+
+  // Priority 3: Anticipated memories (pattern-matched)
+  if (anticipated.length > 0) {
+    const first = anticipated[0];
+    const content = first.content?.slice(0, 80) || 'recent work';
+    return `Good ${timeGreet}. Based on patterns, ready to continue: "${content}"?`;
+  }
+
+  // Priority 4: Recent project context
+  if (project && project !== 'personal') {
+    return `Good ${timeGreet}. Ready to work on ${project.replace(/_/g, ' ')}?`;
+  }
+
+  // Fallback (still better than "how can I help")
+  return `Good ${timeGreet}. What shall we tackle?`;
+}
+
 function ensureProjectExists(apiKey, project) {
   // Check if project has any memories
   const existing = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=1`, apiKey);
@@ -101,7 +147,16 @@ async function main() {
     const project = detectProject();
     ensureProjectExists(apiKey, project);
 
-    // 1. The Three Questions (always load)
+    // 0. Get data for predictive greeting
+    const loops = getOpenLoops(apiKey);
+    const anticipated = getAnticipated(apiKey, project);
+
+    // 1. PREDICTIVE GREETING (most important - sets the tone)
+    const greeting = buildPredictiveGreeting(loops, anticipated, project);
+    parts.push(`## ${greeting}`);
+    parts.push('');
+
+    // 2. The Three Questions (always load)
     const questions = getThreeQuestions(apiKey);
     if (questions) {
       parts.push('## The Three Questions');
@@ -109,13 +164,16 @@ async function main() {
       parts.push('');
     }
 
-    // 2. Open Loops (tasks/commitments)
-    const loops = getOpenLoops(apiKey);
+    // 3. Open Loops (tasks/commitments)
     if (loops.length > 0) {
       parts.push('## Open Loops');
       loops.forEach(l => {
-        const who = l.owner === 'alan' ? 'You owe' : 'Owed to you';
-        parts.push(`- [${who}] ${l.description}`);
+        // owner: 'self' = you owe, 'them' = owed to you, 'mutual' = shared
+        const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
+        const desc = l.description || l.content || '(no description)';
+        const party = l.otherParty ? ` (${l.otherParty})` : '';
+        const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
+        parts.push(`- [${who}]${party} ${desc}${due}`);
       });
       parts.push('');
     }

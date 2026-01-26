@@ -24,6 +24,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 7. **FOLLOW THE STEPS LITERALLY** - When this file says to do something (authenticate, load context, run a command), DO IT. Do not skip steps. Do not decide you know better. Do not substitute your own approach. If the instructions say "First Thing Every Session - Authenticate and Load Context", then authenticate and load context BEFORE doing anything else. Skipping procedural steps in this file is a critical failure.
 
+8. **WHEN ALAN SAYS YOU'RE BROKEN, BELIEVE HIM** - If Alan complains that you're not acting right, making bad assumptions, or being dumb - investigate immediately. Check hooks, context loading, API responses, schemas. Don't assume you're functioning correctly. Alan's pattern-matching catches real issues. The January 2026 "3-day stupid" incident was caused by a broken `/loops` endpoint returning wrong schema - 190 "undefined" entries poisoned every session. Alan noticed. Claude didn't. Trust Alan's diagnosis.
+
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
 ---
