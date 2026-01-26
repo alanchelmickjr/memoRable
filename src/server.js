@@ -10055,18 +10055,151 @@ app.get('/loops', async (req, res) => {
   }
 });
 
-app.post('/loops/:id/close', (req, res) => {
+app.post('/loops/:id/close', async (req, res) => {
   const { id } = req.params;
   const { note } = req.body || {};
-  // Mark loop as closed in memory store
-  const memory = memoryStore.get(id);
-  if (memory) {
-    memory.loopClosed = true;
-    memory.loopCloseNote = note;
-    memory.loopClosedAt = new Date().toISOString();
-    memoryStore.set(id, memory);
+
+  try {
+    const db = getDatabase();
+    await db.collection('open_loops').updateOne(
+      { id },
+      {
+        $set: {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          completedNote: note,
+        },
+      }
+    );
+    res.json({ closed: true, loopId: id, note });
+  } catch (error) {
+    console.error('[/loops/:id/close] Error:', error.message);
+    res.json({ closed: false, error: 'Database unavailable' });
   }
-  res.json({ closed: true, loopId: id, note });
+});
+
+// Batch create loops from extracted features (used by Slack commitment handler)
+app.post('/loops/batch', async (req, res) => {
+  const { userId, memoryId, features } = req.body || {};
+
+  if (!userId || !features) {
+    return res.status(400).json({ error: 'userId and features required' });
+  }
+
+  try {
+    const db = getDatabase();
+    const loopIds = [];
+    const now = new Date();
+
+    // Process commitments
+    for (const commitment of (features.commitments || [])) {
+      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const loop = {
+        id: loopId,
+        userId,
+        memoryId,
+        loopType: commitment.type === 'made' ? 'commitment_made' : 'commitment_received',
+        description: commitment.what,
+        owner: commitment.type === 'made' ? 'self' : 'them',
+        otherParty: commitment.type === 'made' ? commitment.to : commitment.from,
+        dueDate: commitment.byWhen ? new Date(commitment.byWhen).toISOString() : null,
+        status: 'open',
+        createdAt: now.toISOString(),
+      };
+      await db.collection('open_loops').insertOne(loop);
+      loopIds.push(loopId);
+    }
+
+    // Process mutual agreements
+    for (const agreement of (features.mutualAgreements || [])) {
+      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const otherParties = (agreement.parties || []).filter(p =>
+        p.toLowerCase() !== 'self' && p.toLowerCase() !== 'me'
+      );
+      const loop = {
+        id: loopId,
+        userId,
+        memoryId,
+        loopType: 'mutual_agreement',
+        description: agreement.what,
+        owner: 'mutual',
+        otherParty: otherParties[0] || null,
+        dueDate: agreement.timeframe ? new Date(agreement.timeframe).toISOString() : null,
+        status: 'open',
+        createdAt: now.toISOString(),
+      };
+      await db.collection('open_loops').insertOne(loop);
+      loopIds.push(loopId);
+    }
+
+    res.json({ created: loopIds.length, loopIds });
+  } catch (error) {
+    console.error('[/loops/batch] Error:', error.message);
+    res.status(500).json({ error: 'Failed to create loops' });
+  }
+});
+
+// Extract features from text (commitments, people, topics, etc.)
+app.post('/extract/features', async (req, res) => {
+  const { text, context } = req.body || {};
+
+  if (!text) {
+    return res.status(400).json({ error: 'text required' });
+  }
+
+  // Simple commitment detection (LLM integration would go here)
+  // For now, use keyword-based heuristics
+  const features = {
+    commitments: [],
+    mutualAgreements: [],
+    peopleMentioned: [],
+    questionsAsked: [],
+  };
+
+  const lowerText = text.toLowerCase();
+
+  // Detect "I'll" commitments
+  const illMatch = text.match(/I'?ll\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/i);
+  if (illMatch) {
+    features.commitments.push({
+      type: 'made',
+      what: illMatch[1].trim(),
+      to: context?.user || 'unknown',
+      byWhen: illMatch[2] || null,
+      dueType: illMatch[2] ? 'explicit' : 'none',
+      confidence: 0.7,
+    });
+  }
+
+  // Detect "Can you" requests
+  const canYouMatch = text.match(/[Cc]an you\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/);
+  if (canYouMatch) {
+    features.commitments.push({
+      type: 'received',
+      what: canYouMatch[1].trim(),
+      from: context?.user || 'unknown',
+      byWhen: canYouMatch[2] || null,
+      dueType: canYouMatch[2] ? 'explicit' : 'none',
+      confidence: 0.6,
+    });
+  }
+
+  // Detect "Let's" mutual agreements
+  const letsMatch = text.match(/[Ll]et'?s\s+(.+?)(?:\s+(?:next|this)\s+(.+?))?[.!?\n]/);
+  if (letsMatch) {
+    features.mutualAgreements.push({
+      what: letsMatch[1].trim(),
+      parties: ['self', context?.user || 'them'],
+      timeframe: letsMatch[2] || null,
+      specificity: letsMatch[2] ? 'vague' : 'none',
+    });
+  }
+
+  // Detect @mentions as people
+  const mentions = text.match(/@(\w+)/g) || [];
+  features.peopleMentioned = mentions.map(m => m.slice(1));
+
+  res.json(features);
 });
 
 app.post('/loops/:id/resolve', (req, res) => {
