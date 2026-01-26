@@ -4,11 +4,11 @@
 
 ---
 
-## The One Thing
+## The One Thing (This Sprint)
 
 **Extract commitments from Slack messages and surface them before they're forgotten.**
 
-That's it. No 3D models. No memory search. Just commitments.
+This adds to the existing Slack integration (text → 3D toy design). Commitments + 3D generation = complete workflow for toy design teams.
 
 ---
 
@@ -19,7 +19,7 @@ That's it. No 3D models. No memory search. Just commitments.
 | Open Loop Tracker | `src/services/salience_service/open_loop_tracker.ts` | ✅ Complete |
 | Feature Extractor (LLM) | `src/services/salience_service/feature_extractor.ts` | ✅ Complete |
 | Contact Management | `src/services/salience_service/database.ts` | ✅ Complete |
-| Slack Service Shell | `src/services/slack_integration/index.ts` | ⚠️ Exists but wrong focus |
+| Slack Service (3D/SCAD) | `src/services/slack_integration/index.ts` | ✅ Core feature - text → 3D |
 
 The open loop tracker already does:
 - Extract commitments from text (made/received)
@@ -147,7 +147,7 @@ export async function sendDailyDigest(userId: string, slackUserId: string): Prom
 
 ```
 src/services/slack_integration/
-├── index.ts              # Existing - keep for 3D stuff
+├── index.ts              # Existing - text → 3D toy generation (core feature)
 ├── commitment_handler.ts # NEW - message → loop extraction
 ├── daily_digest.ts       # NEW - DM builder
 ├── slash_commands.ts     # NEW - /done, /loops
