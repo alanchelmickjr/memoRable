@@ -592,90 +592,6 @@ Resources:
           Value: !Sub ${AWS::StackName}-redis
 
   #############################################
-  # Weaviate Vector Database
-  #############################################
-  WeaviateSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Weaviate Security Group
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          SourceSecurityGroupId: !Ref ECSSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-weaviate-sg
-
-  WeaviateServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: weaviate
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  WeaviateTaskDefinition:
-    Type: AWS::ECS::TaskDefinition
-    Properties:
-      Family: !Sub ${AWS::StackName}-weaviate
-      NetworkMode: awsvpc
-      RequiresCompatibilities:
-        - FARGATE
-      Cpu: 512
-      Memory: 1024
-      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
-      ContainerDefinitions:
-        - Name: weaviate
-          Image: semitechnologies/weaviate:1.24.1
-          Essential: true
-          PortMappings:
-            - ContainerPort: 8080
-              Protocol: tcp
-          Environment:
-            - Name: QUERY_DEFAULTS_LIMIT
-              Value: '25'
-            - Name: AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED
-              Value: 'true'
-            - Name: PERSISTENCE_DATA_PATH
-              Value: '/var/lib/weaviate'
-            - Name: DEFAULT_VECTORIZER_MODULE
-              Value: 'none'
-            - Name: CLUSTER_HOSTNAME
-              Value: 'node1'
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref LogGroup
-              awslogs-region: !Ref AWS::Region
-              awslogs-stream-prefix: weaviate
-
-  WeaviateService:
-    Type: AWS::ECS::Service
-    Properties:
-      ServiceName: !Sub ${AWS::StackName}-weaviate
-      Cluster: !Ref ECSCluster
-      TaskDefinition: !Ref WeaviateTaskDefinition
-      DesiredCount: 1
-      LaunchType: FARGATE
-      NetworkConfiguration:
-        AwsvpcConfiguration:
-          AssignPublicIp: DISABLED
-          Subnets:
-            - !Ref PrivateSubnet1
-            - !Ref PrivateSubnet2
-          SecurityGroups:
-            - !Ref WeaviateSecurityGroup
-      ServiceRegistries:
-        - RegistryArn: !GetAtt WeaviateServiceDiscovery.Arn
-
-  #############################################
   # ECR Repository
   #############################################
   ECRRepository:
@@ -921,9 +837,6 @@ Resources:
             # Allow HTTP until HTTPS certificate is configured
             - Name: ALLOW_HTTP_DEV
               Value: !If [EnableHTTPS, 'false', 'true']
-            # Weaviate vector database
-            - Name: WEAVIATE_URL
-              Value: !Sub http://weaviate.${AWS::StackName}.local:8080
           Secrets:
             # Conditionally add secrets based on what's configured
             - !If
@@ -960,7 +873,6 @@ Resources:
       - ALBListener
       - TriggerBuild
       - MongoDBService
-      - WeaviateService
     Properties:
       ServiceName: !Sub ${AWS::StackName}-app
       Cluster: !Ref ECSCluster
@@ -1213,10 +1125,6 @@ Outputs:
   RedisEndpoint:
     Description: Redis Endpoint
     Value: !Sub ${RedisCluster.RedisEndpoint.Address}:${RedisCluster.RedisEndpoint.Port}
-
-  WeaviateEndpoint:
-    Description: Weaviate Vector DB (internal DNS via Service Discovery)
-    Value: !Sub weaviate.${AWS::StackName}.local:8080
 
   NextSteps:
     Description: What to do next
