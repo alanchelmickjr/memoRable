@@ -21,7 +21,7 @@ const USER_ID = 'synthetic_test_user';
 // Profiles
 const PROFILES = {
   smoke: { events: 100, days: 21 },
-  standard: { events: 500, days: 63 },
+  standard: { events: 500, days: 66 },
   stress: { events: 5000, days: 84 }
 };
 
@@ -293,20 +293,35 @@ async function main() {
   console.log('\nLoading memories...');
   let loaded = 0;
   let failed = 0;
+  let consecutiveFails = 0;
+  let currentApiKey = apiKey;
   const startTime = Date.now();
 
   for (let i = 0; i < memories.length; i++) {
-    const success = await loadMemory(apiKey, memories[i]);
+    const success = await loadMemory(currentApiKey, memories[i]);
     if (success) {
       loaded++;
+      consecutiveFails = 0;
       process.stdout.write('.');
     } else {
       failed++;
+      consecutiveFails++;
       process.stdout.write('x');
+
+      // Re-authenticate after 3 consecutive failures
+      if (consecutiveFails >= 3) {
+        console.log('\n[Re-authenticating...]');
+        try {
+          currentApiKey = await authenticate();
+          consecutiveFails = 0;
+        } catch (e) {
+          console.log('[Re-auth failed, continuing...]');
+        }
+      }
     }
 
-    // Rate limit: 10 per second
-    if ((i + 1) % 10 === 0) {
+    // Rate limit: 5 per second (slower to avoid issues)
+    if ((i + 1) % 5 === 0) {
       await new Promise(r => setTimeout(r, 1000));
     }
 
