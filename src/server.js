@@ -10260,9 +10260,40 @@ app.post('/predictions/feedback', (req, res) => {
   res.json({ recorded: true, hookId: hook_id, interaction });
 });
 
-app.post('/predictions/anticipated', (req, res) => {
+app.post('/predictions/anticipated', async (req, res) => {
   const { context_frame, max_memories = 5 } = req.body || {};
-  res.json({ memories: [], contextFrame: context_frame, maxMemories: max_memories });
+
+  try {
+    const db = getDatabase();
+    const query = {};
+
+    // Filter by project if specified
+    if (context_frame?.project) {
+      query.$or = [
+        { entities: { $regex: context_frame.project, $options: 'i' } },
+        { 'metadata.project': context_frame.project },
+      ];
+    }
+
+    // Get recent high-salience memories
+    const memories = await db.collection('memories')
+      .find(query)
+      .sort({ 'salience.score': -1, createdAt: -1 })
+      .limit(parseInt(max_memories, 10))
+      .toArray();
+
+    const anticipated = memories.map(m => ({
+      memoryId: m._id?.toString() || m.id,
+      content: m.content?.slice(0, 150) || '',
+      score: m.salience?.score || 0.5,
+      reasons: m.salience?.factors ? Object.keys(m.salience.factors) : ['recent'],
+    }));
+
+    res.json({ anticipated, contextFrame: context_frame });
+  } catch (error) {
+    console.error('[/predictions/anticipated] Error:', error.message);
+    res.json({ anticipated: [], contextFrame: context_frame });
+  }
 });
 
 // --- EMOTION & SENTIMENT ---
