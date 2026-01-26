@@ -322,12 +322,13 @@ export {
   type LLMProviderConfig,
 } from './llm_providers';
 
-// Re-export Ollama client for local GPU inference (Tier2_Personal)
+// Re-export Ollama client for GPU inference (Tier2_Personal)
 export {
   OllamaClient,
   createOllamaClient,
   getSharedOllamaClient,
-  isLocalLLMReady,
+  isGpuLLMReady,
+  isLocalLLMReady, // alias for backwards compat
   type OllamaConfig,
 } from './ollama_client';
 

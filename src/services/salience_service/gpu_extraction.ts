@@ -8,7 +8,7 @@
  */
 
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
-import { getSharedOllamaClient, isLocalLLMReady } from './ollama_client';
+import { getSharedOllamaClient, isGpuLLMReady } from './ollama_client';
 import type { ExtractedFeatures } from './models';
 import type { SecurityTier } from '../ingestion_service/models';
 
@@ -28,10 +28,10 @@ async function checkGpuReady(): Promise<boolean> {
     return _gpuReady;
   }
 
-  _gpuReady = await isLocalLLMReady();
+  _gpuReady = await isGpuLLMReady();
   _lastCheck = now;
 
-  console.log(`[GpuExtraction] Local LLM ready: ${_gpuReady}`);
+  console.log(`[GpuExtraction] GPU LLM ready: ${_gpuReady}`);
   return _gpuReady;
 }
 
@@ -65,10 +65,10 @@ export async function extractWithGpu(
   // Check if GPU is available
   const gpuReady = await checkGpuReady();
 
-  // Tier2: Must use local LLM only
+  // Tier2: Must use GPU LLM only (no external APIs)
   if (tier === 'Tier2_Personal') {
     if (gpuReady) {
-      console.log('[GpuExtraction] Tier2_Personal: Using local GPU');
+      console.log('[GpuExtraction] Tier2_Personal: Using GPU');
       return extractFeatures(
         text,
         getSharedOllamaClient(),
@@ -77,14 +77,14 @@ export async function extractWithGpu(
         getSharedOllamaClient()
       );
     } else {
-      console.log('[GpuExtraction] Tier2_Personal: No GPU, using heuristic');
+      console.log('[GpuExtraction] Tier2_Personal: GPU unavailable, using heuristic');
       return extractFeaturesHeuristic(text);
     }
   }
 
   // Tier1: Can use external, but prefer GPU if available and requested
   if (gpuReady && options.preferGpu) {
-    console.log('[GpuExtraction] Tier1_General: Using local GPU (preferred)');
+    console.log('[GpuExtraction] Tier1_General: Using GPU (preferred)');
     return extractFeatures(
       text,
       getSharedOllamaClient(),
@@ -102,7 +102,7 @@ export async function extractWithGpu(
 
   // No external LLM provided, try GPU
   if (gpuReady) {
-    console.log('[GpuExtraction] Tier1_General: Using local GPU (fallback)');
+    console.log('[GpuExtraction] Tier1_General: Using GPU (fallback)');
     return extractFeatures(
       text,
       getSharedOllamaClient(),

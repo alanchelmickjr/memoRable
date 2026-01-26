@@ -1,7 +1,7 @@
 /**
  * @file Ollama LLM Client
  *
- * Local GPU-powered LLM inference via Ollama.
+ * GPU-powered LLM inference via Ollama (cloud GPU stack).
  * Used for Tier2_Personal data that can't go to external APIs.
  *
  * Start small, be elegant.
@@ -38,7 +38,7 @@ interface OllamaGenerateResponse {
  * Ollama LLM Client
  *
  * Implements LLMClient interface for feature extraction.
- * Uses local Ollama instance with GPU acceleration.
+ * Uses cloud Ollama instance with GPU acceleration.
  */
 export class OllamaClient implements LLMClient {
   private config: OllamaConfig;
@@ -200,9 +200,9 @@ export function getSharedOllamaClient(): OllamaClient {
 }
 
 /**
- * Quick check if local LLM is ready
+ * Quick check if GPU LLM is ready
  */
-export async function isLocalLLMReady(): Promise<boolean> {
+export async function isGpuLLMReady(): Promise<boolean> {
   const client = getSharedOllamaClient();
   const available = await client.isAvailable();
 
@@ -219,5 +219,8 @@ export async function isLocalLLMReady(): Promise<boolean> {
 
   return true;
 }
+
+// Alias for backwards compatibility
+export const isLocalLLMReady = isGpuLLMReady;
 
 export default OllamaClient;
