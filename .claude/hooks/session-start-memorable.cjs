@@ -114,8 +114,12 @@ async function main() {
     if (loops.length > 0) {
       parts.push('## Open Loops');
       loops.forEach(l => {
-        const who = l.owner === 'alan' ? 'You owe' : 'Owed to you';
-        parts.push(`- [${who}] ${l.description}`);
+        // owner: 'self' = you owe, 'them' = owed to you, 'mutual' = shared
+        const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
+        const desc = l.description || l.content || '(no description)';
+        const party = l.otherParty ? ` (${l.otherParty})` : '';
+        const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
+        parts.push(`- [${who}]${party} ${desc}${due}`);
       });
       parts.push('');
     }

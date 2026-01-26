@@ -10022,25 +10022,37 @@ function applyBetterSelfFilter(content, options = {}) {
 
 // --- LOOPS / COMMITMENTS ---
 
-app.get('/loops', (req, res) => {
-  const { person, owner, includeOverdue = 'true' } = req.query;
-  let loops = Array.from(memoryStore.values()).filter(m =>
-    m.content && (
-      m.content.toLowerCase().includes('commit') ||
-      m.content.toLowerCase().includes('promise') ||
-      m.content.toLowerCase().includes('follow up') ||
-      m.content.toLowerCase().includes('owe') ||
-      m.content.toLowerCase().includes('todo') ||
-      m.content.toLowerCase().includes('action item')
-    )
-  );
-  if (person) {
-    loops = loops.filter(m => {
-      const entities = m.entities || [m.entity];
-      return entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()));
-    });
+app.get('/loops', async (req, res) => {
+  const { person, owner, status = 'open', limit = '15' } = req.query;
+
+  try {
+    // Query real open_loops collection from MongoDB
+    const db = getDatabase();
+    const query = {};
+
+    // Filter by status (default: open)
+    if (status) query.status = status;
+
+    // Filter by owner (self = user owes, them = owed to user)
+    if (owner) query.owner = owner;
+
+    // Filter by person (otherParty field)
+    if (person) {
+      query.otherParty = new RegExp(person, 'i');
+    }
+
+    const loops = await db.collection('open_loops')
+      .find(query)
+      .sort({ dueDate: 1, createdAt: -1 })
+      .limit(parseInt(limit, 10))
+      .toArray();
+
+    res.json({ loops, count: loops.length });
+  } catch (error) {
+    console.error('[/loops] Error querying open_loops collection:', error.message);
+    // Fallback to empty if MongoDB not connected
+    res.json({ loops: [], count: 0, error: 'Database unavailable' });
   }
-  res.json({ loops, count: loops.length });
 });
 
 app.post('/loops/:id/close', (req, res) => {
