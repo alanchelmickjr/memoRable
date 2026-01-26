@@ -1058,7 +1058,7 @@ app.get('/', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MemoRable - Memory for AI Agents</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -1260,7 +1260,7 @@ app.get('/docs', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Documentation - MemoRable</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&family=Inter:wght@400;500;600&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -1713,7 +1713,7 @@ app.get('/login', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign In - MemoRable</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -1958,7 +1958,7 @@ app.get('/register', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Register - MemoRable</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -2303,7 +2303,7 @@ app.get('/privacy', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy Policy - MemoRable</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -2433,7 +2433,7 @@ app.get('/terms', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Terms of Service - MemoRable</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -2717,10 +2717,21 @@ app.get('/dashboard', (_req, res) => {
 <head>
   <title>MemoRable Intelligence</title>
   <meta http-equiv="refresh" content="5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
-    body { font-family: 'SF Mono', 'Consolas', monospace; background: #0d1117; color: #c9d1d9; padding: 20px; max-width: 1200px; margin: 0 auto; }
-    h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
-    h2 { color: #8b949e; font-size: 14px; text-transform: uppercase; margin-top: 30px; }
+    body { font-family: 'Share Tech Mono', 'SF Mono', monospace; background: #0d1117; color: #c9d1d9; padding: 0; margin: 0; }
+    .nav { background: linear-gradient(180deg, #1a1a2e 0%, #0d1117 100%); border-bottom: 2px solid #00ffff; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+    .nav-logo { font-family: 'Orbitron', sans-serif; font-size: 20px; font-weight: 900; color: #00ffff; text-shadow: 0 0 10px #00ffff; letter-spacing: 3px; text-decoration: none; }
+    .nav-logo span { color: #ff00ff; text-shadow: 0 0 10px #ff00ff; }
+    .nav-links { display: flex; gap: 15px; }
+    .nav-link { color: #00ffff; text-decoration: none; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; padding: 8px 16px; border: 1px solid #30363d; border-radius: 4px; transition: all 0.3s; }
+    .nav-link:hover { background: rgba(0,255,255,0.1); border-color: #00ffff; box-shadow: 0 0 15px rgba(0,255,255,0.3); }
+    .nav-link.active { background: #00ffff; color: #0d1117; border-color: #00ffff; }
+    .content { padding: 20px 30px; max-width: 1400px; margin: 0 auto; }
+    h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; font-family: 'Orbitron', sans-serif; }
+    h2 { color: #8b949e; font-size: 14px; text-transform: uppercase; margin-top: 30px; letter-spacing: 2px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
     .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
     .card h3 { margin: 0 0 10px 0; color: #58a6ff; font-size: 12px; text-transform: uppercase; }
@@ -2745,7 +2756,18 @@ app.get('/dashboard', (_req, res) => {
   </style>
 </head>
 <body>
-  <h1>MemoRable Intelligence Dashboard</h1>
+  <nav class="nav">
+    <a href="/dashboard" class="nav-logo">MEMO<span>RABLE</span></a>
+    <div class="nav-links">
+      <a href="/dashboard" class="nav-link active">Intelligence</a>
+      <a href="/dashboard/mission-control" class="nav-link">Mission Control</a>
+      <a href="/dashboard/synthetic" class="nav-link">Synthetic</a>
+      <a href="/dashboard/calendar" class="nav-link">Calendar</a>
+      <a href="/docs" class="nav-link">Docs</a>
+    </div>
+  </nav>
+  <div class="content">
+  <h1>Intelligence Dashboard</h1>
   <p style="color: #8b949e;">Stop talking and start listening. Business Intelligence for the new Age.</p>
 
   <h2>Memory Gauges</h2>
@@ -2835,6 +2857,7 @@ app.get('/dashboard', (_req, res) => {
     <strong>MemoRable</strong> — Context Intelligence for AI Agents<br>
     Dashboard auto-refreshes every 5 seconds
   </div>
+  </div>
 </body>
 </html>`;
 
@@ -2922,7 +2945,7 @@ app.get('/dashboard/interactive', (_req, res) => {
   <title>MemoRable - Memory Intelligence</title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-primary: #0a0a1a;
@@ -3685,7 +3708,9 @@ app.get('/dashboard/mission-control', (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="refresh" content="5">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -3705,6 +3730,7 @@ app.get('/dashboard/mission-control', (_req, res) => {
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* Hide body until fonts load to prevent flash */
     body {
       font-family: 'Share Tech Mono', monospace;
       background: var(--bg-dark);
@@ -4749,7 +4775,7 @@ app.get('/dashboard/calendar/view', (_req, res) => {
 <html>
 <head>
   <title>MemoRable Calendar</title>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg: #0a0a0f;
@@ -5259,7 +5285,7 @@ app.get('/dashboard/synthetic', async (_req, res) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="refresh" content="10">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>
     :root {
       --bg-dark: #0a0a0f;
@@ -6014,6 +6040,105 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       </div>
     </div>
   </div>
+
+  <!-- Demo Animation: Pipeline data flow -->
+  <script>
+  (function() {
+    // Only run animation demo on first load (not on refresh)
+    const hasRun = sessionStorage.getItem('synthetic-demo-played');
+    if (hasRun) return;
+    sessionStorage.setItem('synthetic-demo-played', '1');
+
+    // Demo config - canned animation simulating data loading
+    const DEMO_FINAL_MEMORIES = ${mongoData.syntheticMemories || 847};
+    const DEMO_FINAL_ACCESS = ${mongoData.accessRecords || 2541};
+    const DEMO_DURATION = 3000; // 3 seconds total animation
+
+    // Find elements to animate
+    const statCards = document.querySelectorAll('.stat-card');
+    const pipelineStages = document.querySelectorAll('.pipeline-stage .indicator-light');
+    const gaugeFills = document.querySelectorAll('.gauge-fill');
+    const heatCells = document.querySelectorAll('.heat-cell');
+
+    // Store original values
+    const originals = {};
+    statCards.forEach((card, i) => {
+      const valueEl = card.querySelector('.stat-value');
+      if (valueEl) {
+        originals['stat' + i] = valueEl.textContent;
+        valueEl.textContent = '0';
+      }
+    });
+
+    // Hide gauges initially
+    gaugeFills.forEach(g => {
+      g.dataset.origWidth = g.style.width;
+      g.style.width = '0%';
+    });
+
+    // Dim pipeline lights
+    pipelineStages.forEach(light => {
+      light.classList.add('off');
+      light.classList.remove('on', 'slow');
+    });
+
+    // Dim heat cells
+    heatCells.forEach(cell => {
+      cell.style.opacity = '0.05';
+    });
+
+    // Animate counters
+    function animateCounter(el, target, duration) {
+      const start = 0;
+      const startTime = performance.now();
+      function update(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // ease-out
+        el.textContent = Math.floor(start + (target - start) * eased).toLocaleString();
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    }
+
+    // Start demo sequence
+    setTimeout(() => {
+      // Phase 1: Count up stats
+      statCards.forEach((card, i) => {
+        const valueEl = card.querySelector('.stat-value');
+        if (valueEl && originals['stat' + i]) {
+          const target = parseInt(originals['stat' + i].replace(/,/g, '')) || 0;
+          animateCounter(valueEl, target, DEMO_DURATION * 0.6);
+        }
+      });
+
+      // Phase 2: Light up pipeline stages sequentially
+      pipelineStages.forEach((light, i) => {
+        setTimeout(() => {
+          light.classList.remove('off');
+          light.classList.add('on');
+        }, (DEMO_DURATION * 0.3) + (i * 200));
+      });
+
+      // Phase 3: Fill gauges
+      setTimeout(() => {
+        gaugeFills.forEach(g => {
+          g.style.transition = 'width 1s ease-out';
+          g.style.width = g.dataset.origWidth;
+        });
+      }, DEMO_DURATION * 0.4);
+
+      // Phase 4: Reveal heatmap
+      heatCells.forEach((cell, i) => {
+        setTimeout(() => {
+          cell.style.transition = 'opacity 0.3s ease';
+          cell.style.opacity = '';
+        }, (DEMO_DURATION * 0.5) + (i * 30));
+      });
+
+    }, 300); // Start after page settles
+  })();
+  </script>
 </body>
 </html>`;
 
@@ -6253,7 +6378,7 @@ app.get('/user/profile', async (req, res) => {
 <head>
   <title>Profile - MemoRable</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${userSettingsStyles}</style>
 </head>
 <body>
@@ -6368,7 +6493,7 @@ app.get('/user/devices', async (req, res) => {
 <head>
   <title>Devices - MemoRable</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${userSettingsStyles}</style>
 </head>
 <body>
@@ -6469,7 +6594,7 @@ app.get('/user/preferences', async (req, res) => {
 <head>
   <title>Preferences - MemoRable</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${userSettingsStyles}</style>
 </head>
 <body>
@@ -6577,7 +6702,7 @@ app.get('/user/passphrase', async (req, res) => {
 <head>
   <title>Change Passphrase - MemoRable</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${userSettingsStyles}</style>
 </head>
 <body>
@@ -6800,7 +6925,7 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
   <title>Admin Dashboard - MemoRable</title>
   <meta charset="utf-8">
   <meta http-equiv="refresh" content="30">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${adminStyles}</style>
 </head>
 <body>
@@ -6922,7 +7047,7 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
 <head>
   <title>User Management - MemoRable Admin</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${adminStyles}</style>
 </head>
 <body>
@@ -7060,7 +7185,7 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
 <head>
   <title>Device Management - MemoRable Admin</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${adminStyles}</style>
 </head>
 <body>
@@ -7147,7 +7272,7 @@ app.get('/admin/settings', adminMiddleware, async (req, res) => {
 <head>
   <title>System Settings - MemoRable Admin</title>
   <meta charset="utf-8">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
   <style>${adminStyles}</style>
 </head>
 <body>
