@@ -53,9 +53,8 @@ jobs:
     if: needs.check-aws-config.outputs.aws_configured == 'true'
     runs-on: ubuntu-latest
     outputs:
-      app_image: ${{ steps.build.outputs.app_image }}
-      ingestion_image: ${{ steps.build.outputs.ingestion_image }}
-      mcp_image: ${{ steps.build.outputs.mcp_image }}
+      # Output just the tag - full URL gets masked by GitHub Actions because it contains AWS_ACCOUNT_ID
+      image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
       - name: Checkout
@@ -95,21 +94,21 @@ jobs:
           docker push $ECR_REGISTRY/memorable:$IMAGE_TAG
           docker tag $ECR_REGISTRY/memorable:$IMAGE_TAG $ECR_REGISTRY/memorable:latest
           docker push $ECR_REGISTRY/memorable:latest
-          echo "app_image=$ECR_REGISTRY/memorable:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
           # Build and push ingestion service
           docker build -t $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG -f src/services/ingestion_service/Dockerfile .
           docker push $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG
           docker tag $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG $ECR_REGISTRY/memorable-ingestion:latest
           docker push $ECR_REGISTRY/memorable-ingestion:latest
-          echo "ingestion_image=$ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
           # Build and push MCP server
           docker build -t $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG -f src/services/mcp_server/Dockerfile .
           docker push $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG
           docker tag $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG $ECR_REGISTRY/memorable-mcp:latest
           docker push $ECR_REGISTRY/memorable-mcp:latest
-          echo "mcp_image=$ECR_REGISTRY/memorable-mcp:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+          # Output just the tag - full URLs get masked because they contain AWS account ID
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   ecs-deploy:
     needs: [check-aws-config, build-images]
@@ -128,7 +127,8 @@ jobs:
         env:
           CLUSTER: ${{ env.STACK_NAME }}-cluster
           SERVICE: ${{ env.STACK_NAME }}-app
-          NEW_IMAGE: ${{ needs.build-images.outputs.app_image }}
+          # Reconstruct full URL here - can't pass through outputs because account ID gets masked
+          NEW_IMAGE: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:${{ needs.build-images.outputs.image_tag }}
         run: |
           echo "Deploying $NEW_IMAGE to $CLUSTER/$SERVICE"
 
@@ -234,7 +234,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
             echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Image:** ${{ needs.build-images.outputs.app_image }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Image tag:** ${{ needs.build-images.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Infrastructure" >> $GITHUB_STEP_SUMMARY
             echo "- Auth: OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
