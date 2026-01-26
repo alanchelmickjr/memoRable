@@ -1,235 +1,105 @@
 #!/usr/bin/env npx tsx
 /**
- * Bulk Synthetic Data Generator
- *
- * Generates 180,000 memories over 66 days and bulk inserts to MongoDB.
- *
- * Usage:
- *   MONGODB_URI=mongodb+srv://... npx tsx tests/synthetic/bulk_generate.ts
+ * Bulk Synthetic Generator - 180k memories via parallel REST API
  */
 
-import { MongoClient } from 'mongodb';
-import crypto from 'crypto';
-
-// =============================================================================
-// CONFIG
-// =============================================================================
-
-const TOTAL_MEMORIES = 180_000;
+const API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+const PASSPHRASE = 'I remember what I have learned from you.';
+const TOTAL = 180_000;
 const DAYS = 66;
-const MEMORIES_PER_DAY = Math.ceil(TOTAL_MEMORIES / DAYS); // ~2,727
-const BATCH_SIZE = 1000;
-const USER_ID = 'synthetic_test_user';
+const CONCURRENCY = 20;
 
-// Pattern templates
-const ACTIVITIES = [
-  'standup', 'coding', 'review', 'meeting', 'planning', 'debugging',
-  'documentation', 'testing', 'deployment', 'support', 'research',
-  'design', 'interview', 'training', 'break', 'lunch', 'sync'
-];
+const ACTIVITIES = ['standup', 'coding', 'review', 'meeting', 'planning', 'debugging', 'testing', 'deployment', 'research', 'design'];
+const LOCATIONS = ['office', 'home', 'conference_room', 'coffee_shop', 'remote'];
+const PEOPLE = ['Sarah', 'Mike', 'Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor', 'Jamie', 'Riley', 'Quinn'];
+const TOPICS = ['API design', 'database', 'user feedback', 'sprint', 'bug fix', 'feature', 'performance', 'security', 'testing', 'deployment'];
 
-const LOCATIONS = [
-  'office', 'home', 'conference_room', 'coffee_shop', 'coworking',
-  'client_site', 'remote', 'boardroom', 'lab', 'studio'
-];
+const pick = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
 
-const PEOPLE = [
-  'Sarah', 'Mike', 'Alex', 'Jordan', 'Casey', 'Morgan', 'Taylor',
-  'Jamie', 'Riley', 'Quinn', 'Avery', 'Cameron', 'Drew', 'Emery',
-  'Finley', 'Harper', 'Kennedy', 'Logan', 'Parker', 'Reese'
-];
+async function auth(): Promise<string> {
+  const k = await fetch(`${API_URL}/auth/knock`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device: { type: 'bulk', name: 'Generator' } })
+  }).then(r => r.json());
 
-const TOPICS = [
-  'API design', 'database optimization', 'user feedback', 'sprint planning',
-  'bug fix', 'feature request', 'performance', 'security review', 'testing',
-  'deployment', 'monitoring', 'documentation', 'onboarding', 'retrospective',
-  'roadmap', 'architecture', 'refactoring', 'integration', 'migration'
-];
+  const e = await fetch(`${API_URL}/auth/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge: k.challenge, passphrase: PASSPHRASE, device: { type: 'bulk', name: 'Generator' } })
+  }).then(r => r.json());
 
-const TEMPLATES = [
-  '{activity} session with {person}. Discussed {topic}.',
-  'Working on {topic} at {location}. Good progress.',
-  'Met with {person} about {topic}. Action items identified.',
-  '{activity} completed. {topic} is now ready for review.',
-  'Quick sync with {person} on {topic}. Aligned on next steps.',
-  'Deep work on {topic}. No interruptions at {location}.',
-  '{person} raised concerns about {topic}. Need to follow up.',
-  'Finished {activity} for {topic}. Moving to next priority.',
-  'Blocked on {topic}. Reached out to {person} for help.',
-  'Breakthrough on {topic}! {person} had the key insight.',
-  'Reviewing {topic} changes with {person} at {location}.',
-  'End of day: {topic} at 80%. Will continue tomorrow.',
-  'Morning focus on {topic}. {activity} scheduled for afternoon.',
-  '{person} demo of {topic}. Team impressed with progress.',
-  'Pairing with {person} on {topic}. Learning new approaches.'
-];
-
-// =============================================================================
-// GENERATOR
-// =============================================================================
-
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return e.api_key;
 }
 
-function generateContent(): string {
-  const template = pick(TEMPLATES);
-  return template
-    .replace('{activity}', pick(ACTIVITIES))
-    .replace('{location}', pick(LOCATIONS))
-    .replace('{person}', pick(PEOPLE))
-    .replace('{topic}', pick(TOPICS));
-}
-
-function generateMemory(timestamp: Date) {
-  const activity = pick(ACTIVITIES);
-  const location = pick(LOCATIONS);
-  const people = [pick(PEOPLE)];
-  if (Math.random() > 0.7) people.push(pick(PEOPLE));
-
-  const hour = timestamp.getHours();
-  let timeOfDay = 'morning';
-  if (hour >= 12 && hour < 17) timeOfDay = 'afternoon';
-  if (hour >= 17) timeOfDay = 'evening';
-
-  // Determine pattern type based on regularity
-  const dayOfWeek = timestamp.getDay();
-  const dayOfMonth = timestamp.getDate();
-  let patternType = 'irregular';
-
-  // Daily patterns (morning standup, evening reflection)
-  if ((hour >= 8 && hour <= 10) || (hour >= 17 && hour <= 19)) {
-    patternType = 'daily';
-  }
-  // Weekly patterns (Wed/Fri meetings)
-  if ((dayOfWeek === 3 || dayOfWeek === 5) && hour >= 13 && hour <= 16) {
-    patternType = 'weekly';
-  }
-  // Monthly patterns (15th of month)
-  if (dayOfMonth === 15) {
-    patternType = 'monthly';
-  }
+function genMemory(day: number): any {
+  const now = new Date();
+  const ts = new Date(now.getTime() - (DAYS - day) * 24 * 60 * 60 * 1000);
+  ts.setHours(6 + Math.floor(Math.random() * 16), Math.floor(Math.random() * 60));
 
   return {
-    _id: crypto.randomUUID(),
-    userId: USER_ID,
-    content: generateContent(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    salienceScore: 40 + Math.floor(Math.random() * 50), // 40-90
-    entities: [USER_ID, activity, ...people],
-    contextFrame: {
-      location,
-      activity,
-      people,
-      timeOfDay,
-      dayOfWeek: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayOfWeek]
-    },
-    metadata: {
-      synthetic: true,
-      patternType,
-      generatedAt: new Date().toISOString()
-    },
-    extractedFeatures: {
-      topics: [pick(TOPICS)],
-      emotionalKeywords: [],
-      actionItems: Math.random() > 0.7 ? [`Follow up on ${pick(TOPICS)}`] : []
-    },
-    accessHistory: [{
-      timestamp,
-      contextFrame: { activity, location }
-    }]
+    content: `${pick(ACTIVITIES)} with ${pick(PEOPLE)} about ${pick(TOPICS)} at ${pick(LOCATIONS)}.`,
+    entities: ['synthetic_test_user', pick(ACTIVITIES)],
+    context: { location: pick(LOCATIONS), activity: pick(ACTIVITIES), people: [pick(PEOPLE)] },
+    metadata: { synthetic: true },
+    createdAt: ts.toISOString()
   };
 }
 
-function* generateMemories(): Generator<any[]> {
-  const now = new Date();
-  const startDate = new Date(now.getTime() - DAYS * 24 * 60 * 60 * 1000);
-
-  let batch: any[] = [];
-  let totalGenerated = 0;
-
-  for (let day = 0; day < DAYS; day++) {
-    const dayStart = new Date(startDate.getTime() + day * 24 * 60 * 60 * 1000);
-
-    // Generate memories throughout the day (6am - 10pm)
-    for (let i = 0; i < MEMORIES_PER_DAY && totalGenerated < TOTAL_MEMORIES; i++) {
-      const hour = 6 + Math.floor(Math.random() * 16); // 6am - 10pm
-      const minute = Math.floor(Math.random() * 60);
-      const timestamp = new Date(dayStart);
-      timestamp.setHours(hour, minute, Math.floor(Math.random() * 60), 0);
-
-      batch.push(generateMemory(timestamp));
-      totalGenerated++;
-
-      if (batch.length >= BATCH_SIZE) {
-        yield batch;
-        batch = [];
-      }
-    }
-  }
-
-  if (batch.length > 0) {
-    yield batch;
-  }
+async function post(key: string, mem: any): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_URL}/memory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      body: JSON.stringify(mem)
+    });
+    return r.ok;
+  } catch { return false; }
 }
-
-// =============================================================================
-// MAIN
-// =============================================================================
 
 async function main() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    console.error('MONGODB_URI environment variable required');
-    console.error('Example: MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/memorable');
-    process.exit(1);
-  }
+  console.log(`\n=== BULK GENERATOR: ${TOTAL.toLocaleString()} memories ===\n`);
 
-  console.log(`\n=== BULK SYNTHETIC GENERATOR ===`);
-  console.log(`Target: ${TOTAL_MEMORIES.toLocaleString()} memories`);
-  console.log(`Days: ${DAYS}`);
-  console.log(`Per day: ~${MEMORIES_PER_DAY.toLocaleString()}`);
-  console.log(`Batch size: ${BATCH_SIZE}\n`);
+  let key = await auth();
+  console.log('Authenticated\n');
 
-  const client = new MongoClient(uri);
+  let done = 0, fail = 0, reauths = 0;
+  const start = Date.now();
+  const perDay = Math.ceil(TOTAL / DAYS);
 
-  try {
-    await client.connect();
-    console.log('Connected to MongoDB\n');
+  for (let day = 0; day < DAYS; day++) {
+    const batch: Promise<boolean>[] = [];
 
-    const db = client.db('memorable');
-    const collection = db.collection('memories');
+    for (let i = 0; i < perDay && done + fail < TOTAL; i++) {
+      batch.push(post(key, genMemory(day)));
 
-    let inserted = 0;
-    let batchNum = 0;
-    const startTime = Date.now();
+      if (batch.length >= CONCURRENCY) {
+        const results = await Promise.all(batch);
+        results.forEach(r => r ? done++ : fail++);
+        batch.length = 0;
 
-    for (const batch of generateMemories()) {
-      await collection.insertMany(batch, { ordered: false });
-      inserted += batch.length;
-      batchNum++;
-
-      const elapsed = (Date.now() - startTime) / 1000;
-      const rate = inserted / elapsed;
-      const eta = (TOTAL_MEMORIES - inserted) / rate;
-
-      process.stdout.write(`\rBatch ${batchNum}: ${inserted.toLocaleString()} inserted (${rate.toFixed(0)}/sec, ETA: ${Math.ceil(eta)}s)    `);
+        // Re-auth on failures
+        if (fail > done * 0.1 && reauths < 50) {
+          key = await auth();
+          reauths++;
+        }
+      }
     }
 
-    const duration = (Date.now() - startTime) / 1000;
+    if (batch.length) {
+      const results = await Promise.all(batch);
+      results.forEach(r => r ? done++ : fail++);
+    }
 
-    console.log(`\n\n=== COMPLETE ===`);
-    console.log(`Inserted: ${inserted.toLocaleString()}`);
-    console.log(`Duration: ${duration.toFixed(1)}s`);
-    console.log(`Rate: ${(inserted / duration).toFixed(0)} memories/sec`);
-
-  } finally {
-    await client.close();
+    const rate = done / ((Date.now() - start) / 1000);
+    const eta = (TOTAL - done - fail) / rate;
+    process.stdout.write(`\rDay ${day + 1}/${DAYS} | ${done.toLocaleString()} done | ${fail} fail | ${rate.toFixed(0)}/s | ETA: ${Math.ceil(eta / 60)}m    `);
   }
+
+  console.log(`\n\n=== COMPLETE ===`);
+  console.log(`Done: ${done.toLocaleString()}`);
+  console.log(`Failed: ${fail}`);
+  console.log(`Time: ${((Date.now() - start) / 1000 / 60).toFixed(1)}m`);
 }
 
-main().catch(err => {
-  console.error('Fatal:', err.message);
-  process.exit(1);
-});
+main().catch(e => { console.error(e); process.exit(1); });
