@@ -2735,7 +2735,7 @@ app.get('/register', (_req, res) => {
     <div class="register-box">
       <h2>Create Account</h2>
       <div class="demo-notice">
-        Demo Mode: For full access, contact team@memorable.ai
+        Demo Mode: For full access, contact team@memorable.chat
       </div>
       <div class="error" id="error"></div>
       <div class="success" id="success"></div>
