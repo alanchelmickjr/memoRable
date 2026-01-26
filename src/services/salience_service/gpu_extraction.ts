@@ -1,9 +1,10 @@
 /**
  * @file GPU-Powered Feature Extraction
  *
- * Elegant wrapper that automatically uses local GPU (Ollama)
+ * Elegant wrapper that automatically uses cloud GPU (Ollama)
  * when available, falling back gracefully.
  *
+ * Works on any edge device: ESP32, smart glasses, robots.
  * Small, simple, works.
  */
 
