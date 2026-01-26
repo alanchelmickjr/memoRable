@@ -255,6 +255,15 @@ export interface UserDocument {
   isAdmin: boolean;
   isSuperAdmin: boolean;       // Can delete users, billing, etc.
 
+  // Billing (Stripe)
+  billing: {
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing' | 'incomplete';
+    currentPeriodEnd?: string;
+    cancelAtPeriodEnd?: boolean;
+  };
+
   // Authentication state
   auth: {
     failedAttempts: number;
@@ -600,6 +609,7 @@ export function createUserDocument(
     status: 'active',
     isAdmin: options?.isAdmin || false,
     isSuperAdmin: false,
+    billing: {},
     auth: {
       failedAttempts: 0,
       failedAttemptsWindow: [],

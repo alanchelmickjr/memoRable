@@ -1878,6 +1878,7 @@ app.get('/login', (_req, res) => {
         <button type="submit" class="btn" id="submitBtn">Authenticate</button>
       </form>
       <p class="hint">New here? <a href="/register">Create an account</a></p>
+      <p class="hint"><a href="/auth/recover">Forgot passphrase?</a></p>
     </div>
     <a href="/" class="back-link">&larr; Back to Home</a>
     <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text-dim)">
@@ -1948,6 +1949,502 @@ app.get('/login', (_req, res) => {
   res.set('Content-Type', 'text/html');
   res.send(html);
 });
+
+// =============================================================================
+// ACCOUNT RECOVERY - Stylometry-based identity verification
+// =============================================================================
+
+// Recovery page - uses behavioral stylometry to verify identity
+app.get('/auth/recover', (_req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Account Recovery - MemoRable</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --red: #ff0040;
+      --yellow: #ffff00;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container { width: 100%; max-width: 500px; padding: 20px; }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--cyan);
+      text-shadow: 0 0 20px var(--cyan);
+      letter-spacing: 4px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 20px var(--magenta); }
+    .box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 30px;
+    }
+    .box h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--magenta);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .instructions {
+      color: var(--text-dim);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      padding: 15px;
+      background: rgba(255, 0, 255, 0.05);
+      border-left: 3px solid var(--magenta);
+      border-radius: 4px;
+    }
+    .form-group { margin-bottom: 20px; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .form-group input, .form-group textarea {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+    .form-group textarea { min-height: 120px; resize: vertical; }
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none;
+      border-color: var(--magenta);
+      box-shadow: 0 0 10px rgba(255, 0, 255, 0.2);
+    }
+    .char-count {
+      text-align: right;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 5px;
+    }
+    .char-count.ready { color: var(--green); }
+    .btn {
+      width: 100%;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      padding: 16px;
+      border-radius: 4px;
+      border: 2px solid var(--magenta);
+      background: var(--magenta);
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn:hover { background: transparent; color: var(--magenta); box-shadow: 0 0 30px var(--magenta); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status {
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.error { display: block; background: rgba(255,0,64,0.1); border: 1px solid var(--red); color: var(--red); }
+    .status.success { display: block; background: rgba(0,255,65,0.1); border: 1px solid var(--green); color: var(--green); }
+    .status.verifying { display: block; background: rgba(255,255,0,0.1); border: 1px solid var(--yellow); color: var(--yellow); }
+    .confidence-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--magenta);
+      transition: width 0.5s ease;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .back-link:hover { color: var(--cyan); }
+    #step2 { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">MEMO<span>RABLE</span></div>
+    <div class="box">
+      <h2>Account Recovery</h2>
+
+      <!-- Step 1: Stylometry verification -->
+      <div id="step1">
+        <div class="instructions">
+          <strong>Identity Verification</strong><br><br>
+          We recognize you by how you write, not what you write.
+          Type naturally below - explain anything (a memory, a thought, what you had for breakfast).
+          We need ~200 characters to identify you.
+        </div>
+        <div class="status" id="status1"></div>
+        <form id="verifyForm">
+          <div class="form-group">
+            <label for="sample">Write something (anything)</label>
+            <textarea id="sample" name="sample" placeholder="Just write naturally... tell us about your day, a random thought, anything at all. The more you write like yourself, the better we can identify you."></textarea>
+            <div class="char-count" id="charCount">0 / 200 characters</div>
+            <div class="confidence-bar"><div class="confidence-fill" id="confidenceFill"></div></div>
+          </div>
+          <button type="submit" class="btn" id="verifyBtn" disabled>Verify Identity</button>
+        </form>
+      </div>
+
+      <!-- Step 2: Reset passphrase -->
+      <div id="step2">
+        <div class="instructions" style="border-color: var(--green); background: rgba(0,255,65,0.05);">
+          <strong>Identity Verified!</strong><br><br>
+          We recognized your writing style. You can now set a new passphrase.
+        </div>
+        <div class="status" id="status2"></div>
+        <form id="resetForm">
+          <input type="hidden" id="verifiedUserId" name="verifiedUserId">
+          <div class="form-group">
+            <label for="newPassphrase">New Passphrase</label>
+            <input type="password" id="newPassphrase" name="newPassphrase" placeholder="Enter new passphrase" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="confirmPassphrase">Confirm Passphrase</label>
+            <input type="password" id="confirmPassphrase" name="confirmPassphrase" placeholder="Confirm new passphrase" required>
+          </div>
+          <button type="submit" class="btn" style="border-color: var(--green); background: var(--green); color: var(--bg-dark);">Reset Passphrase</button>
+        </form>
+      </div>
+    </div>
+    <a href="/login" class="back-link">&larr; Back to Sign In</a>
+  </div>
+
+  <script>
+    const sample = document.getElementById('sample');
+    const charCount = document.getElementById('charCount');
+    const confidenceFill = document.getElementById('confidenceFill');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const status1 = document.getElementById('status1');
+    const MIN_CHARS = 200;
+
+    // Character count and readiness
+    sample.addEventListener('input', () => {
+      const len = sample.value.length;
+      charCount.textContent = len + ' / ' + MIN_CHARS + ' characters';
+      charCount.className = len >= MIN_CHARS ? 'char-count ready' : 'char-count';
+      verifyBtn.disabled = len < MIN_CHARS;
+
+      // Visual confidence indicator
+      const progress = Math.min(100, (len / MIN_CHARS) * 100);
+      confidenceFill.style.width = progress + '%';
+      if (len >= MIN_CHARS) {
+        confidenceFill.style.background = 'var(--green)';
+      }
+    });
+
+    // Step 1: Verify identity via stylometry
+    document.getElementById('verifyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status1.className = 'status verifying';
+      status1.textContent = 'Analyzing writing patterns...';
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Analyzing...';
+
+      try {
+        const res = await fetch('/auth/verify-stylometry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sample: sample.value })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.verified) {
+          throw new Error(data.error || 'Could not verify identity. Try writing more or differently.');
+        }
+
+        // Success - show step 2
+        status1.className = 'status success';
+        status1.textContent = 'Identity verified with ' + (data.confidence * 100).toFixed(0) + '% confidence';
+        document.getElementById('verifiedUserId').value = data.userId;
+        setTimeout(() => {
+          document.getElementById('step1').style.display = 'none';
+          document.getElementById('step2').style.display = 'block';
+        }, 1500);
+
+      } catch (err) {
+        status1.className = 'status error';
+        status1.textContent = err.message;
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify Identity';
+      }
+    });
+
+    // Step 2: Reset passphrase
+    document.getElementById('resetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const status2 = document.getElementById('status2');
+      const newPass = document.getElementById('newPassphrase').value;
+      const confirmPass = document.getElementById('confirmPassphrase').value;
+
+      if (newPass !== confirmPass) {
+        status2.className = 'status error';
+        status2.textContent = 'Passphrases do not match';
+        return;
+      }
+
+      status2.className = 'status verifying';
+      status2.textContent = 'Resetting passphrase...';
+
+      try {
+        const res = await fetch('/auth/reset-passphrase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: document.getElementById('verifiedUserId').value,
+            newPassphrase: newPass
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to reset passphrase');
+        }
+
+        status2.className = 'status success';
+        status2.textContent = 'Passphrase reset! Redirecting to login...';
+        setTimeout(() => { window.location.href = '/login'; }, 2000);
+
+      } catch (err) {
+        status2.className = 'status error';
+        status2.textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>`;
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// POST /auth/verify-stylometry - Verify identity via behavioral patterns
+app.post('/auth/verify-stylometry', async (req, res) => {
+  const { sample } = req.body || {};
+
+  if (!sample || sample.length < 100) {
+    return res.status(400).json({ error: 'Need at least 100 characters', verified: false });
+  }
+
+  try {
+    // Use behavioral identity to identify user
+    // This calls the identify_user MCP tool internally
+    const db = getDatabase();
+    const behavioralCollection = db.collection('behavioral_fingerprints');
+
+    // Get all users with behavioral data
+    const fingerprints = await behavioralCollection.find({}).toArray();
+
+    if (fingerprints.length === 0) {
+      return res.status(404).json({ error: 'No behavioral data available for verification', verified: false });
+    }
+
+    // Simple stylometry: analyze writing patterns
+    const sampleFeatures = extractStylometryFeatures(sample);
+
+    let bestMatch = null;
+    let bestScore = 0;
+
+    for (const fp of fingerprints) {
+      if (fp.features) {
+        const score = compareStylometry(sampleFeatures, fp.features);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = fp.userId;
+        }
+      }
+    }
+
+    const CONFIDENCE_THRESHOLD = 0.65;
+    if (bestScore >= CONFIDENCE_THRESHOLD && bestMatch) {
+      // Generate a short-lived recovery token
+      const token = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+
+      await db.collection('users').updateOne(
+        { userId: bestMatch },
+        {
+          $set: {
+            'recovery.recoveryTokenHash': tokenHash,
+            'recovery.recoveryTokenExpires': expires
+          }
+        }
+      );
+
+      // Store token in session for step 2 (or use secure cookie)
+      return res.json({
+        verified: true,
+        userId: bestMatch,
+        confidence: bestScore,
+        recoveryToken: token
+      });
+    }
+
+    return res.status(401).json({
+      error: 'Could not verify identity. Your writing patterns did not match any known user.',
+      verified: false,
+      confidence: bestScore
+    });
+
+  } catch (err) {
+    console.error('[Recovery] Stylometry error:', err);
+    return res.status(500).json({ error: 'Verification failed', verified: false });
+  }
+});
+
+// POST /auth/reset-passphrase - Reset passphrase after identity verification
+app.post('/auth/reset-passphrase', async (req, res) => {
+  const { userId, newPassphrase, recoveryToken } = req.body || {};
+
+  if (!userId || !newPassphrase) {
+    return res.status(400).json({ error: 'Missing userId or newPassphrase' });
+  }
+
+  if (newPassphrase.length < 8) {
+    return res.status(400).json({ error: 'Passphrase must be at least 8 characters' });
+  }
+
+  try {
+    const db = getDatabase();
+    const user = await db.collection('users').findOne({ userId });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify recovery token if provided (additional security)
+    if (recoveryToken && user.recovery?.recoveryTokenHash) {
+      const tokenHash = crypto.createHash('sha256').update(recoveryToken).digest('hex');
+      if (tokenHash !== user.recovery.recoveryTokenHash) {
+        return res.status(401).json({ error: 'Invalid recovery token' });
+      }
+      if (new Date() > new Date(user.recovery.recoveryTokenExpires)) {
+        return res.status(401).json({ error: 'Recovery token expired' });
+      }
+    }
+
+    // Hash new passphrase
+    const { hash } = await hashPassphrase(newPassphrase);
+
+    // Update passphrase
+    await db.collection('users').updateOne(
+      { userId },
+      {
+        $set: {
+          passphraseHash: hash,
+          'auth.passwordChangedAt': new Date().toISOString(),
+          'auth.failedAttempts': 0,
+          'auth.lockedUntil': null,
+          updatedAt: new Date().toISOString()
+        },
+        $unset: {
+          'recovery.recoveryTokenHash': '',
+          'recovery.recoveryTokenExpires': ''
+        }
+      }
+    );
+
+    // Also update in-memory passphrase users
+    if (passphraseUsers.has(userId)) {
+      passphraseUsers.get(userId).passphrase_hash = hash;
+    }
+
+    console.log('[Recovery] Passphrase reset for user:', userId);
+    return res.json({ success: true, message: 'Passphrase reset successfully' });
+
+  } catch (err) {
+    console.error('[Recovery] Reset error:', err);
+    return res.status(500).json({ error: 'Failed to reset passphrase' });
+  }
+});
+
+// Stylometry feature extraction (simple version)
+function extractStylometryFeatures(text) {
+  const words = text.split(/\\s+/).filter(w => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+
+  return {
+    avgWordLength: words.reduce((sum, w) => sum + w.length, 0) / (words.length || 1),
+    avgSentenceLength: words.length / (sentences.length || 1),
+    punctuationRatio: (text.match(/[,;:'"()-]/g) || []).length / (text.length || 1),
+    uppercaseRatio: (text.match(/[A-Z]/g) || []).length / (text.length || 1),
+    spaceRatio: (text.match(/\\s/g) || []).length / (text.length || 1),
+    uniqueWordRatio: new Set(words.map(w => w.toLowerCase())).size / (words.length || 1),
+    ellipsisCount: (text.match(/\\.{2,}/g) || []).length,
+    exclamationCount: (text.match(/!/g) || []).length,
+    questionCount: (text.match(/\\?/g) || []).length,
+  };
+}
+
+// Compare stylometry features
+function compareStylometry(a, b) {
+  const keys = Object.keys(a);
+  let totalDiff = 0;
+  let count = 0;
+
+  for (const key of keys) {
+    if (b[key] !== undefined) {
+      const diff = Math.abs(a[key] - b[key]);
+      const max = Math.max(Math.abs(a[key]), Math.abs(b[key]), 0.001);
+      totalDiff += diff / max;
+      count++;
+    }
+  }
+
+  // Lower diff = higher similarity
+  const avgDiff = totalDiff / (count || 1);
+  return Math.max(0, 1 - avgDiff);
+}
 
 // Register page - self-service user registration
 app.get('/register', (_req, res) => {
@@ -6386,6 +6883,7 @@ app.get('/user/profile', async (req, res) => {
     <div class="logo">MEMORABLE // USER SETTINGS</div>
     <nav class="nav">
       <a href="/user/profile" class="active">Profile</a>
+      <a href="/user/billing">Billing</a>
       <a href="/user/devices">Devices</a>
       <a href="/user/preferences">Preferences</a>
       <a href="/dashboard/mission-control">Dashboard</a>
@@ -6436,6 +6934,24 @@ app.get('/user/profile', async (req, res) => {
     </p>
     <a href="/user/passphrase" class="btn btn-primary">Change Passphrase</a>
   </div>
+
+  <div class="panel">
+    <div class="panel-title">Subscription & Billing</div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--magenta);">${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-label">Current Plan</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: ${user.billing?.subscriptionStatus === 'active' ? 'var(--green)' : 'var(--yellow)'};">${user.billing?.subscriptionStatus?.toUpperCase() || 'N/A'}</div>
+        <div class="stat-label">Status</div>
+      </div>
+    </div>
+    <p style="color: var(--text-dim); margin: 15px 0; font-size: 13px;">
+      Manage your subscription, payment methods, and billing history.
+    </p>
+    <a href="/user/billing" class="btn btn-primary">Manage Billing</a>
+  </div>
 </body>
 </html>`;
 
@@ -6458,6 +6974,314 @@ app.post('/user/profile', async (req, res) => {
   }
 
   res.redirect('/user/profile?updated=1');
+});
+
+// =============================================================================
+// BILLING - Stripe integration
+// =============================================================================
+
+// GET /user/billing - Billing management page
+app.get('/user/billing', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/auth/knock?redirect=/user/billing');
+  }
+
+  let user = null;
+  if (mongoConnected) {
+    user = await findUserById(userId);
+  }
+
+  // Fallback
+  if (!user) {
+    const inMemUser = passphraseUsers.get(userId);
+    if (inMemUser) {
+      user = { userId, tier: 'free', billing: {} };
+    }
+  }
+
+  if (!user) {
+    return res.status(404).send('User not found');
+  }
+
+  const hasStripe = !!user.billing?.stripeCustomerId;
+  const subscriptionStatus = user.billing?.subscriptionStatus || 'none';
+  const currentPeriodEnd = user.billing?.currentPeriodEnd
+    ? new Date(user.billing.currentPeriodEnd).toLocaleDateString()
+    : 'N/A';
+
+  const html = \`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Billing - MemoRable</title>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+  <style>\${userSettingsStyles}</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMORABLE // BILLING</div>
+    <nav class="nav">
+      <a href="/user/profile">Profile</a>
+      <a href="/user/billing" class="active">Billing</a>
+      <a href="/user/devices">Devices</a>
+      <a href="/user/preferences">Preferences</a>
+      <a href="/dashboard/mission-control">Dashboard</a>
+    </nav>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Current Plan</div>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-value" style="color: var(--magenta); font-size: 24px;">\${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-label">Plan</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" style="color: \${subscriptionStatus === 'active' ? 'var(--green)' : subscriptionStatus === 'canceled' ? 'var(--red)' : 'var(--yellow)'};">\${subscriptionStatus.toUpperCase()}</div>
+        <div class="stat-label">Status</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">\${currentPeriodEnd}</div>
+        <div class="stat-label">\${user.billing?.cancelAtPeriodEnd ? 'Cancels On' : 'Renews On'}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Plan Comparison</div>
+    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+      <tr style="border-bottom: 1px solid var(--border);">
+        <th style="text-align: left; padding: 10px; color: var(--text-dim);">Feature</th>
+        <th style="text-align: center; padding: 10px; color: var(--text-dim);">Free</th>
+        <th style="text-align: center; padding: 10px; color: var(--cyan);">Pro</th>
+        <th style="text-align: center; padding: 10px; color: var(--magenta);">Enterprise</th>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px;">Memories/day</td>
+        <td style="text-align: center; padding: 10px;">100</td>
+        <td style="text-align: center; padding: 10px; color: var(--cyan);">1,000</td>
+        <td style="text-align: center; padding: 10px; color: var(--magenta);">10,000</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px;">Storage</td>
+        <td style="text-align: center; padding: 10px;">100 MB</td>
+        <td style="text-align: center; padding: 10px; color: var(--cyan);">1 GB</td>
+        <td style="text-align: center; padding: 10px; color: var(--magenta);">10 GB</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px;">Devices</td>
+        <td style="text-align: center; padding: 10px;">3</td>
+        <td style="text-align: center; padding: 10px; color: var(--cyan);">10</td>
+        <td style="text-align: center; padding: 10px; color: var(--magenta);">100</td>
+      </tr>
+      <tr style="border-bottom: 1px solid var(--border);">
+        <td style="padding: 10px;">API calls/min</td>
+        <td style="text-align: center; padding: 10px;">30</td>
+        <td style="text-align: center; padding: 10px; color: var(--cyan);">100</td>
+        <td style="text-align: center; padding: 10px; color: var(--magenta);">500</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px;">Priority Support</td>
+        <td style="text-align: center; padding: 10px;">-</td>
+        <td style="text-align: center; padding: 10px; color: var(--cyan);">✓</td>
+        <td style="text-align: center; padding: 10px; color: var(--magenta);">✓</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Manage Subscription</div>
+    \${hasStripe ? \`
+      <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
+        Manage your payment methods, view invoices, and update your subscription.
+      </p>
+      <a href="/api/billing/portal" class="btn btn-primary">Open Stripe Customer Portal</a>
+    \` : \`
+      <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
+        Upgrade to Pro or Enterprise to unlock more features.
+      </p>
+      <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <a href="/api/billing/checkout?tier=pro" class="btn btn-primary" style="border-color: var(--cyan); background: var(--cyan); color: var(--bg-dark);">Upgrade to Pro - \$9/mo</a>
+        <a href="/api/billing/checkout?tier=enterprise" class="btn btn-primary" style="border-color: var(--magenta);">Upgrade to Enterprise - \$49/mo</a>
+      </div>
+    \`}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Billing History</div>
+    <p style="color: var(--text-dim); font-size: 13px;">
+      \${hasStripe ? 'View your complete billing history in the Stripe Customer Portal.' : 'Billing history will appear here once you subscribe to a paid plan.'}
+    </p>
+  </div>
+</body>
+</html>\`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// GET /api/billing/checkout - Create Stripe checkout session
+app.get('/api/billing/checkout', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/login?redirect=/user/billing');
+  }
+
+  const { tier } = req.query;
+  if (!tier || !['pro', 'enterprise'].includes(tier)) {
+    return res.status(400).json({ error: 'Invalid tier' });
+  }
+
+  // TODO: Initialize Stripe and create checkout session
+  // For now, redirect to a placeholder
+  const STRIPE_PRICE_IDS = {
+    pro: process.env.STRIPE_PRO_PRICE_ID || 'price_pro_placeholder',
+    enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_enterprise_placeholder',
+  };
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(503).json({
+      error: 'Stripe not configured',
+      message: 'Set STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID in environment'
+    });
+  }
+
+  try {
+    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
+
+    // Get or create Stripe customer
+    let user = mongoConnected ? await findUserById(userId) : null;
+    let customerId = user?.billing?.stripeCustomerId;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        metadata: { userId },
+        email: user?.email,
+        name: user?.displayName || userId,
+      });
+      customerId = customer.id;
+
+      // Save to user
+      if (mongoConnected) {
+        await getDatabase().collection('users').updateOne(
+          { userId },
+          { $set: { 'billing.stripeCustomerId': customerId } }
+        );
+      }
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: [{ price: STRIPE_PRICE_IDS[tier], quantity: 1 }],
+      mode: 'subscription',
+      success_url: \`\${req.protocol}://\${req.get('host')}/user/billing?success=1\`,
+      cancel_url: \`\${req.protocol}://\${req.get('host')}/user/billing?canceled=1\`,
+      metadata: { userId, tier },
+    });
+
+    res.redirect(303, session.url);
+  } catch (err) {
+    console.error('[Billing] Checkout error:', err);
+    res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// GET /api/billing/portal - Redirect to Stripe Customer Portal
+app.get('/api/billing/portal', async (req, res) => {
+  const userId = req.auth?.user_id;
+  if (!userId) {
+    return res.redirect('/login?redirect=/user/billing');
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    return res.status(503).json({ error: 'Stripe not configured' });
+  }
+
+  try {
+    const user = mongoConnected ? await findUserById(userId) : null;
+    const customerId = user?.billing?.stripeCustomerId;
+
+    if (!customerId) {
+      return res.redirect('/user/billing?error=no_subscription');
+    }
+
+    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: \`\${req.protocol}://\${req.get('host')}/user/billing\`,
+    });
+
+    res.redirect(303, session.url);
+  } catch (err) {
+    console.error('[Billing] Portal error:', err);
+    res.status(500).json({ error: 'Failed to create portal session' });
+  }
+});
+
+// POST /api/billing/webhook - Stripe webhook handler
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+    return res.status(503).json({ error: 'Stripe not configured' });
+  }
+
+  const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
+  const sig = req.headers['stripe-signature'];
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('[Billing] Webhook signature verification failed:', err.message);
+    return res.status(400).send('Webhook signature verification failed');
+  }
+
+  // Handle subscription events
+  const { type, data } = event;
+  const subscription = data.object;
+
+  if (type.startsWith('customer.subscription')) {
+    const customerId = subscription.customer;
+
+    // Find user by Stripe customer ID
+    if (mongoConnected) {
+      const db = getDatabase();
+      const user = await db.collection('users').findOne({ 'billing.stripeCustomerId': customerId });
+
+      if (user) {
+        const updates = {
+          'billing.stripeSubscriptionId': subscription.id,
+          'billing.subscriptionStatus': subscription.status,
+          'billing.currentPeriodEnd': new Date(subscription.current_period_end * 1000).toISOString(),
+          'billing.cancelAtPeriodEnd': subscription.cancel_at_period_end,
+        };
+
+        // Update tier based on subscription status
+        if (subscription.status === 'active' || subscription.status === 'trialing') {
+          const priceId = subscription.items?.data?.[0]?.price?.id;
+          if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
+            updates.tier = 'pro';
+          } else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) {
+            updates.tier = 'enterprise';
+          }
+        } else if (subscription.status === 'canceled') {
+          updates.tier = 'free';
+        }
+
+        await db.collection('users').updateOne(
+          { userId: user.userId },
+          { $set: updates }
+        );
+        console.log('[Billing] Updated subscription for user:', user.userId, subscription.status);
+      }
+    }
+  }
+
+  res.json({ received: true });
 });
 
 // GET /user/devices - List devices
@@ -6501,6 +7325,7 @@ app.get('/user/devices', async (req, res) => {
     <div class="logo">MEMORABLE // DEVICES</div>
     <nav class="nav">
       <a href="/user/profile">Profile</a>
+      <a href="/user/billing">Billing</a>
       <a href="/user/devices" class="active">Devices</a>
       <a href="/user/preferences">Preferences</a>
       <a href="/dashboard/mission-control">Dashboard</a>
