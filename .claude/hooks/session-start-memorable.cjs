@@ -22,6 +22,10 @@ const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have l
 const MASTER_ENTITY = process.env.MEMORABLE_MASTER_ENTITY || 'alan';
 const TIMEOUT = 8;
 
+// HARD LIMIT: Configurable per model via env var
+// Default 3000 to leave room for CLAUDE.md and system context
+const MAX_CONTEXT_CHARS = parseInt(process.env.MEMORABLE_MAX_CONTEXT || '3000', 10);
+
 function curl(method, url, apiKey, data) {
   try {
     let cmd = `curl -s --connect-timeout ${TIMEOUT} -X ${method} "${url}"`;
@@ -59,14 +63,16 @@ function detectProject() {
   return 'personal';
 }
 
-function queryDocs(apiKey, query, limit = 5) {
+function queryDocs(apiKey, query, limit = 2) {
+  // Reduced limit, truncate each to save context
   const data = curl('GET', `${BASE_URL}/memory?entity=claude_docs&query=${encodeURIComponent(query)}&limit=${limit}`, apiKey);
-  return (data?.memories || []).map(m => m.content);
+  return (data?.memories || []).map(m => m.content?.substring(0, 200) || '');
 }
 
 function getProjectContext(apiKey, project) {
-  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=10`, apiKey);
-  return (data?.memories || []).map(m => m.content);
+  // Reduced limit, truncate each to save context
+  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=3`, apiKey);
+  return (data?.memories || []).map(m => m.content?.substring(0, 150) || '');
 }
 
 function getOpenLoops(apiKey, project) {
@@ -244,10 +250,18 @@ async function main() {
 
   if (parts.length > 0) {
     parts.unshift('# MemoRable Context\n');
+    let output = parts.join('\n');
+
+    // HARD LIMIT: Truncate to MAX_CONTEXT_CHARS, keep most recent (end of output)
+    if (output.length > MAX_CONTEXT_CHARS) {
+      output = '# MemoRable Context (truncated)\n\n' +
+               output.slice(-MAX_CONTEXT_CHARS + 50);
+    }
+
     console.log(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'SessionStart',
-        additionalContext: parts.join('\n')
+        additionalContext: output
       }
     }));
   } else {
