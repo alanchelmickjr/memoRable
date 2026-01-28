@@ -10023,12 +10023,17 @@ function applyBetterSelfFilter(content, options = {}) {
 // --- LOOPS / COMMITMENTS ---
 
 app.get('/loops', async (req, res) => {
-  const { person, owner, status = 'open', limit = '15' } = req.query;
+  const { person, owner, entity, status = 'open', limit = '15' } = req.query;
 
   try {
     // Query real open_loops collection from MongoDB
     const db = getDatabase();
     const query = {};
+
+    // Filter by entity (scoped to sub-entity) - CRITICAL for hierarchy
+    if (entity) {
+      query.entities = entity.toLowerCase();
+    }
 
     // Filter by status (default: open)
     if (status) query.status = status;

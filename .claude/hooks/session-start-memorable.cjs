@@ -2,12 +2,15 @@
 /**
  * SessionStart Hook - MemoRable Context Loader
  *
+ * ENTITY HIERARCHY:
+ *   master (alan) → sees ALL sub-entity data
+ *   └── sub-entity (repo) → sees ONLY its own data
+ *
  * On Claude Code start:
  * 1. Authenticate with MemoRable
- * 2. Detect/create project entity
- * 3. Load relevant indexed docs
- * 4. Load open loops (tasks)
- * 5. Load The Three Questions (ENGINE)
+ * 2. Detect repo → becomes sub-entity of master
+ * 3. Load ONLY sub-entity's context (scoped queries)
+ * 4. Check for doc changes → prompt to index
  *
  * NO TIME ESTIMATES. Just what needs doing.
  */
@@ -16,6 +19,7 @@ const { execSync } = require('child_process');
 
 const BASE_URL = process.env.MEMORABLE_API_URL || 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
 const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
+const MASTER_ENTITY = process.env.MEMORABLE_MASTER_ENTITY || 'alan';
 const TIMEOUT = 8;
 
 function curl(method, url, apiKey, data) {
@@ -65,14 +69,26 @@ function getProjectContext(apiKey, project) {
   return (data?.memories || []).map(m => m.content);
 }
 
-// TODO: Re-enable after auth is integrated into session start
-// function getOpenLoops(apiKey) {
-//   const data = curl('GET', `${BASE_URL}/loops?status=open&limit=15`, apiKey);
-//   return data?.loops || [];
-// }
-function getOpenLoops(apiKey) {
-  // DISABLED: loops endpoint causing issues, returns empty until auth fixed
-  return [];
+function getOpenLoops(apiKey, project) {
+  // Scope loops to this entity only (sub-entity sees only itself)
+  const data = curl('GET', `${BASE_URL}/loops?status=open&entity=${project}&limit=10`, apiKey);
+  return data?.loops || [];
+}
+
+function checkDocsChanged() {
+  // Check git status for docs changes - auto-detect common doc locations
+  try {
+    const paths = [];
+    try { execSync('test -d docs', { encoding: 'utf8' }); paths.push('docs/'); } catch {}
+    try { execSync('test -f README.md', { encoding: 'utf8' }); paths.push('README.md'); } catch {}
+    try { execSync('test -f CLAUDE.md', { encoding: 'utf8' }); paths.push('CLAUDE.md'); } catch {}
+    try { execSync('test -d doc', { encoding: 'utf8' }); paths.push('doc/'); } catch {}
+    if (paths.length === 0) return { changed: false, files: [] };
+    const status = execSync(`git status --porcelain ${paths.join(' ')} 2>/dev/null`, { encoding: 'utf8' }).trim();
+    if (!status) return { changed: false, files: [] };
+    const files = status.split('\n').map(l => l.replace(/^[A-Z?]{1,2}\s+/, '')).filter(f => f);
+    return { changed: files.length > 0, files };
+  } catch { return { changed: false, files: [] }; }
 }
 
 function getThreeQuestions(apiKey) {
@@ -129,14 +145,15 @@ function buildPredictiveGreeting(loops, anticipated, project) {
 function ensureProjectExists(apiKey, project) {
   // Check if project has any memories
   const existing = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=1`, apiKey);
-  if (existing?.memories?.length > 0) return;
+  if (existing?.memories?.length > 0) return false; // Already exists
 
-  // Create initial project memory
+  // Create initial project memory with parent relationship
   curl('POST', `${BASE_URL}/memory`, apiKey, {
-    content: `Project ${project} initialized. Use this entity for project-specific context, decisions, and tasks.`,
-    entities: [project],
-    metadata: { type: 'project_init' }
+    content: `Project ${project} initialized as sub-entity of ${MASTER_ENTITY}. Scoped context - sees only its own data.`,
+    entities: [project, MASTER_ENTITY],
+    metadata: { type: 'project_init', parent_entity: MASTER_ENTITY, entity_scope: project }
   });
+  return true; // New project
 }
 
 async function main() {
@@ -150,10 +167,29 @@ async function main() {
     if (!apiKey) throw new Error('Auth failed');
 
     const project = detectProject();
-    ensureProjectExists(apiKey, project);
+    const isNewProject = ensureProjectExists(apiKey, project);
 
-    // 0. Get data for predictive greeting
-    const loops = getOpenLoops(apiKey);
+    // Entity hierarchy header
+    parts.push(`## Entity: ${project}`);
+    parts.push(`Parent: ${MASTER_ENTITY} (master sees all, sub sees only itself)`);
+    if (isNewProject) {
+      parts.push('');
+      parts.push('**NEW PROJECT DETECTED**');
+      parts.push('**Ask user:** Would you like me to index this repo and start tracking in MemoRable?');
+    }
+    parts.push('');
+
+    // Check for doc changes
+    const docsStatus = checkDocsChanged();
+    if (docsStatus.changed) {
+      parts.push('## Docs Changed Since Last Index');
+      parts.push(`Changed: ${docsStatus.files.join(', ')}`);
+      parts.push('**Ask user:** Re-index docs?');
+      parts.push('');
+    }
+
+    // 0. Get data for predictive greeting (scoped to entity)
+    const loops = getOpenLoops(apiKey, project);
     const anticipated = getAnticipated(apiKey, project);
 
     // 1. PREDICTIVE GREETING (most important - sets the tone)
@@ -169,22 +205,20 @@ async function main() {
       parts.push('');
     }
 
-    // 3. Open Loops (tasks/commitments)
-    // TODO: Re-enable after auth is integrated into session start
-    // if (loops.length > 0) {
-    //   parts.push('## Open Loops');
-    //   loops.forEach(l => {
-    //     // owner: 'self' = you owe, 'them' = owed to you, 'mutual' = shared
-    //     const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
-    //     const desc = l.description || l.content || '(no description)';
-    //     const party = l.otherParty ? ` (${l.otherParty})` : '';
-    //     const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
-    //     parts.push(`- [${who}]${party} ${desc}${due}`);
-    //   });
-    //   parts.push('');
-    // }
+    // 3. Open Loops (scoped to this entity)
+    if (loops.length > 0) {
+      parts.push(`## Open Loops (${project})`);
+      loops.forEach(l => {
+        const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
+        const desc = l.description || l.content || '(no description)';
+        const party = l.otherParty ? ` (${l.otherParty})` : '';
+        const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
+        parts.push(`- [${who}]${party} ${desc}${due}`);
+      });
+      parts.push('');
+    }
 
-    // 3. Project-specific context
+    // 4. Project-specific context
     const projectCtx = getProjectContext(apiKey, project);
     if (projectCtx.length > 0) {
       parts.push(`## Project: ${project}`);
@@ -192,7 +226,7 @@ async function main() {
       parts.push('');
     }
 
-    // 4. Relevant docs (query based on project name)
+    // 5. Relevant docs (query based on project name)
     const docs = queryDocs(apiKey, project.replace(/_/g, ' '), 3);
     if (docs.length > 0) {
       parts.push('## Relevant Docs');
