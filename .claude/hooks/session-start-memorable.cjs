@@ -18,8 +18,9 @@ const BASE_URL = process.env.MEMORABLE_API_URL || 'http://memorable-alb-16794406
 const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
 const TIMEOUT = 8;
 
-// HARD LIMIT: Never exceed 50% of context window (~4000 chars to be safe)
-const MAX_CONTEXT_CHARS = 4000;
+// HARD LIMIT: Configurable per model via env var
+// Claude: ~4000, Gemini: ~16000, GPT-4: ~8000
+const MAX_CONTEXT_CHARS = parseInt(process.env.MEMORABLE_MAX_CONTEXT || '4000', 10);
 
 function curl(method, url, apiKey, data) {
   try {

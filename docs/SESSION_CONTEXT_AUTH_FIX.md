@@ -31,7 +31,10 @@ Now `getApiClient()` always has a URL and will use REST mode with auto-auth.
 **Problem**: Hook was loading too much context, filling context window to 100%.
 
 **Fix**:
-- Added `MAX_CONTEXT_CHARS = 4000` hard limit (~50% of context window)
+- Added `MAX_CONTEXT_CHARS` configurable via `MEMORABLE_MAX_CONTEXT` env var
+  - Claude: 4000 (default)
+  - Gemini: 16000
+  - GPT-4: 8000
 - Reduced docs from 5→2 items, truncated to 300 chars each
 - Reduced project context from 10→3 items, truncated to 150 chars each
 - Final output truncated if over limit, keeps most recent (end of output)
