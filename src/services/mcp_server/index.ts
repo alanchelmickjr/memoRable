@@ -7225,13 +7225,18 @@ export async function mountMcpEndpoint(
     console.error('[MCP] Connected to MongoDB');
   }
 
-  // Initialize services
-  if (!useRemoteApi) {
+  // Initialize services and set connection mode
+  if (!useRemoteApi()) {
+    connectionMode = 'direct';
     await initializeSalienceService(db);
     console.error('[MCP] Salience service initialized');
 
     await initAnticipationService(db);
     console.error('[MCP] Anticipation service initialized');
+  } else {
+    connectionMode = 'rest';
+    apiClient = getApiClient();
+    console.error('[MCP] REST mode configured');
   }
 
   // Initialize LLM client
