@@ -5,7 +5,9 @@
 # Usage: cc "your message here"
 # Starts claude with filtered prompt
 
-FILTER="$HOME/dev/GitHub/memoRable/.claude/hooks/love-wrapper.sh"
+# Find filter relative to this script's location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FILTER="$SCRIPT_DIR/love-wrapper.sh"
 
 if [ -z "$1" ]; then
     # No prompt, just start claude
