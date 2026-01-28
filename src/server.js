@@ -4331,10 +4331,22 @@ app.get('/dashboard/mission-control', (_req, res) => {
     return '<div class="radar-blip" style="left: ' + x + '%; top: ' + y + '%;"></div>';
   }).join('');
 
+  // Indicator lights with icons representing attention/recognition types
+  // Maps to Redis attention system categories
+  const indicatorConfig = [
+    { icon: '◎', color: 'c1', label: 'context' },    // Cyan - Location/Context
+    { icon: '☺', color: 'c2', label: 'person' },     // Green - People/Relationships
+    { icon: '⏱', color: 'c3', label: 'time' },       // Yellow - Time/Deadlines
+    { icon: '⚡', color: 'c4', label: 'alert' },     // Red - Urgent/Alerts
+    { icon: '♥', color: 'c5', label: 'emotion' },    // Magenta - Emotions
+    { icon: '✓', color: 'c6', label: 'task' },       // Orange - Actions/Tasks
+    { icon: '◈', color: 'c7', label: 'memory' },     // Blue - Memory/Recall
+  ];
+  const states = ['on', 'slow', 'off', 'on'];
   const indicatorLights = Array(32).fill(0).map((_, i) => {
-    const colors = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'];
-    const states = ['on', 'slow', 'off', 'on'];
-    return '<div class="indicator-light ' + colors[i % 7] + ' ' + states[Math.floor(Math.random() * 4)] + '"></div>';
+    const cfg = indicatorConfig[i % 7];
+    const state = states[Math.floor(Math.random() * 4)];
+    return '<div class="indicator-light ' + cfg.color + ' ' + state + '" title="' + cfg.label + '">' + cfg.icon + '</div>';
   }).join('');
 
   const waveBars = Array(50).fill(0).map((_, i) =>
@@ -4601,6 +4613,19 @@ app.get('/dashboard/mission-control', (_req, res) => {
       aspect-ratio: 1;
       border-radius: 50%;
       border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: rgba(0, 0, 0, 0.7);
+      text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
+      cursor: help;
+      transition: transform 0.2s ease;
+    }
+
+    .indicator-light:hover {
+      transform: scale(1.2);
+      z-index: 10;
     }
 
     .indicator-light.on { animation: lightBlink 0.5s infinite; }
@@ -6124,6 +6149,12 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       height: 20px;
       border-radius: 50%;
       border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: rgba(0, 0, 0, 0.7);
+      text-shadow: 0 0 2px rgba(255, 255, 255, 0.5);
     }
 
     .indicator-light.on { animation: lightBlink 1.5s infinite; }
