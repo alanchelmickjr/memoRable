@@ -65,9 +65,14 @@ function getProjectContext(apiKey, project) {
   return (data?.memories || []).map(m => m.content);
 }
 
+// TODO: Re-enable after auth is integrated into session start
+// function getOpenLoops(apiKey) {
+//   const data = curl('GET', `${BASE_URL}/loops?status=open&limit=15`, apiKey);
+//   return data?.loops || [];
+// }
 function getOpenLoops(apiKey) {
-  const data = curl('GET', `${BASE_URL}/loops?status=open&limit=15`, apiKey);
-  return data?.loops || [];
+  // DISABLED: loops endpoint causing issues, returns empty until auth fixed
+  return [];
 }
 
 function getThreeQuestions(apiKey) {
@@ -165,18 +170,19 @@ async function main() {
     }
 
     // 3. Open Loops (tasks/commitments)
-    if (loops.length > 0) {
-      parts.push('## Open Loops');
-      loops.forEach(l => {
-        // owner: 'self' = you owe, 'them' = owed to you, 'mutual' = shared
-        const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
-        const desc = l.description || l.content || '(no description)';
-        const party = l.otherParty ? ` (${l.otherParty})` : '';
-        const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
-        parts.push(`- [${who}]${party} ${desc}${due}`);
-      });
-      parts.push('');
-    }
+    // TODO: Re-enable after auth is integrated into session start
+    // if (loops.length > 0) {
+    //   parts.push('## Open Loops');
+    //   loops.forEach(l => {
+    //     // owner: 'self' = you owe, 'them' = owed to you, 'mutual' = shared
+    //     const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
+    //     const desc = l.description || l.content || '(no description)';
+    //     const party = l.otherParty ? ` (${l.otherParty})` : '';
+    //     const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
+    //     parts.push(`- [${who}]${party} ${desc}${due}`);
+    //   });
+    //   parts.push('');
+    // }
 
     // 3. Project-specific context
     const projectCtx = getProjectContext(apiKey, project);

@@ -648,12 +648,13 @@ export class ApiClient {
  */
 let apiClientInstance: ApiClient | null = null;
 
-export function getApiClient(): ApiClient | null {
-  const baseUrl = process.env.API_BASE_URL || process.env.MEMORABLE_API_URL;
+// Default API URL - same as session-start hook
+const DEFAULT_API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
 
-  if (!baseUrl) {
-    return null;
-  }
+export function getApiClient(): ApiClient | null {
+  const baseUrl = process.env.API_BASE_URL || process.env.MEMORABLE_API_URL || DEFAULT_API_URL;
+
+  // Always have a base URL now (fallback to default)
 
   if (!apiClientInstance) {
     // Only use MEMORABLE_API_KEY if it looks like a valid key (starts with memorable_)
