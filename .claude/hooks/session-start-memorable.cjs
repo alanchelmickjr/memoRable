@@ -18,6 +18,9 @@ const BASE_URL = process.env.MEMORABLE_API_URL || 'http://memorable-alb-16794406
 const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
 const TIMEOUT = 8;
 
+// HARD LIMIT: Never exceed 50% of context window (~4000 chars to be safe)
+const MAX_CONTEXT_CHARS = 4000;
+
 function curl(method, url, apiKey, data) {
   try {
     let cmd = `curl -s --connect-timeout ${TIMEOUT} -X ${method} "${url}"`;
@@ -55,14 +58,16 @@ function detectProject() {
   return 'personal';
 }
 
-function queryDocs(apiKey, query, limit = 5) {
+function queryDocs(apiKey, query, limit = 2) {
+  // Reduced from 5 to 2 docs max
   const data = curl('GET', `${BASE_URL}/memory?entity=claude_docs&query=${encodeURIComponent(query)}&limit=${limit}`, apiKey);
-  return (data?.memories || []).map(m => m.content);
+  return (data?.memories || []).map(m => m.content?.substring(0, 300) || ''); // Truncate each
 }
 
 function getProjectContext(apiKey, project) {
-  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=10`, apiKey);
-  return (data?.memories || []).map(m => m.content);
+  // Reduced from 10 to 3, most recent only
+  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=3`, apiKey);
+  return (data?.memories || []).map(m => m.content?.substring(0, 150) || ''); // Truncate each
 }
 
 // TODO: Re-enable after auth is integrated into session start
@@ -184,23 +189,19 @@ async function main() {
     //   parts.push('');
     // }
 
-    // 3. Project-specific context
+    // 3. Project-specific context (already truncated at source)
     const projectCtx = getProjectContext(apiKey, project);
     if (projectCtx.length > 0) {
       parts.push(`## Project: ${project}`);
-      projectCtx.slice(0, 5).forEach(c => parts.push(`- ${c.substring(0, 200)}...`));
+      projectCtx.forEach(c => parts.push(`- ${c}`));
       parts.push('');
     }
 
-    // 4. Relevant docs (query based on project name)
-    const docs = queryDocs(apiKey, project.replace(/_/g, ' '), 3);
+    // 4. Relevant docs (already truncated at source, limit 2)
+    const docs = queryDocs(apiKey, project.replace(/_/g, ' '));
     if (docs.length > 0) {
       parts.push('## Relevant Docs');
-      docs.forEach(d => {
-        const lines = d.split('\n').slice(0, 4).join('\n');
-        parts.push(lines);
-        parts.push('---');
-      });
+      docs.forEach(d => parts.push(`- ${d}`));
       parts.push('');
     }
 
@@ -210,10 +211,18 @@ async function main() {
 
   if (parts.length > 0) {
     parts.unshift('# MemoRable Context\n');
+    let output = parts.join('\n');
+
+    // HARD LIMIT: Truncate to MAX_CONTEXT_CHARS, keep most recent (end of output)
+    if (output.length > MAX_CONTEXT_CHARS) {
+      output = '# MemoRable Context (truncated)\n\n' +
+               output.slice(-MAX_CONTEXT_CHARS + 50); // Keep end, leave room for header
+    }
+
     console.log(JSON.stringify({
       hookSpecificOutput: {
         hookEventName: 'SessionStart',
-        additionalContext: parts.join('\n')
+        additionalContext: output
       }
     }));
   } else {
