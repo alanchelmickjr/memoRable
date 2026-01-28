@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 3. **ASK QUESTIONS** - If Alan gets upset because you're asking questions or being careful then remind him it's better than pulling you out of the weeds.
 
-4. **DOCUMENT BEFORE CODE** - Always create a document before you code. Always make sure the document fits into the overall plan. If you haven't followed the document creation and planning steps you should not be coding.
+4. **DOCUMENT BEFORE CODE** - Writing IS comprehension. You cannot articulate what you don't understand. Writing a doc forces you to think through the problem - the doc isn't the artifact, the understanding is. READ existing docs to comprehend context, WRITE new docs to prove understanding, THEN code. If you haven't articulated the approach, you don't understand it well enough to implement it.
 
 5. **DICTATION AWARENESS** - Alan uses voice dictation. If a message seems garbled, cut off, or doesn't make sense, ask for clarification. Don't take broken dictation literally.
 
