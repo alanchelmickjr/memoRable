@@ -137,6 +137,49 @@ const metrics = {
   }
 };
 
+// =============================================================================
+// LOG BUFFER - Rolling log storage for dashboard
+// =============================================================================
+const logBuffer = {
+  entries: [],
+  maxEntries: 500,
+
+  add(level, source, message, meta = {}) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      level,
+      source,
+      message,
+      meta
+    };
+    this.entries.unshift(entry); // newest first
+    if (this.entries.length > this.maxEntries) {
+      this.entries.pop();
+    }
+  },
+
+  info(source, message, meta) { this.add('info', source, message, meta); },
+  warn(source, message, meta) { this.add('warn', source, message, meta); },
+  error(source, message, meta) { this.add('error', source, message, meta); },
+
+  get(filter = {}) {
+    let result = this.entries;
+    if (filter.level) {
+      result = result.filter(e => e.level === filter.level);
+    }
+    if (filter.source) {
+      result = result.filter(e => e.source === filter.source);
+    }
+    if (filter.limit) {
+      result = result.slice(0, filter.limit);
+    }
+    return result;
+  }
+};
+
+// Log startup
+logBuffer.info('system', 'Server starting', { port: PORT });
+
 // Middleware to track request metrics
 const metricsMiddleware = (req, res, next) => {
   const start = Date.now();
@@ -462,6 +505,7 @@ app.post('/auth/exchange', async (req, res) => {
 
           console.log(`[AUTH] Issued device key (MongoDB): ${deviceId} for user: ${user_id}`);
           metrics.inc('auth_exchange_success', { user_id, device_type: deviceType, storage: 'mongo' });
+          logBuffer.info('auth', `Login success: ${user_id}`, { device_type: deviceType, device_id: deviceId });
 
           return res.json({
             success: true,
@@ -476,6 +520,7 @@ app.post('/auth/exchange', async (req, res) => {
           // Invalid passphrase - record failed attempt
           const { locked, lockedUntil } = await recordLoginAttempt(user_id, false);
           metrics.inc('auth_exchange_fail', { reason: 'invalid_passphrase', storage: 'mongo' });
+          logBuffer.warn('auth', `Login failed: ${user_id}`, { reason: 'invalid_passphrase', locked });
 
           if (locked) {
             metrics.inc('auth_lockout', { user_id });
@@ -618,6 +663,7 @@ app.post('/auth/register', async (req, res) => {
 
       console.log(`[AUTH] Registered new user (MongoDB): ${user_id}`);
       metrics.inc('auth_register_success', { user_id, storage: 'mongo' });
+      logBuffer.info('auth', `New user registered: ${user_id}`, { email, storage: 'mongo' });
 
       res.status(201).json({
         success: true,
@@ -1868,6 +1914,7 @@ app.get('/login', (_req, res) => {
       color: var(--cyan);
     }
     .footer-links {
+      width: 100%;
       text-align: center;
       margin-top: 24px;
       display: flex;
@@ -2684,6 +2731,7 @@ app.get('/register', (_req, res) => {
       text-decoration: underline;
     }
     .footer-links {
+      width: 100%;
       text-align: center;
       margin-top: 24px;
       padding-top: 16px;
@@ -3359,6 +3407,7 @@ app.get('/dashboard', (_req, res) => {
       <a href="/dashboard" class="nav-link active">Intelligence</a>
       <a href="/dashboard/mission-control" class="nav-link">Mission Control</a>
       <a href="/dashboard/synthetic" class="nav-link">Synthetic</a>
+      <a href="/dashboard/logs" class="nav-link">Logs</a>
       <a href="/dashboard/calendar" class="nav-link">Calendar</a>
       <a href="/docs" class="nav-link">Docs</a>
     </div>
@@ -4989,6 +5038,7 @@ app.get('/dashboard/mission-control', (_req, res) => {
       <a href="/docs" class="nav-link">Docs</a>
       <a href="/dashboard" class="nav-link">Dashboard</a>
       <a href="/dashboard/synthetic" class="nav-link">Synthetic</a>
+      <a href="/dashboard/logs" class="nav-link">Logs</a>
     </div>
     <div class="header-status">
       <div class="status-indicator">
@@ -6643,6 +6693,185 @@ app.get('/dashboard/synthetic', async (_req, res) => {
 
   res.set('Content-Type', 'text/html');
   res.send(html);
+});
+
+// =============================================================================
+// LOGS DASHBOARD - Real-time activity logging
+// =============================================================================
+
+app.get('/dashboard/logs', (req, res) => {
+  const filter = {
+    level: req.query.level || null,
+    source: req.query.source || null,
+    limit: parseInt(req.query.limit) || 100
+  };
+  const logs = logBuffer.get(filter);
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="5">
+  <title>Logs - MemoRable</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=block" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-panel: #0d1117;
+      --border: #30363d;
+      --cyan: #00ffff;
+      --magenta: #ff00ff;
+      --green: #00ff41;
+      --red: #ff0040;
+      --yellow: #ffff00;
+      --text: #c9d1d9;
+      --text-dim: #6e7681;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--bg-dark);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-shadow: 0 0 10px var(--cyan);
+    }
+    .logo span { color: var(--magenta); text-shadow: 0 0 10px var(--magenta); }
+    .nav-links { display: flex; gap: 20px; }
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .nav-links a:hover { color: var(--cyan); }
+    .filters {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .filter-btn:hover, .filter-btn.active {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .logs-container {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .log-entry {
+      padding: 10px 15px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 180px 60px 80px 1fr;
+      gap: 15px;
+      font-size: 12px;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry:hover { background: rgba(0, 255, 255, 0.05); }
+    .log-time { color: var(--text-dim); }
+    .log-level { font-weight: bold; text-transform: uppercase; }
+    .log-level.info { color: var(--cyan); }
+    .log-level.warn { color: var(--yellow); }
+    .log-level.error { color: var(--red); }
+    .log-source { color: var(--magenta); }
+    .log-message { color: var(--text); }
+    .empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-dim);
+    }
+    .refresh-note {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+    @media (max-width: 768px) {
+      .log-entry {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">MEMO<span>RABLE</span> LOGS</div>
+    <div class="nav-links">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/dashboard/mission-control">Mission Control</a>
+      <a href="/metrics/dashboard">Metrics</a>
+    </div>
+  </div>
+  <div class="filters">
+    <a href="/dashboard/logs" class="filter-btn ${!req.query.level ? 'active' : ''}">All</a>
+    <a href="/dashboard/logs?level=info" class="filter-btn ${req.query.level === 'info' ? 'active' : ''}">Info</a>
+    <a href="/dashboard/logs?level=warn" class="filter-btn ${req.query.level === 'warn' ? 'active' : ''}">Warn</a>
+    <a href="/dashboard/logs?level=error" class="filter-btn ${req.query.level === 'error' ? 'active' : ''}">Error</a>
+    <span style="color: var(--text-dim); padding: 8px;">|</span>
+    <a href="/dashboard/logs?source=auth" class="filter-btn ${req.query.source === 'auth' ? 'active' : ''}">Auth</a>
+    <a href="/dashboard/logs?source=memory" class="filter-btn ${req.query.source === 'memory' ? 'active' : ''}">Memory</a>
+    <a href="/dashboard/logs?source=system" class="filter-btn ${req.query.source === 'system' ? 'active' : ''}">System</a>
+  </div>
+  <div class="logs-container">
+    ${logs.length === 0 ? '<div class="empty">No logs yet. Activity will appear here.</div>' :
+      logs.map(log => `
+        <div class="log-entry">
+          <span class="log-time">${log.timestamp}</span>
+          <span class="log-level ${log.level}">${log.level}</span>
+          <span class="log-source">${log.source}</span>
+          <span class="log-message">${log.message}${Object.keys(log.meta || {}).length > 0 ? ' <span style="color:var(--text-dim)">' + JSON.stringify(log.meta) + '</span>' : ''}</span>
+        </div>
+      `).join('')
+    }
+  </div>
+  <p class="refresh-note">Auto-refreshes every 5 seconds</p>
+</body>
+</html>`;
+
+  res.set('Content-Type', 'text/html');
+  res.send(html);
+});
+
+// JSON endpoint for logs
+app.get('/dashboard/logs/json', (req, res) => {
+  const filter = {
+    level: req.query.level || null,
+    source: req.query.source || null,
+    limit: parseInt(req.query.limit) || 100
+  };
+  res.json({ logs: logBuffer.get(filter), total: logBuffer.entries.length });
 });
 
 // =============================================================================
