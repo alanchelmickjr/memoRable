@@ -7226,12 +7226,21 @@ export async function mountMcpEndpoint(
   }
 
   // Initialize services and set connection mode
-  if (!useRemoteApi()) {
-    connectionMode = 'direct';
-    await initializeSalienceService(db);
-    console.error('[MCP] Salience service initialized');
+  const remoteMode = useRemoteApi();
+  console.error(`[MCP] useRemoteApi() = ${remoteMode}, API_BASE_URL=${process.env.API_BASE_URL || 'not set'}, MEMORABLE_API_URL=${process.env.MEMORABLE_API_URL || 'not set'}`);
 
-    await initAnticipationService(db);
+  if (!remoteMode) {
+    connectionMode = 'direct';
+    console.error('[MCP] Direct mode: initializing salience service...');
+
+    const salienceResult = await initializeSalienceService(db);
+    if (!salienceResult.success) {
+      console.error('[MCP] WARNING: Salience service initialization failed:', salienceResult.error);
+    } else {
+      console.error('[MCP] Salience service initialized successfully');
+    }
+
+    initAnticipationService(db);
     console.error('[MCP] Anticipation service initialized');
   } else {
     connectionMode = 'rest';
