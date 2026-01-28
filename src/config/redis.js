@@ -154,6 +154,8 @@ const FREQUENCY_TTL = 7200;       // 2 hours
 const PATTERN_HASH_TTL = 86400;   // 24 hours
 const CONTEXT_TTL = 1800;         // 30 minutes
 const ANTICIPATED_TTL = 900;      // 15 minutes
+const ATTENTION_TTL = 86400;      // 24 hours - daily refresh
+const ATTENTION_THRESHOLD = 40;   // Minimum salience for attention
 
 /**
  * Store a memory in hot tier cache.
@@ -322,6 +324,132 @@ export function getRedisClient() {
     throw new Error('Redis client not initialized. Call setupRedis first.');
   }
   return client;
+}
+
+// ============================================================================
+// ATTENTION WINDOW OPERATIONS
+// The killer feature - what matters RIGHT NOW
+// ============================================================================
+
+/**
+ * Add memory to attention window (sorted set by salience).
+ * @param {string} userId - User identifier
+ * @param {string} memoryId - Memory identifier
+ * @param {number} score - Effective salience score
+ */
+export async function addToAttention(userId, memoryId, score) {
+  if (!client) return false;
+  if (score < ATTENTION_THRESHOLD) return false;
+
+  const key = `memorable:${userId}:attention`;
+  await client.zAdd(key, { score, value: memoryId });
+  await client.expire(key, ATTENTION_TTL);
+  return true;
+}
+
+/**
+ * Remove memory from attention window.
+ * @param {string} userId - User identifier
+ * @param {string} memoryId - Memory identifier
+ */
+export async function removeFromAttention(userId, memoryId) {
+  if (!client) return;
+  const key = `memorable:${userId}:attention`;
+  await client.zRem(key, memoryId);
+}
+
+/**
+ * Get current attention window (highest salience first).
+ * @param {string} userId - User identifier
+ * @param {number} limit - Maximum number to return
+ * @returns {string[]} Array of memory IDs
+ */
+export async function getAttention(userId, limit = 10) {
+  if (!client) return [];
+  const key = `memorable:${userId}:attention`;
+  return await client.zRange(key, 0, limit - 1, { REV: true });
+}
+
+/**
+ * Get attention window with scores.
+ * @param {string} userId - User identifier
+ * @param {number} limit - Maximum number to return
+ * @returns {Array<{memoryId: string, score: number}>}
+ */
+export async function getAttentionWithScores(userId, limit = 10) {
+  if (!client) return [];
+  const key = `memorable:${userId}:attention`;
+  const results = await client.zRangeWithScores(key, 0, limit - 1, { REV: true });
+  return results.map(r => ({ memoryId: r.value, score: r.score }));
+}
+
+/**
+ * Update salience score for memory in attention.
+ * @param {string} userId - User identifier
+ * @param {string} memoryId - Memory identifier
+ * @param {number} newScore - Updated effective salience
+ */
+export async function updateAttentionScore(userId, memoryId, newScore) {
+  if (!client) return;
+  const key = `memorable:${userId}:attention`;
+
+  if (newScore >= ATTENTION_THRESHOLD) {
+    await client.zAdd(key, { score: newScore, value: memoryId });
+  } else {
+    // Faded below threshold - remove
+    await client.zRem(key, memoryId);
+  }
+}
+
+/**
+ * Prune memories below attention threshold.
+ * @param {string} userId - User identifier
+ * @returns {number} Number of memories pruned
+ */
+export async function pruneAttention(userId) {
+  if (!client) return 0;
+  const key = `memorable:${userId}:attention`;
+  return await client.zRemRangeByScore(key, 0, ATTENTION_THRESHOLD - 1);
+}
+
+/**
+ * Get attention statistics.
+ * @param {string} userId - User identifier
+ */
+export async function getAttentionStats(userId) {
+  if (!client) return { total: 0, highSalience: 0, fadingSoon: 0 };
+  const key = `memorable:${userId}:attention`;
+
+  const [total, highSalience, fadingSoon] = await Promise.all([
+    client.zCard(key),
+    client.zCount(key, 70, '+inf'),
+    client.zCount(key, ATTENTION_THRESHOLD, ATTENTION_THRESHOLD + 10),
+  ]);
+
+  return { total, highSalience, fadingSoon, threshold: ATTENTION_THRESHOLD };
+}
+
+/**
+ * Check if memory is in attention.
+ * @param {string} userId - User identifier
+ * @param {string} memoryId - Memory identifier
+ * @returns {boolean}
+ */
+export async function isInAttention(userId, memoryId) {
+  if (!client) return false;
+  const key = `memorable:${userId}:attention`;
+  const score = await client.zScore(key, memoryId);
+  return score !== null;
+}
+
+/**
+ * Clear entire attention window.
+ * @param {string} userId - User identifier
+ */
+export async function clearAttention(userId) {
+  if (!client) return;
+  const key = `memorable:${userId}:attention`;
+  await client.del(key);
 }
 
 export async function closeRedis() {
