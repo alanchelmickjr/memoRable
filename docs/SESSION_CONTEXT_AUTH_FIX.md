@@ -1,7 +1,7 @@
 # Session Context: Auth Fix for MCP
 
 **Date**: 2026-01-28
-**Branch**: `claude/focus-attention-session-RbRse`
+**Branch**: `claude/merge-path-fixes-RbRse`
 **Session**: https://claude.ai/code/session_01ERrsHytVJy49CtBX7N4NSi
 
 ## What Was Done
@@ -10,10 +10,8 @@
 **File**: `.claude/hooks/session-start-memorable.cjs`
 
 Loops were causing session problems. Commented out:
-- `getOpenLoops()` function (lines 68-76) - now returns empty array
-- Open Loops output section (lines 167-180) - commented out
-
-**Commit**: `80f0b3b` - "fix: disable loops loading in session start hook"
+- `getOpenLoops()` function (lines 70-74) - now returns empty array
+- Open Loops output section (lines 172-185) - commented out
 
 ### 2. Fixed MCP Auto-Authentication
 **File**: `src/services/mcp_server/api_client.ts`
@@ -27,9 +25,23 @@ const DEFAULT_API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws
 
 Now `getApiClient()` always has a URL and will use REST mode with auto-auth.
 
-**Commit**: `fd15c84` - "fix: add default API URL fallback to MCP api_client"
+### 3. Added Context Limit to Session-Start Hook
+**File**: `.claude/hooks/session-start-memorable.cjs`
 
-**Documentation**: `docs/MCP_AUTH_FIX.md`
+**Problem**: Hook was loading too much context, filling context window to 100%.
+
+**Fix**:
+- Added `MAX_CONTEXT_CHARS = 4000` hard limit (~50% of context window)
+- Reduced docs from 5→2 items, truncated to 300 chars each
+- Reduced project context from 10→3 items, truncated to 150 chars each
+- Final output truncated if over limit, keeps most recent (end of output)
+
+### 4. Merged Path Fixes
+**Files**: `.claude/hooks/cc`, `.mcp.json`
+
+Merged fixes from `claude/fix-mcp-memory-hooks-yKABO`:
+- Removed hardcoded paths from MCP hooks configuration
+- Use npx for portability instead of hardcoded cwd paths
 
 ## What Still Needs To Be Done
 
@@ -40,8 +52,8 @@ Now `getApiClient()` always has a URL and will use REST mode with auto-auth.
 
 ### 2. Re-enable Loops in Session-Start Hook
 Once auth is confirmed working:
-- Uncomment `getOpenLoops()` function (lines 68-72)
-- Uncomment Open Loops output section (lines 169-180)
+- Uncomment `getOpenLoops()` function (lines 70-74)
+- Uncomment Open Loops output section (lines 172-185)
 - Test that loops display correctly
 
 ### 3. Add Auth Segregation to Routes
@@ -79,10 +91,11 @@ Session Start:
 2. Calls /auth/knock → gets challenge
 3. Calls /auth/exchange → gets API key
 4. Uses API key for /memory, /loops, etc.
+5. Output capped at 4000 chars max
 
 MCP Server:
 1. initializeDb() called at startup
-2. If useRemoteApi() → creates ApiClient
+2. getApiClient() uses DEFAULT_API_URL fallback
 3. ApiClient.authenticate() does knock/exchange
 4. All tool calls use apiClient with auth
 ```
@@ -98,5 +111,16 @@ git log --oneline -5
 
 # Re-enable loops (after testing auth)
 # Edit .claude/hooks/session-start-memorable.cjs
-# Uncomment lines 68-72 and 169-180
+# Uncomment lines 70-74 and 172-185
 ```
+
+## Branch Cleanup Status
+
+| Branch | Status |
+|--------|--------|
+| `main` | current |
+| `claude/merge-path-fixes-RbRse` | active - ready for PR |
+| `claude/focus-attention-session-RbRse` | merged (PR #30) - DELETE |
+| `claude/fix-mcp-memory-hooks-yKABO` | merged into path-fixes - DELETE |
+| `claude/fix-hooks-loop-freeze-WMFhs` | superseded - DELETE |
+| `claude/main-legacy-backup-kh8G7` | backup - KEEP |
