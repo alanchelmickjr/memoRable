@@ -340,6 +340,36 @@ export {
   recheckGpu,
 } from './gpu_extraction';
 
+// Re-export temporal decay (memory fade system)
+export {
+  computeDecayModifier,
+  computeAccessBoost,
+  computeEffectiveSalience,
+  computeEffectiveSalienceFromMemory,
+  shouldBeInAttention,
+  isHighSalience,
+  daysUntilFade,
+  batchComputeEffectiveSalience,
+  applyContextRelevance,
+  computeContextRelevance,
+  DECAY_RATE_PER_DAY,
+  DECAY_FLOOR,
+  ACCESS_BOOST_RATE,
+  MAX_ACCESS_BOOST,
+  ATTENTION_THRESHOLD,
+  HIGH_SALIENCE_THRESHOLD,
+} from './temporal_decay';
+
+// Re-export attention manager (what matters RIGHT NOW)
+export {
+  AttentionManager,
+  getAttentionManager,
+  initAttentionManager,
+  type AttentionEntry,
+  type AttentionWindow,
+  type AttentionStats,
+} from './attention_manager';
+
 // Import for internal use
 import { setupSalienceDatabase } from './database';
 import { extractFeatures, extractFeaturesHeuristic, type LLMClient } from './feature_extractor';
