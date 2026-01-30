@@ -229,3 +229,44 @@ curl -H "X-API-Key: $KEY" "$URL/loops?owner=self"
 2. Session start shows actual commitments (not "undefined")
 3. Pattern stats begin accumulating days
 4. Recall for personal queries returns personal memories, not docs
+
+---
+
+## Future: Context Sizing Architecture
+
+> "The ability to remember is golden but the ability to forget is priceless."
+> "memoRable, only know what you need to."
+
+### The Problem
+Different models and platforms have different context limits. Loading 16k tokens of loops into an 8k context model = disaster. Even in large context models, bloated context = unfocused responses.
+
+### Target: 8% Max Context Per Prompt
+Keep memorable's context injection under 8% of model's limit:
+- GPT-4 (128k): ~10k tokens max from memorable
+- Claude (200k): ~16k tokens max from memorable
+- Haiku/smaller: ~3k tokens max from memorable
+
+### Two-Claude Architecture
+```
+┌─────────────────────┐     ┌─────────────────────┐
+│  Claude-Interactive │     │   Claude-Daemon     │
+│  (this session)     │◄───►│   (background)      │
+│                     │     │                     │
+│  - User dialogue    │     │  - Pattern learning │
+│  - Code generation  │     │  - Loop extraction  │
+│  - Problem solving  │     │  - Preemptive prep  │
+└─────────────────────┘     └─────────────────────┘
+           │                          │
+           └──────────┬───────────────┘
+                      ▼
+              ┌───────────────┐
+              │   MemoRable   │
+              │   recall()    │
+              │   store()     │
+              └───────────────┘
+```
+
+Coordination happens through recall - retrospectively AND preemptively:
+- Daemon prepares context before interactive session needs it
+- Interactive session stores insights daemon will learn from
+- Neither taxes the other's context window
