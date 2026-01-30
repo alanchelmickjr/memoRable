@@ -8351,6 +8351,34 @@ app.post('/admin/devices/:deviceId/revoke', adminMiddleware, async (req, res) =>
   res.redirect('/admin/devices');
 });
 
+// POST /admin/collections/:name/clear - Clear a collection (admin only)
+app.post('/admin/collections/:name/clear', adminMiddleware, async (req, res) => {
+  const { name } = req.params;
+  const allowedCollections = ['open_loops', 'patterns', 'context_frames'];
+
+  if (!allowedCollections.includes(name)) {
+    return res.status(400).json({
+      error: 'Collection not allowed',
+      allowed: allowedCollections
+    });
+  }
+
+  try {
+    const db = getDatabase();
+    const result = await db.collection(name).deleteMany({});
+    console.log(`[admin] Cleared ${name}: ${result.deletedCount} documents`);
+    res.json({
+      cleared: true,
+      collection: name,
+      deletedCount: result.deletedCount,
+      performedBy: req.auth?.user_id
+    });
+  } catch (error) {
+    console.error(`[admin] Failed to clear ${name}:`, error.message);
+    res.status(500).json({ error: 'Failed to clear collection', message: error.message });
+  }
+});
+
 // GET /admin/settings - System settings
 app.get('/admin/settings', adminMiddleware, async (req, res) => {
   const html = `
