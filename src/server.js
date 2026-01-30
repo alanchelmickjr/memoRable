@@ -9210,6 +9210,16 @@ app.get('/memory', (req, res) => {
     if (entityFilter && !Array.isArray(entityFilter)) {
       entityFilter = [entityFilter];
     }
+    // Exclude entities by default (compaction snapshots pollute recall)
+    // Pass excludeEntities=none to include everything
+    let excludeEntities = req.query.excludeEntities;
+    if (excludeEntities === 'none') {
+      excludeEntities = [];
+    } else if (!excludeEntities) {
+      excludeEntities = ['compaction_snapshots']; // Default exclusion
+    } else if (!Array.isArray(excludeEntities)) {
+      excludeEntities = [excludeEntities];
+    }
     const { entityType, limit = 10, query } = req.query;
 
     let memories = Array.from(memoryStore.values());
@@ -9219,6 +9229,13 @@ app.get('/memory', (req, res) => {
       memories = memories.filter(m => {
         const memEntities = m.entities || [m.entity];
         return entityFilter.every(e => memEntities.includes(e));
+      });
+    }
+    // Exclude specified entities (default: compaction_snapshots)
+    if (excludeEntities && excludeEntities.length > 0) {
+      memories = memories.filter(m => {
+        const memEntities = m.entities || [m.entity];
+        return !excludeEntities.some(e => memEntities.includes(e));
       });
     }
     if (entityType) {

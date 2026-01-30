@@ -234,17 +234,20 @@ export class ApiClient {
 
   /**
    * Recall memories by query or entity
+   * By default excludes compaction_snapshots - pass excludeEntities: 'none' to include all
    */
   async recall(query: string, options?: {
     limit?: number;
     entity?: string;
     minSalience?: number;
+    excludeEntities?: string | string[];
   }): Promise<RecallResult> {
     return this.request<RecallResult>('GET', '/memory', undefined, {
       query,
       limit: options?.limit,
       entity: options?.entity,
       minSalience: options?.minSalience,
+      excludeEntities: options?.excludeEntities,
     });
   }
 

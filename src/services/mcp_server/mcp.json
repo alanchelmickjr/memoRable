@@ -2,8 +2,8 @@
   "$schema": "https://raw.githubusercontent.com/anthropics/mcp/main/schema/mcp.schema.json",
   "name": "memorable",
   "displayName": "MemoRable",
-  "version": "2.0.0",
-  "description": "Enterprise memory system for AI agents with salience scoring, commitment tracking, relationship intelligence, pressure tracking, and predictive memory. Extends Mem0 with 35 MCP tools for Claude integration.",
+  "version": "2.1.0",
+  "description": "Enterprise memory system for AI agents with salience scoring, commitment tracking, relationship intelligence, pressure tracking, and predictive memory. 49 MCP tools for Claude integration.",
   "author": {
     "name": "MemoRable Team",
     "url": "https://github.com/alanchelmickjr/memoRable"
@@ -22,7 +22,7 @@
     "intelligence"
   ],
   "capabilities": {
-    "tools": 35,
+    "tools": 49,
     "resources": 3,
     "prompts": 2
   },
@@ -40,18 +40,6 @@
       "description": "Get pre-conversation briefing with obligations, events, and sensitivities"
     },
     {
-      "name": "forget",
-      "description": "Delete a specific memory by ID"
-    },
-    {
-      "name": "forget_person",
-      "description": "Delete all memories involving a specific person"
-    },
-    {
-      "name": "restore",
-      "description": "Restore a previously deleted memory"
-    },
-    {
       "name": "list_loops",
       "description": "List open commitments filtered by owner, person, or overdue status"
     },
@@ -60,12 +48,8 @@
       "description": "Mark a commitment as complete with optional note"
     },
     {
-      "name": "reassociate",
-      "description": "Update people, topics, tags, and project associations"
-    },
-    {
-      "name": "export_memories",
-      "description": "Export memories with optional password encryption"
+      "name": "get_status",
+      "description": "Get memory system status including open loops, relationships, patterns"
     },
     {
       "name": "set_context",
@@ -84,8 +68,28 @@
       "description": "List active devices and their context status"
     },
     {
-      "name": "get_status",
-      "description": "Get system status, metrics, relationships, and patterns"
+      "name": "forget",
+      "description": "Forget a memory (suppress, archive, or delete)"
+    },
+    {
+      "name": "forget_person",
+      "description": "Forget all memories involving a specific person"
+    },
+    {
+      "name": "restore",
+      "description": "Restore a previously forgotten memory"
+    },
+    {
+      "name": "reassociate",
+      "description": "Update people, topics, tags, and project associations"
+    },
+    {
+      "name": "export_memories",
+      "description": "Export memories with optional password encryption"
+    },
+    {
+      "name": "import_memories",
+      "description": "Import memories from backup with optional decryption"
     },
     {
       "name": "anticipate",
@@ -116,16 +120,44 @@
       "description": "Improve recognition accuracy through feedback"
     },
     {
-      "name": "import_memories",
-      "description": "Import memories from backup with optional password decryption"
+      "name": "get_anticipated_context",
+      "description": "Get predictively relevant memories for current context (63-day patterns)"
+    },
+    {
+      "name": "search_memories",
+      "description": "Semantic search with filtering by tags, importance, temporal patterns"
+    },
+    {
+      "name": "resolve_open_loop",
+      "description": "Mark a commitment, question, or follow-up as resolved"
+    },
+    {
+      "name": "get_pattern_stats",
+      "description": "Statistics about learned temporal patterns (21-day, 63-day)"
+    },
+    {
+      "name": "get_tier_stats",
+      "description": "Memory tier statistics (hot/warm/cold Zipfian hierarchy)"
     },
     {
       "name": "analyze_emotion",
-      "description": "Analyze emotional content of text or memory using Hume.ai"
+      "description": "Analyze emotional content of text or memory"
     },
     {
       "name": "get_emotional_context",
       "description": "Get real-time emotion state from active streams"
+    },
+    {
+      "name": "start_emotional_session",
+      "description": "Start multi-modal emotional tracking (voice, video, EVI)"
+    },
+    {
+      "name": "stop_emotional_session",
+      "description": "Stop emotional tracking session and process buffered data"
+    },
+    {
+      "name": "list_emotional_sessions",
+      "description": "List active emotional tracking sessions"
     },
     {
       "name": "set_emotion_filter",
@@ -141,19 +173,19 @@
     },
     {
       "name": "correct_emotion",
-      "description": "Override emotion tags when detection got it wrong (sarcasm≠anger)"
+      "description": "Override emotion tags when detection got it wrong"
     },
     {
       "name": "clarify_intent",
-      "description": "Annotate what was meant vs what was said (truth beneath words)"
+      "description": "Annotate what was meant vs what was said"
     },
     {
       "name": "get_relationship",
-      "description": "Synthesize relationship from shared memories via LLM (no stored graph)"
+      "description": "Synthesize relationship from shared memories (no stored graph)"
     },
     {
       "name": "get_entity_pressure",
-      "description": "Butterfly → Hurricane early warning - track emotional pressure patterns"
+      "description": "Butterfly effect early warning - track emotional pressure patterns"
     },
     {
       "name": "get_predictions",
@@ -164,8 +196,32 @@
       "description": "Teach the system what predictions are useful"
     },
     {
+      "name": "recall_vote",
+      "description": "Temperature voting (hot/warm/cold/wrong/spark) on recalled memories"
+    },
+    {
       "name": "set_care_circle",
       "description": "Set who gets alerted when entity pressure is concerning"
+    },
+    {
+      "name": "ingest_event",
+      "description": "Submit external event to daemon (phone, doorbell, email, sensors)"
+    },
+    {
+      "name": "schedule_check",
+      "description": "Schedule future checks (meals, medication, check-ins)"
+    },
+    {
+      "name": "get_daemon_status",
+      "description": "Get event daemon status, queue length, scheduled checks"
+    },
+    {
+      "name": "set_entity_vulnerability",
+      "description": "Set vulnerability level for extra protection"
+    },
+    {
+      "name": "dev_clear_collection",
+      "description": "DEV ONLY: Clear collection for testing"
     }
   ],
   "resources": [

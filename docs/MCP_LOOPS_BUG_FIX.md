@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-30
 **Author:** Claude + Alan
-**Status:** Phase 1 COMPLETE - list_loops fixed, collection cleared
+**Status:** Phase 1-4 COMPLETE - All fixes deployed
 
 ---
 
@@ -173,30 +173,42 @@ The `recall_vote` tool exists but is never used. This would teach the system wha
 3. ✅ Session-start hook already handles both schemas (line 219: `l.description || l.content`)
 4. ✅ Cleared polluted open_loops collection (41 doc chunks removed via forget mode:delete)
 
-### Phase 2: Deduplicate Doc Index
+### Phase 2: Entity Filtering ✅ DONE (2026-01-30)
+1. ✅ Added `excludeEntities` parameter to `/memory` endpoint in `server.js`
+2. ✅ Default exclusion: `compaction_snapshots` (prevents recall pollution)
+3. ✅ Pass `excludeEntities=none` to include everything
+4. ✅ Updated `api_client.ts:recall()` to support `excludeEntities` option
+
+### Phase 3: mcp.json Sync ✅ DONE (2026-01-30)
+1. ✅ Updated mcp.json to reflect actual tool count: **49 tools** (was claiming 35, listing 34)
+2. ✅ Bumped version to 2.1.0
+3. ✅ Added all missing tools:
+   - `get_tier_stats`, `get_pattern_stats`, `get_anticipated_context`
+   - `search_memories`, `resolve_open_loop`, `recall_vote`
+   - `start_emotional_session`, `stop_emotional_session`, `list_emotional_sessions`
+   - `ingest_event`, `schedule_check`, `get_daemon_status`
+   - `set_entity_vulnerability`, `dev_clear_collection`
+
+### Phase 4: recall_vote Integration ✅ DONE (2026-01-30)
+1. ✅ Added REMEMBER section to session-start hook context
+2. ✅ Prompts Claude to use recall_vote after using memories
+3. ✅ Documents temperature voting: hot/warm/cold/wrong/spark
+
+### Future: Deduplicate Doc Index
 1. Add unique constraint on `source_file + section + chunk_index`
 2. Or dedupe on insert in indexing script
 3. Clean existing duplicates
 
-### Phase 3: Separate Compaction Storage
-1. Create `compaction_snapshots` collection
-2. Update PreCompact hook to write there
-3. Exclude from normal recall queries
-
-### Phase 4: Entity Namespace Clarity
-1. Document entity naming conventions
-2. Update recall to filter by entity type when appropriate
-3. Consider `entity_type` field: `personal`, `documentation`, `session`
-
 ---
 
-## Files to Modify
+## Files Modified
 
-| File | Change |
-|------|--------|
-| `src/services/mcp_server/api_client.ts` | Fix `listLoops()` to call `/loops` |
-| `.claude/hooks/session-start-memorable.cjs` | Handle proper loop schema |
-| `src/server.js` | Verify `/loops` response format |
+| File | Change | Status |
+|------|--------|--------|
+| `src/services/mcp_server/api_client.ts` | Fix `listLoops()` to call `/loops`; Add `excludeEntities` to `recall()` | ✅ |
+| `.claude/hooks/session-start-memorable.cjs` | Handle proper loop schema; Add recall_vote reminder | ✅ |
+| `src/server.js` | Add `excludeEntities` filter to `/memory` endpoint | ✅ |
+| `src/services/mcp_server/mcp.json` | Update to 49 tools, version 2.1.0 | ✅ |
 
 ---
 

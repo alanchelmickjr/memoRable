@@ -244,6 +244,12 @@ async function main() {
       parts.push('');
     }
 
+    // 6. Recall feedback reminder
+    parts.push('## REMEMBER');
+    parts.push('Use `mcp__memorable__recall_vote` to rate recalled memories:');
+    parts.push('- hot=exactly right, warm=close, cold=off, wrong=misleading, spark=triggered idea');
+    parts.push('');
+
   } catch (e) {
     // Silent fail
   }
