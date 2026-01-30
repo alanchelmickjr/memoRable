@@ -313,30 +313,28 @@ export class ApiClient {
   }
 
   /**
-   * Get open loops (commitments)
+   * Get open loops (commitments) from the open_loops collection
    */
   async listLoops(options?: {
     person?: string;
     owner?: 'self' | 'them' | 'mutual';
     includeOverdue?: boolean;
   }): Promise<unknown[]> {
-    // Query memories for open loops
-    const query = options?.person
-      ? `open commitment ${options.person}`
-      : 'open commitment follow-up';
+    const params: Record<string, string> = {};
+    if (options?.person) params.person = options.person;
+    if (options?.owner) params.owner = options.owner;
+    if (options?.includeOverdue !== undefined) {
+      params.includeOverdue = String(options.includeOverdue);
+    }
 
-    const result = await this.recall(query, {
-      entity: options?.person,
-      limit: 50,
-    });
-
-    // Filter for loop-like memories (this is a simplification)
-    return result.memories.filter(m =>
-      m.content.toLowerCase().includes('commit') ||
-      m.content.toLowerCase().includes('promise') ||
-      m.content.toLowerCase().includes('follow up') ||
-      m.content.toLowerCase().includes('owe')
+    const result = await this.request<{ loops: unknown[]; count: number }>(
+      'GET',
+      '/loops',
+      undefined,
+      params
     );
+
+    return result.loops || [];
   }
 
   /**
