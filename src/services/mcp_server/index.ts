@@ -2801,6 +2801,36 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ============================================
+      // DEV ONLY - Remove before production
+      // ============================================
+      {
+        name: 'dev_clear_collection',
+        description:
+          'DEV ONLY: Clear a collection for testing. Allowed: open_loops, patterns, context_frames. REMOVE BEFORE PRODUCTION.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            collection: {
+              type: 'string',
+              enum: ['open_loops', 'patterns', 'context_frames'],
+              description: 'Collection to clear',
+            },
+            confirm: {
+              type: 'boolean',
+              description: 'Must be true to confirm destructive action',
+            },
+          },
+          required: ['collection', 'confirm'],
+        },
+        annotations: {
+          title: 'DEV: Clear Collection',
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
     ],
   }));
 
@@ -6518,6 +6548,72 @@ function createServer(): Server {
                 notes,
                 protection_level: protectionLevel,
                 message: `${entity_id} vulnerability set to "${vulnerability}". ${protectionLevel}.`,
+              }, null, 2),
+            }],
+          };
+        }
+
+        // ============================================
+        // DEV ONLY - Remove before production
+        // ============================================
+        case 'dev_clear_collection': {
+          const { collection, confirm } = args as { collection: string; confirm: boolean };
+
+          if (!confirm) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'Must set confirm: true to clear collection',
+                  collection,
+                }, null, 2),
+              }],
+            };
+          }
+
+          const allowedCollections = ['open_loops', 'patterns', 'context_frames'];
+          if (!allowedCollections.includes(collection)) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'Collection not allowed',
+                  allowed: allowedCollections,
+                }, null, 2),
+              }],
+            };
+          }
+
+          // Route through API (server has MongoDB access)
+          if (connectionMode === 'rest' && apiClient) {
+            const result = await apiClient.devClearCollection(collection);
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  mode: 'rest',
+                  ...result,
+                  warning: 'DEV ONLY - Remove before production',
+                }, null, 2),
+              }],
+            };
+          }
+
+          // Direct mode fallback (local dev with MongoDB)
+          const db = await initializeDb();
+          const result = await db.collection(collection).deleteMany({});
+
+          console.log(`[DEV] Cleared ${collection}: ${result.deletedCount} documents`);
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                mode: 'direct',
+                cleared: true,
+                collection,
+                deletedCount: result.deletedCount,
+                warning: 'DEV ONLY - Remove before production',
               }, null, 2),
             }],
           };

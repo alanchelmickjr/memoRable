@@ -355,6 +355,14 @@ export class ApiClient {
     return this.request('POST', `/loops/${loopId}/close`, { note });
   }
 
+  /**
+   * DEV ONLY: Clear a collection for testing
+   * REMOVE BEFORE PRODUCTION
+   */
+  async devClearCollection(collection: string): Promise<{ cleared: boolean; deletedCount: number }> {
+    return this.request('POST', `/admin/dev/clear/${collection}`, {});
+  }
+
   async resolveOpenLoop(memoryId: string, resolutionNote?: string): Promise<{ resolved: boolean }> {
     return this.request('POST', `/loops/${memoryId}/resolve`, { resolution_note: resolutionNote });
   }

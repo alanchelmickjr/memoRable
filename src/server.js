@@ -8351,12 +8351,13 @@ app.post('/admin/devices/:deviceId/revoke', adminMiddleware, async (req, res) =>
   res.redirect('/admin/devices');
 });
 
-// POST /admin/collections/:name/clear - Clear a collection (admin only)
-app.post('/admin/collections/:name/clear', adminMiddleware, async (req, res) => {
-  const { name } = req.params;
+// POST /admin/dev/clear/:collection - DEV ONLY: Clear collection for testing
+// REMOVE BEFORE PRODUCTION
+app.post('/admin/dev/clear/:collection', adminMiddleware, async (req, res) => {
+  const { collection } = req.params;
   const allowedCollections = ['open_loops', 'patterns', 'context_frames'];
 
-  if (!allowedCollections.includes(name)) {
+  if (!allowedCollections.includes(collection)) {
     return res.status(400).json({
       error: 'Collection not allowed',
       allowed: allowedCollections
@@ -8365,16 +8366,16 @@ app.post('/admin/collections/:name/clear', adminMiddleware, async (req, res) => 
 
   try {
     const db = getDatabase();
-    const result = await db.collection(name).deleteMany({});
-    console.log(`[admin] Cleared ${name}: ${result.deletedCount} documents`);
+    const result = await db.collection(collection).deleteMany({});
+    console.log(`[DEV] Cleared ${collection}: ${result.deletedCount} documents`);
     res.json({
       cleared: true,
-      collection: name,
+      collection,
       deletedCount: result.deletedCount,
-      performedBy: req.auth?.user_id
+      warning: 'DEV ONLY - Remove before production'
     });
   } catch (error) {
-    console.error(`[admin] Failed to clear ${name}:`, error.message);
+    console.error(`[DEV] Failed to clear ${collection}:`, error.message);
     res.status(500).json({ error: 'Failed to clear collection', message: error.message });
   }
 });
