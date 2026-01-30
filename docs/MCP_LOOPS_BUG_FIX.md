@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-30
 **Author:** Claude + Alan
-**Status:** Analysis Complete, Awaiting Implementation
+**Status:** Phase 1 COMPLETE - list_loops fixed, collection cleared
 
 ---
 
@@ -108,7 +108,8 @@ Even after fixing Bug 1, the `/loops` endpoint returns memories because the `ope
 
 **Root Cause:** The doc indexer or memory ingestion wrote to `open_loops` instead of `memories`.
 
-**Fix:** Clean the collection and ensure proper loop extraction at ingest time.
+**Fix:** ✅ DONE - Cleared collection using `mcp__memorable__forget` with `mode: delete` (fade to 0).
+41 polluted doc chunks removed. Collection now empty and ready for proper loop tracking.
 
 ---
 
@@ -166,11 +167,11 @@ The `recall_vote` tool exists but is never used. This would teach the system wha
 
 ## Implementation Plan
 
-### Phase 1: Fix list_loops (CRITICAL)
-1. Update `api_client.ts:listLoops()` to call `/loops` endpoint
-2. Verify `/loops` endpoint returns proper schema
-3. Update session-start hook to handle new response format
-4. Test: `list_loops` should return actual commitments, not doc chunks
+### Phase 1: Fix list_loops (CRITICAL) ✅ DONE
+1. ✅ Update `api_client.ts:listLoops()` to call `/loops` endpoint (commit 8a7b1c6)
+2. ✅ Verify `/loops` endpoint returns proper schema
+3. ✅ Session-start hook already handles both schemas (line 219: `l.description || l.content`)
+4. ✅ Cleared polluted open_loops collection (41 doc chunks removed via forget mode:delete)
 
 ### Phase 2: Deduplicate Doc Index
 1. Add unique constraint on `source_file + section + chunk_index`
