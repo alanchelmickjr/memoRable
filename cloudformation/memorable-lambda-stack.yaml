@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  MemoRable Lambda Stack — Ultra-low-cost MCP memory server.
-  Replaces the old ECS/ALB/NAT stack (~$122/mo) with Lambda (~$1-3/mo).
-  No VPC, no NAT Gateway, no ALB, no ECS, no ElastiCache.
-  One-click deploy: ./scripts/deploy.sh
+  MemoRable — Always-on MCP memory server with Redis core and AI daemon.
+  EC2 (Docker: MCP server + Redis) + Elastic IP + MongoDB Atlas.
+  The daemon continuously prepares context — the smart kitten with his hand up.
+  One-click: MONGODB_URI=<uri> ./scripts/deploy.sh
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -14,121 +14,165 @@ Metadata:
           - ImageUri
           - MongoDBUri
       - Label:
+          default: "Instance"
+        Parameters:
+          - InstanceType
+          - KeyName
+      - Label:
           default: "Security"
         Parameters:
           - MemorablePassphrase
           - OAuthEnabled
       - Label:
-          default: "LLM Provider"
+          default: "LLM"
         Parameters:
           - LLMProvider
           - AnthropicApiKey
-      - Label:
-          default: "Tuning"
-        Parameters:
-          - MemorySize
-          - Timeout
-    ParameterLabels:
-      ImageUri:
-        default: "ECR Image URI (built by deploy.sh)"
-      MongoDBUri:
-        default: "MongoDB Atlas connection string"
-      MemorablePassphrase:
-        default: "Auth passphrase (empty = dev default)"
-      OAuthEnabled:
-        default: "Enable OAuth 2.1 (for Claude.ai connector)"
-      LLMProvider:
-        default: "LLM Provider (auto = Bedrock in Lambda)"
 
 Parameters:
   ImageUri:
     Type: String
-    Description: >-
-      ECR image URI for the MCP server container.
-      Format: ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPO:TAG
-      Built and pushed by scripts/deploy.sh
+    Description: ECR image URI (built and pushed by deploy.sh)
 
   MongoDBUri:
     Type: String
     NoEcho: true
-    Description: >-
-      MongoDB Atlas connection string.
-      Free tier: atlas M0 (512MB). Get one at cloud.mongodb.com
+    Description: MongoDB Atlas connection string (free M0 at cloud.mongodb.com)
+
+  InstanceType:
+    Type: String
+    Default: t4g.micro
+    AllowedValues:
+      - t4g.nano
+      - t4g.micro
+      - t4g.small
+    Description: 'nano=$3/mo 0.5GB | micro=$7/mo 1GB | small=$15/mo 2GB'
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+    Description: Amazon Linux 2023 ARM64 (auto-resolved via SSM)
+
+  KeyName:
+    Type: String
+    Default: ''
+    Description: EC2 key pair for SSH (optional)
 
   MemorablePassphrase:
     Type: String
     NoEcho: true
-    Default: ""
-    Description: >-
-      Auth passphrase for API access.
-      Empty = public dev default. Set for private deployments.
+    Default: ''
 
   LLMProvider:
     Type: String
     Default: auto
-    AllowedValues:
-      - auto
-      - bedrock
-      - anthropic
-    Description: >-
-      auto = detect from environment (Bedrock in Lambda via IAM).
-      bedrock = explicit AWS Bedrock. anthropic = bring your own key.
+    AllowedValues: [auto, bedrock, anthropic]
 
   AnthropicApiKey:
     Type: String
     NoEcho: true
-    Default: ""
-    Description: "Anthropic API key (only if LLMProvider=anthropic)"
+    Default: ''
 
   OAuthEnabled:
     Type: String
-    Default: "false"
-    AllowedValues:
-      - "true"
-      - "false"
-    Description: >-
-      Enable OAuth 2.1 for Claude.ai MCP connector.
-      Requires OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET in env.
-
-  MemorySize:
-    Type: Number
-    Default: 512
-    AllowedValues:
-      - 256
-      - 512
-      - 1024
-      - 2048
-    Description: "Lambda memory in MB. 512 is a good default."
-
-  Timeout:
-    Type: Number
-    Default: 300
-    MinValue: 30
-    MaxValue: 900
-    Description: "Lambda timeout in seconds. MCP sessions can be long."
+    Default: 'false'
+    AllowedValues: ['true', 'false']
 
 Conditions:
-  HasAnthropicKey: !Not [!Equals [!Ref AnthropicApiKey, ""]]
-  HasPassphrase: !Not [!Equals [!Ref MemorablePassphrase, ""]]
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+  HasAnthropicKey: !Not [!Equals [!Ref AnthropicApiKey, '']]
 
 Resources:
-  # ─── IAM Role ──────────────────────────────────────────────────────
-  LambdaExecutionRole:
+  # ─── Networking (minimal: 1 VPC, 1 public subnet, no NAT) ──────────
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs '']
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  # ─── Security Group ────────────────────────────────────────────────
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: MemoRable MCP server
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: MCP StreamableHTTP endpoint
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: SSH
+
+  # ─── IAM Role (Bedrock + ECR + SSM) ────────────────────────────────
+  InstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${AWS::StackName}-lambda-role'
+      RoleName: !Sub '${AWS::StackName}-ec2-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
+              Service: ec2.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        # Basic execution: CloudWatch Logs write
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
-        # Bedrock access for LLM inference (salience scoring, briefings)
+        - PolicyName: ECRPull
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
         - PolicyName: BedrockAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -139,118 +183,171 @@ Resources:
                   - bedrock:InvokeModelWithResponseStream
                 Resource: '*'
 
-  # ─── CloudWatch Logs ───────────────────────────────────────────────
-  LogGroup:
-    Type: AWS::Logs::LogGroup
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
     Properties:
-      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-mcp'
-      RetentionInDays: 14
+      Roles: [!Ref InstanceRole]
 
-  # ─── Lambda Function ───────────────────────────────────────────────
-  MCPFunction:
-    Type: AWS::Lambda::Function
-    DependsOn: LogGroup
+  # ─── Elastic IP (stable endpoint — no ALB needed) ──────────────────
+  ElasticIP:
+    Type: AWS::EC2::EIP
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-mcp'
-      Description: 'MemoRable MCP Server — 49 tools for persistent AI memory'
-      PackageType: Image
-      Code:
-        ImageUri: !Ref ImageUri
-      MemorySize: !Ref MemorySize
-      Timeout: !Ref Timeout
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Architectures:
-        - x86_64
-      Environment:
-        Variables:
-          # Transport
-          TRANSPORT_TYPE: http
-          MCP_HTTP_PORT: '8080'
-          PORT: '8080'
-          # Database (direct mode — no API_BASE_URL means direct MongoDB)
-          MONGODB_URI: !Ref MongoDBUri
-          # LLM
-          LLM_PROVIDER: !Ref LLMProvider
-          ANTHROPIC_API_KEY: !If
-            - HasAnthropicKey
-            - !Ref AnthropicApiKey
-            - !Ref 'AWS::NoValue'
-          # Auth
-          MEMORABLE_PASSPHRASE: !If
-            - HasPassphrase
-            - !Ref MemorablePassphrase
-            - !Ref 'AWS::NoValue'
-          # OAuth
-          OAUTH_ENABLED: !Ref OAuthEnabled
-          # Runtime
-          NODE_ENV: production
-          # Lambda Web Adapter
-          AWS_LWA_READINESS_CHECK_PATH: /health
-          AWS_LWA_INVOKE_MODE: RESPONSE_STREAM
+      Domain: vpc
 
-  # ─── Function URL (replaces ALB — free!) ───────────────────────────
-  FunctionUrl:
-    Type: AWS::Lambda::Url
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
     Properties:
-      TargetFunctionArn: !GetAtt MCPFunction.Arn
-      AuthType: NONE
-      InvokeMode: RESPONSE_STREAM
-      Cors:
-        AllowOrigins:
-          - 'https://claude.ai'
-          - 'https://claude.com'
-          - '*'
-        AllowMethods:
-          - 'GET'
-          - 'POST'
-          - 'DELETE'
-          - 'OPTIONS'
-        AllowHeaders:
-          - 'Content-Type'
-          - 'Authorization'
-          - 'mcp-session-id'
-        ExposeHeaders:
-          - 'mcp-session-id'
-        MaxAge: 86400
+      InstanceId: !Ref Instance
+      AllocationId: !GetAtt ElasticIP.AllocationId
 
-  # Permission for public Function URL invocation
-  FunctionUrlPermission:
-    Type: AWS::Lambda::Permission
+  # ─── EC2 Instance (always-on daemon) ───────────────────────────────
+  Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: GatewayAttachment
     Properties:
-      FunctionName: !GetAtt MCPFunction.Arn
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds: [!Ref SecurityGroup]
+      IamInstanceProfile: !Ref InstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-mcp-daemon'
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -ex
+
+            # ── Install Docker ──
+            dnf update -y
+            dnf install -y docker
+            systemctl enable docker && systemctl start docker
+            usermod -a -G docker ec2-user
+
+            # Docker Compose plugin
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            ARCH=$(uname -m)
+            curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$ARCH" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+            # ── ECR Login ──
+            REGISTRY=$(echo "${ImageUri}" | cut -d/ -f1)
+            aws ecr get-login-password --region ${AWS::Region} | \
+              docker login --username AWS --password-stdin "$REGISTRY"
+
+            # ── Generate Redis password ──
+            REDIS_PASS=$(openssl rand -hex 16)
+
+            # ── Write .env (secrets stay here, not in compose file) ──
+            mkdir -p /opt/memorable
+            cat > /opt/memorable/.env << ENVFILE
+            IMAGE_URI=${ImageUri}
+            MONGODB_URI=${MongoDBUri}
+            REDIS_PASSWORD=$REDIS_PASS
+            LLM_PROVIDER=${LLMProvider}
+            ANTHROPIC_API_KEY=${AnthropicKeyValue}
+            MEMORABLE_PASSPHRASE=${MemorablePassphrase}
+            OAUTH_ENABLED=${OAuthEnabled}
+            ENVFILE
+
+            # ── Write docker-compose.yml ──
+            cat > /opt/memorable/docker-compose.yml << 'COMPOSEFILE'
+            services:
+              redis:
+                image: redis:alpine
+                command: >-
+                  redis-server
+                  --appendonly yes
+                  --requirepass $${REDIS_PASSWORD}
+                  --maxmemory 256mb
+                  --maxmemory-policy allkeys-lru
+                volumes:
+                  - redis_data:/data
+                healthcheck:
+                  test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                restart: unless-stopped
+
+              mcp:
+                image: $${IMAGE_URI}
+                ports:
+                  - "8080:8080"
+                environment:
+                  TRANSPORT_TYPE: http
+                  MCP_HTTP_PORT: '8080'
+                  PORT: '8080'
+                  MONGODB_URI: $${MONGODB_URI}
+                  REDIS_URL: redis://default:$${REDIS_PASSWORD}@redis:6379
+                  REDIS_PASSWORD: $${REDIS_PASSWORD}
+                  LLM_PROVIDER: $${LLM_PROVIDER}
+                  ANTHROPIC_API_KEY: $${ANTHROPIC_API_KEY}
+                  MEMORABLE_PASSPHRASE: $${MEMORABLE_PASSPHRASE}
+                  OAUTH_ENABLED: $${OAUTH_ENABLED}
+                  NODE_ENV: production
+                depends_on:
+                  redis:
+                    condition: service_healthy
+                restart: unless-stopped
+
+            volumes:
+              redis_data:
+            COMPOSEFILE
+
+            # ── Start services ──
+            cd /opt/memorable
+            docker compose up -d
+
+            # ── Systemd service for auto-restart on reboot ──
+            cat > /etc/systemd/system/memorable.service << 'SVCFILE'
+            [Unit]
+            Description=MemoRable MCP Daemon
+            After=docker.service
+            Requires=docker.service
+
+            [Service]
+            Type=oneshot
+            RemainAfterExit=yes
+            WorkingDirectory=/opt/memorable
+            ExecStart=/usr/local/lib/docker/cli-plugins/docker-compose up -d
+            ExecStop=/usr/local/lib/docker/cli-plugins/docker-compose down
+
+            [Install]
+            WantedBy=multi-user.target
+            SVCFILE
+            systemctl daemon-reload
+            systemctl enable memorable
+          - AnthropicKeyValue: !If [HasAnthropicKey, !Ref AnthropicApiKey, '']
 
 Outputs:
-  FunctionUrl:
-    Description: >-
-      Lambda Function URL — your MCP server endpoint.
-      Use this in ~/.claude.json as MEMORABLE_API_URL
-    Value: !GetAtt FunctionUrl.FunctionUrl
+  MCPEndpoint:
+    Description: MCP StreamableHTTP endpoint (for Claude.ai connector)
+    Value: !Sub 'http://${ElasticIP}:8080/mcp'
 
   HealthCheck:
-    Description: Health check endpoint
-    Value: !Sub '${FunctionUrl.FunctionUrl}health'
+    Description: Health check
+    Value: !Sub 'http://${ElasticIP}:8080/health'
 
-  MCPEndpoint:
-    Description: >-
-      MCP protocol endpoint (StreamableHTTP).
-      For Claude.ai connector registration.
-    Value: !Sub '${FunctionUrl.FunctionUrl}mcp'
+  PublicIP:
+    Description: Elastic IP address
+    Value: !Ref ElasticIP
 
-  ClaudeCodeConfig:
-    Description: >-
-      Add this to ~/.claude.json under mcpServers to use from Claude Code.
-      Replace the URL if using a custom domain.
-    Value: !Sub >-
-      {"type":"stdio","command":"npx","args":["tsx","src/services/mcp_server/index.ts"],
-      "env":{"MEMORABLE_API_URL":"${FunctionUrl.FunctionUrl}","USE_REMOTE_API":"true","ALLOW_HTTP_DEV":"true"}}
+  SSHCommand:
+    Description: SSH access (if key pair provided)
+    Value: !If
+      - HasKeyName
+      - !Sub 'ssh ec2-user@${ElasticIP}'
+      - 'No SSH key configured. Use SSM Session Manager instead.'
 
-  MonthlyCostEstimate:
+  MonthlyCost:
     Description: Estimated monthly cost
-    Value: '$1-3/month (Lambda free tier + CloudWatch + ECR)'
-
-  OldStackComparison:
-    Description: Cost savings vs old ECS/ALB/NAT stack
-    Value: '98% reduction: ~$2/mo vs ~$122/mo (NAT=$32 + ALB=$16 + ECS=$37 + Redis=$12 + VPC=$22)'
+    Value: !Sub '~$11/mo (${InstanceType} + EIP + Redis local + Atlas free). Old stack was $122/mo.'
