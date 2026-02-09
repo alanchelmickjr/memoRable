@@ -1,0 +1,37 @@
+# MemoRable Docker build context exclusions
+# Keeps Lambda image builds fast and small
+
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+
+# Old infrastructure
+terraform/
+cloudformation/
+
+# Development files
+*.md
+*.log
+.eslintrc*
+.prettierrc*
+.husky/
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Tests (not needed in Lambda)
+tests/
+jest.config.*

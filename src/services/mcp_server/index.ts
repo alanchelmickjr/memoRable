@@ -555,6 +555,17 @@ function shouldSkipVectorStorage(tier: SecurityTier): boolean {
 let db: Db | null = null;
 let mongoClient: MongoClient | null = null;
 
+/**
+ * Get the database instance. Throws if not initialized.
+ * Used by direct-mode tool implementations that need MongoDB access.
+ */
+function getDb(): Db {
+  if (!db) {
+    throw new Error('Database not initialized. Are you in REST mode? This code path requires direct MongoDB.');
+  }
+  return db;
+}
+
 // ============================================
 // BEHAVIORAL IDENTITY HELPER FUNCTIONS
 // ============================================
@@ -1175,19 +1186,23 @@ async function initializeDb(): Promise<void> {
       throw new Error('API_BASE_URL set but failed to create API client');
     }
 
-    // Verify API is reachable
-    const healthy = await apiClient.healthCheck();
-    if (!healthy) {
-      console.error('[MCP] WARNING: API health check failed - endpoint may be unreachable');
-    }
-
-    // Pre-authenticate to catch auth failures early (and cache the API key)
-    try {
-      await apiClient.authenticate();
-      console.error('[MCP] REST mode: Authenticated successfully');
-    } catch (authErr) {
-      console.error('[MCP] WARNING: Authentication failed - requests will retry auth:', authErr);
-    }
+    // Non-blocking health check + auth: don't delay MCP server startup.
+    // Auth will retry lazily on first tool use via ApiClient.request().
+    apiClient.healthCheck().then(healthy => {
+      if (!healthy) {
+        console.error('[MCP] WARNING: API health check failed - endpoint may be unreachable');
+        console.error('[MCP] Auth will be attempted on first tool use');
+      } else {
+        // Health OK — pre-auth in background (no await, non-blocking)
+        apiClient!.authenticate().then(() => {
+          console.error('[MCP] REST mode: Authenticated successfully');
+        }).catch((authErr: Error) => {
+          console.error('[MCP] WARNING: Pre-auth failed (will retry on first tool use):', authErr.message);
+        });
+      }
+    }).catch(() => {
+      console.error('[MCP] WARNING: Health check failed - auth deferred to first tool use');
+    });
 
     console.error(`[MCP] REST mode: Using HTTP API at ${process.env.API_BASE_URL || process.env.MEMORABLE_API_URL}`);
     console.error('[MCP] Skipping direct MongoDB/Redis connections');

@@ -2,7 +2,7 @@
  * API Client for MemoRable - REST Mode
  *
  * ╔══════════════════════════════════════════════════════════════════╗
- * ║  🔒 HTTPS REQUIRED IN PRODUCTION                                 ║
+ * ║  HTTPS REQUIRED IN PRODUCTION                                    ║
  * ║                                                                   ║
  * ║  All API communication MUST use TLS encryption in production.    ║
  * ║  HTTP allowed only when ALLOW_HTTP_DEV=true or NODE_ENV=dev.     ║
@@ -16,7 +16,90 @@
  * - Domain with ACM certificate on ALB (production)
  * - API_BASE_URL starting with https:// (or http:// with ALLOW_HTTP_DEV=true)
  * - See docs/REST_MODE_SECURITY.md for setup
+ *
+ * PROXY SUPPORT:
+ * Node.js fetch() does NOT respect HTTP_PROXY/HTTPS_PROXY env vars.
+ * This client uses undici ProxyAgent to route through the sandbox proxy
+ * when those env vars are set. Without this, fetch() fails with
+ * DNS resolution errors in sandboxed environments (Claude Code remote, etc).
  */
+
+import { execSync } from 'child_process';
+
+// Proxy detection: Node.js fetch() does NOT respect HTTP_PROXY/HTTPS_PROXY.
+// In sandboxed environments (Claude Code remote), direct DNS is blocked.
+// curl respects proxy env vars natively - use it when proxy is detected.
+const HAS_PROXY = !!(process.env.HTTPS_PROXY || process.env.HTTP_PROXY ||
+                     process.env.https_proxy || process.env.http_proxy);
+
+if (HAS_PROXY) {
+  console.error('[ApiClient] Proxy detected - using curl transport for API calls');
+}
+
+/**
+ * Proxy-aware fetch implementation.
+ * When proxy env vars are set, delegates to curl (which respects them natively).
+ * Otherwise uses Node.js global fetch.
+ */
+async function proxyFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+  if (!HAS_PROXY) {
+    return fetch(url, init);
+  }
+
+  // Build curl command
+  const method = init?.method || 'GET';
+  const headers = init?.headers as Record<string, string> | undefined;
+  const body = init?.body as string | undefined;
+
+  const args: string[] = [
+    'curl', '-s', '-S',             // silent but show errors
+    '-w', '\\n%{http_code}',        // append status code
+    '-X', method,
+    '--max-time', '30',
+  ];
+
+  if (headers) {
+    for (const [key, value] of Object.entries(headers)) {
+      args.push('-H', `${key}: ${value}`);
+    }
+  }
+
+  if (body) {
+    args.push('-d', body);
+  }
+
+  args.push(url.toString());
+
+  try {
+    const result = execSync(args.map(a => {
+      // Shell-escape arguments
+      if (a.includes(' ') || a.includes('"') || a.includes("'") || a.includes('\\') || a.includes('{')) {
+        return `'${a.replace(/'/g, "'\\''")}'`;
+      }
+      return a;
+    }).join(' '), {
+      encoding: 'utf-8',
+      timeout: 30000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Parse: response body is everything except the last line (status code)
+    const lines = result.trimEnd().split('\n');
+    const statusCode = parseInt(lines[lines.length - 1], 10);
+    const responseBody = lines.slice(0, -1).join('\n');
+
+    // Return a Response-like object with the fields the ApiClient uses
+    return {
+      ok: statusCode >= 200 && statusCode < 300,
+      status: statusCode,
+      async json() { return JSON.parse(responseBody); },
+      async text() { return responseBody; },
+      headers: new Headers(),
+    } as unknown as Response;
+  } catch (err: any) {
+    throw new TypeError(`fetch failed`, { cause: err });
+  }
+}
 
 export interface ApiClientConfig {
   baseUrl: string;
@@ -98,75 +181,92 @@ export class ApiClient {
   }
 
   /**
-   * Authenticate with the API using knock/exchange flow
+   * Authenticate with the API using knock/exchange flow.
+   * Retries up to 4 times with exponential backoff (2s, 4s, 8s, 16s).
    */
-  async authenticate(): Promise<void> {
-    if (this.apiKey) {
-      // Already have a valid API key
-      console.error('[ApiClient] Using existing API key');
+  async authenticate(forceReauth = false): Promise<void> {
+    if (this.apiKey && !forceReauth) {
       return;
     }
 
-    console.error('[ApiClient] No API key - initiating knock/exchange handshake...');
+    // Clear stale key on forced re-auth
+    if (forceReauth) {
+      this.apiKey = null;
+    }
 
-    try {
-      // Step 1: Knock to get a challenge
-      const knockResponse = await fetch(`${this.baseUrl}/auth/knock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device: {
-            type: this.deviceType,
-            name: this.deviceName,
-          },
-        }),
-      });
+    const MAX_RETRIES = 4;
+    const BACKOFF_BASE_MS = 2000;
 
-      if (!knockResponse.ok) {
-        throw new Error(`Knock failed: ${knockResponse.status}`);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        if (attempt > 0) {
+          const delayMs = BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+          console.error(`[ApiClient] Auth retry ${attempt}/${MAX_RETRIES} in ${delayMs}ms...`);
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+
+        // Step 1: Knock to get a challenge
+        const knockResponse = await proxyFetch(`${this.baseUrl}/auth/knock`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device: {
+              type: this.deviceType,
+              name: this.deviceName,
+            },
+          }),
+        });
+
+        if (!knockResponse.ok) {
+          throw new Error(`Knock failed: ${knockResponse.status}`);
+        }
+
+        const knockData = await knockResponse.json() as { challenge: string };
+        const challenge = knockData.challenge;
+
+        if (!challenge) {
+          throw new Error('No challenge received from knock');
+        }
+
+        // Step 2: Exchange passphrase for API key
+        const exchangeResponse = await proxyFetch(`${this.baseUrl}/auth/exchange`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            challenge,
+            passphrase: this.passphrase,
+            device: {
+              type: this.deviceType,
+              name: this.deviceName,
+            },
+          }),
+        });
+
+        if (!exchangeResponse.ok) {
+          throw new Error(`Exchange failed: ${exchangeResponse.status}`);
+        }
+
+        const exchangeData = await exchangeResponse.json() as { api_key: string };
+        this.apiKey = exchangeData.api_key;
+
+        if (!this.apiKey) {
+          throw new Error('No API key received from exchange');
+        }
+
+        console.error('[ApiClient] Authenticated successfully');
+        return;
+      } catch (error) {
+        console.error(`[ApiClient] Auth attempt ${attempt + 1} failed:`, error);
+        if (attempt === MAX_RETRIES) {
+          throw new Error(`Authentication failed after ${MAX_RETRIES + 1} attempts: ${error}`);
+        }
       }
-
-      const knockData = await knockResponse.json() as { challenge: string };
-      const challenge = knockData.challenge;
-
-      if (!challenge) {
-        throw new Error('No challenge received from knock');
-      }
-
-      // Step 2: Exchange passphrase for API key
-      const exchangeResponse = await fetch(`${this.baseUrl}/auth/exchange`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          challenge,
-          passphrase: this.passphrase,
-          device: {
-            type: this.deviceType,
-            name: this.deviceName,
-          },
-        }),
-      });
-
-      if (!exchangeResponse.ok) {
-        throw new Error(`Exchange failed: ${exchangeResponse.status}`);
-      }
-
-      const exchangeData = await exchangeResponse.json() as { api_key: string };
-      this.apiKey = exchangeData.api_key;
-
-      if (!this.apiKey) {
-        throw new Error('No API key received from exchange');
-      }
-
-      console.error('[ApiClient] Authenticated successfully');
-    } catch (error) {
-      console.error('[ApiClient] Authentication failed:', error);
-      throw error;
     }
   }
 
   /**
-   * Make an authenticated request to the API
+   * Make an authenticated request to the API.
+   * Auto-reauthenticates on 401 (expired/revoked key).
    */
   private async request<T>(
     method: string,
@@ -200,11 +300,37 @@ export class ApiClient {
       headers['X-API-Key'] = this.apiKey;
     }
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+
+    // 401 = key expired or revoked — re-authenticate and retry once
+    if (response.status === 401) {
+      console.error(`[ApiClient] 401 on ${method} ${path} — re-authenticating...`);
+      await this.authenticate(/* forceReauth */ true);
+
+      const retryHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (this.apiKey) {
+        retryHeaders['X-API-Key'] = this.apiKey;
+      }
+
+      const retryResponse = await proxyFetch(url, {
+        method,
+        headers: retryHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (!retryResponse.ok) {
+        const errorText = await retryResponse.text();
+        throw new Error(`API request failed after re-auth: ${retryResponse.status} - ${errorText}`);
+      }
+
+      return retryResponse.json() as Promise<T>;
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -644,7 +770,7 @@ export class ApiClient {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await proxyFetch(`${this.baseUrl}/health`);
       return response.ok;
     } catch {
       return false;
