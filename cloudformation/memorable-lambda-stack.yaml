@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  MemoRable Lambda Stack — Ultra-low-cost MCP memory server.
+  Replaces the old ECS/ALB/NAT stack (~$122/mo) with Lambda (~$1-3/mo).
+  No VPC, no NAT Gateway, no ALB, no ECS, no ElastiCache.
+  One-click deploy: ./scripts/deploy.sh
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Required"
+        Parameters:
+          - ImageUri
+          - MongoDBUri
+      - Label:
+          default: "Security"
+        Parameters:
+          - MemorablePassphrase
+          - OAuthEnabled
+      - Label:
+          default: "LLM Provider"
+        Parameters:
+          - LLMProvider
+          - AnthropicApiKey
+      - Label:
+          default: "Tuning"
+        Parameters:
+          - MemorySize
+          - Timeout
+    ParameterLabels:
+      ImageUri:
+        default: "ECR Image URI (built by deploy.sh)"
+      MongoDBUri:
+        default: "MongoDB Atlas connection string"
+      MemorablePassphrase:
+        default: "Auth passphrase (empty = dev default)"
+      OAuthEnabled:
+        default: "Enable OAuth 2.1 (for Claude.ai connector)"
+      LLMProvider:
+        default: "LLM Provider (auto = Bedrock in Lambda)"
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: >-
+      ECR image URI for the MCP server container.
+      Format: ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPO:TAG
+      Built and pushed by scripts/deploy.sh
+
+  MongoDBUri:
+    Type: String
+    NoEcho: true
+    Description: >-
+      MongoDB Atlas connection string.
+      Free tier: atlas M0 (512MB). Get one at cloud.mongodb.com
+
+  MemorablePassphrase:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: >-
+      Auth passphrase for API access.
+      Empty = public dev default. Set for private deployments.
+
+  LLMProvider:
+    Type: String
+    Default: auto
+    AllowedValues:
+      - auto
+      - bedrock
+      - anthropic
+    Description: >-
+      auto = detect from environment (Bedrock in Lambda via IAM).
+      bedrock = explicit AWS Bedrock. anthropic = bring your own key.
+
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: "Anthropic API key (only if LLMProvider=anthropic)"
+
+  OAuthEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: >-
+      Enable OAuth 2.1 for Claude.ai MCP connector.
+      Requires OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET in env.
+
+  MemorySize:
+    Type: Number
+    Default: 512
+    AllowedValues:
+      - 256
+      - 512
+      - 1024
+      - 2048
+    Description: "Lambda memory in MB. 512 is a good default."
+
+  Timeout:
+    Type: Number
+    Default: 300
+    MinValue: 30
+    MaxValue: 900
+    Description: "Lambda timeout in seconds. MCP sessions can be long."
+
+Conditions:
+  HasAnthropicKey: !Not [!Equals [!Ref AnthropicApiKey, ""]]
+  HasPassphrase: !Not [!Equals [!Ref MemorablePassphrase, ""]]
+
+Resources:
+  # ─── IAM Role ──────────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Basic execution: CloudWatch Logs write
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        # Bedrock access for LLM inference (salience scoring, briefings)
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: '*'
+
+  # ─── CloudWatch Logs ───────────────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-mcp'
+      RetentionInDays: 14
+
+  # ─── Lambda Function ───────────────────────────────────────────────
+  MCPFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-mcp'
+      Description: 'MemoRable MCP Server — 49 tools for persistent AI memory'
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          # Transport
+          TRANSPORT_TYPE: http
+          MCP_HTTP_PORT: '8080'
+          PORT: '8080'
+          # Database (direct mode — no API_BASE_URL means direct MongoDB)
+          MONGODB_URI: !Ref MongoDBUri
+          # LLM
+          LLM_PROVIDER: !Ref LLMProvider
+          ANTHROPIC_API_KEY: !If
+            - HasAnthropicKey
+            - !Ref AnthropicApiKey
+            - !Ref 'AWS::NoValue'
+          # Auth
+          MEMORABLE_PASSPHRASE: !If
+            - HasPassphrase
+            - !Ref MemorablePassphrase
+            - !Ref 'AWS::NoValue'
+          # OAuth
+          OAUTH_ENABLED: !Ref OAuthEnabled
+          # Runtime
+          NODE_ENV: production
+          # Lambda Web Adapter
+          AWS_LWA_READINESS_CHECK_PATH: /health
+          AWS_LWA_INVOKE_MODE: RESPONSE_STREAM
+
+  # ─── Function URL (replaces ALB — free!) ───────────────────────────
+  FunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt MCPFunction.Arn
+      AuthType: NONE
+      InvokeMode: RESPONSE_STREAM
+      Cors:
+        AllowOrigins:
+          - 'https://claude.ai'
+          - 'https://claude.com'
+          - '*'
+        AllowMethods:
+          - 'GET'
+          - 'POST'
+          - 'DELETE'
+          - 'OPTIONS'
+        AllowHeaders:
+          - 'Content-Type'
+          - 'Authorization'
+          - 'mcp-session-id'
+        ExposeHeaders:
+          - 'mcp-session-id'
+        MaxAge: 86400
+
+  # Permission for public Function URL invocation
+  FunctionUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MCPFunction.Arn
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: >-
+      Lambda Function URL — your MCP server endpoint.
+      Use this in ~/.claude.json as MEMORABLE_API_URL
+    Value: !GetAtt FunctionUrl.FunctionUrl
+
+  HealthCheck:
+    Description: Health check endpoint
+    Value: !Sub '${FunctionUrl.FunctionUrl}health'
+
+  MCPEndpoint:
+    Description: >-
+      MCP protocol endpoint (StreamableHTTP).
+      For Claude.ai connector registration.
+    Value: !Sub '${FunctionUrl.FunctionUrl}mcp'
+
+  ClaudeCodeConfig:
+    Description: >-
+      Add this to ~/.claude.json under mcpServers to use from Claude Code.
+      Replace the URL if using a custom domain.
+    Value: !Sub >-
+      {"type":"stdio","command":"npx","args":["tsx","src/services/mcp_server/index.ts"],
+      "env":{"MEMORABLE_API_URL":"${FunctionUrl.FunctionUrl}","USE_REMOTE_API":"true","ALLOW_HTTP_DEV":"true"}}
+
+  MonthlyCostEstimate:
+    Description: Estimated monthly cost
+    Value: '$1-3/month (Lambda free tier + CloudWatch + ECR)'
+
+  OldStackComparison:
+    Description: Cost savings vs old ECS/ALB/NAT stack
+    Value: '98% reduction: ~$2/mo vs ~$122/mo (NAT=$32 + ALB=$16 + ECS=$37 + Redis=$12 + VPC=$22)'
