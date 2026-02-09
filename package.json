@@ -79,6 +79,7 @@
     "redis": ">=4.6.0",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
+    "undici": "^7.21.0",
     "uuid": "^11.1.0",
     "weaviate-client": ">=2.14.0",
     "winston": "^3.10.0",
