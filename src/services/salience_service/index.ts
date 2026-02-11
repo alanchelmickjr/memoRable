@@ -216,6 +216,21 @@ export {
   type SyncMessage,
 } from './realtime_sync';
 
+// Re-export session continuity (seamless cross-device context transfer)
+export {
+  initSessionContinuity,
+  updateDeviceSession,
+  getDeviceSession,
+  getCrossDeviceState,
+  initiateHandoff,
+  claimHandoff,
+  getSessionContinuity,
+  type DeviceSession,
+  type HandoffRequest,
+  type HandoffResult,
+  type CrossDeviceState,
+} from './session_continuity';
+
 // Re-export memory operations (forget, reassociate, export)
 export {
   forgetMemory,

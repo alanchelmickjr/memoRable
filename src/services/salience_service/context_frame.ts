@@ -48,6 +48,12 @@ import {
   STALENESS_CONFIG,
   createDefaultDeviceContext,
 } from './device_context';
+import {
+  updateDeviceSession,
+} from './session_continuity';
+import {
+  getContextIntegrationService,
+} from './context_integration';
 
 // ============================================================================
 // CONTEXT FRAME TYPES
@@ -849,6 +855,10 @@ function createEmptyFrame(
 /**
  * Save a context frame to Redis.
  * If the frame has a deviceId, saves to device-specific key and tracks in active devices.
+ *
+ * Cross-Device Integration:
+ * - Triggers ContextIntegrationService to recompute unified context
+ * - Updates session continuity for seamless device switching
  */
 async function saveFrame(frame: ContextFrame): Promise<void> {
   const key = frame.deviceId
@@ -864,7 +874,7 @@ async function saveFrame(frame: ContextFrame): Promise<void> {
         JSON.stringify(frame)
       );
 
-      // If device-specific, track in active devices set
+      // If device-specific, track in active devices set and trigger integration
       if (frame.deviceId) {
         await redisClient.sAdd(
           ACTIVE_DEVICES_KEY(frame.userId),
@@ -879,6 +889,28 @@ async function saveFrame(frame: ContextFrame): Promise<void> {
             frame.deviceType
           );
         }
+
+        // Trigger ContextIntegrationService to recompute unified context (async, don't block)
+        triggerUnifiedContextUpdate(frame).catch(err =>
+          console.error('[ContextFrame] Unified context update failed:', err)
+        );
+
+        // Update session continuity for cross-device seamlessness (async, don't block)
+        updateDeviceSession(
+          frame.userId,
+          frame.deviceId,
+          frame.deviceType || 'unknown',
+          {
+            context: {
+              location: frame.location?.value,
+              activity: frame.activity?.value,
+              people: frame.people.map(p => p.value),
+              mood: frame.mood?.value,
+            },
+          }
+        ).catch(err =>
+          console.error('[ContextFrame] Session continuity update failed:', err)
+        );
       }
     } catch (error) {
       console.error('[ContextFrame] Error saving to Redis:', error);
@@ -886,6 +918,46 @@ async function saveFrame(frame: ContextFrame): Promise<void> {
     }
   } else {
     inMemoryFrames.set(key, frame);
+  }
+}
+
+/**
+ * Trigger the ContextIntegrationService (the "thalamus") to recompute
+ * unified context from all device contexts.
+ * This connects the brain-inspired fusion logic to actual frame saves.
+ */
+async function triggerUnifiedContextUpdate(frame: ContextFrame): Promise<void> {
+  if (!redisClient || !frame.deviceId) return;
+
+  try {
+    // Build a DeviceContextFrame from the ContextFrame for the integration service
+    const deviceContext: DeviceContextFrame = {
+      userId: frame.userId,
+      deviceId: frame.deviceId,
+      deviceType: frame.deviceType || 'unknown',
+      timestamp: frame.lastUpdated,
+      expiresAt: frame.expiresAt,
+      location: frame.location ? {
+        name: frame.location.value,
+        confidence: frame.location.confidence,
+      } : undefined,
+      activity: frame.activity ? {
+        type: frame.activity.value,
+        confidence: frame.activity.confidence,
+      } : undefined,
+      people: frame.people.length > 0 ? {
+        names: frame.people.map(p => p.value),
+        confidence: Math.max(...frame.people.map(p => p.confidence), 0),
+        source: frame.people[0]?.source === 'calendar' ? 'calendar' : 'manual',
+      } : undefined,
+    };
+
+    // Use the ContextIntegrationService to store and recompute
+    const integrationService = getContextIntegrationService(redisClient as any);
+    await integrationService.setDeviceContext(deviceContext);
+    // setDeviceContext already triggers recomputeUnifiedContext internally
+  } catch (error) {
+    console.error('[ContextFrame] Integration service error:', error);
   }
 }
 
@@ -972,7 +1044,14 @@ export async function clearDeviceContext(
 
 /**
  * Get unified context by integrating all device contexts.
- * Uses the brain-inspired fusion approach - mobile for location, merge people, etc.
+ * Uses the ContextIntegrationService (brain-inspired fusion) when available,
+ * falls back to inline resolution logic.
+ *
+ * The Thalamus approach:
+ * - Mobile wins for location (has GPS)
+ * - Most recent device wins for activity
+ * - People are merged from all devices (union)
+ * - Primary device is the most recently active
  */
 export async function getUnifiedUserContext(userId: string): Promise<{
   location: string;
@@ -980,7 +1059,42 @@ export async function getUnifiedUserContext(userId: string): Promise<{
   people: string[];
   primaryDevice: string | null;
   activeDeviceCount: number;
+  isMultitasking: boolean;
+  deviceBreakdown: Array<{
+    deviceId: string;
+    deviceType: string;
+    location?: string;
+    activity?: string;
+    isStale: boolean;
+  }>;
 }> {
+  // Try the ContextIntegrationService first (uses Redis-cached unified context)
+  if (redisClient) {
+    try {
+      const integrationService = getContextIntegrationService(redisClient as any);
+      const unified = await integrationService.getUnifiedContext(userId);
+
+      if (unified) {
+        return {
+          location: unified.location.resolved,
+          activity: unified.activity.primary,
+          people: [...unified.people.present, ...unified.people.likely],
+          primaryDevice: unified.patterns.primaryDevice,
+          activeDeviceCount: unified.activeDevices.length,
+          isMultitasking: unified.patterns.isMultitasking,
+          deviceBreakdown: unified.activeDevices.map(d => ({
+            deviceId: d.deviceId,
+            deviceType: d.deviceType,
+            isStale: d.isStale,
+          })),
+        };
+      }
+    } catch (error) {
+      console.error('[ContextFrame] Integration service unavailable, using inline fallback:', error);
+    }
+  }
+
+  // Fallback: inline resolution (for backwards compatibility / no Redis)
   const contexts = await getAllDeviceContexts(userId);
 
   if (contexts.length === 0) {
@@ -990,6 +1104,8 @@ export async function getUnifiedUserContext(userId: string): Promise<{
       people: [],
       primaryDevice: null,
       activeDeviceCount: 0,
+      isMultitasking: false,
+      deviceBreakdown: [],
     };
   }
 
@@ -1027,5 +1143,13 @@ export async function getUnifiedUserContext(userId: string): Promise<{
     people: Array.from(allPeople),
     primaryDevice,
     activeDeviceCount: contexts.length,
+    isMultitasking: contexts.length > 1,
+    deviceBreakdown: contexts.map(c => ({
+      deviceId: c.deviceId || 'unknown',
+      deviceType: c.deviceType || 'unknown',
+      location: c.location?.value,
+      activity: c.activity?.value,
+      isStale: false, // Would need TTL check for proper staleness
+    })),
   };
 }

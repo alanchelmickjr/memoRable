@@ -102,6 +102,14 @@ import type { DeviceType } from '../salience_service/device_context.js';
 import { getContextFrame, surfaceMemoriesForFrame } from '../salience_service/context_frame.js';
 import { getAnticipatedForUser, getPredictiveAnticipationService } from '../salience_service/predictive_anticipation.js';
 
+// Session continuity for seamless cross-device context transfer
+import {
+  initiateHandoff,
+  getSessionContinuity,
+  getCrossDeviceState,
+  updateDeviceSession,
+} from '../salience_service/session_continuity.js';
+
 // Notification service for care circle alerts
 import { notificationService } from '../notification_service/index.js';
 
@@ -1557,6 +1565,67 @@ function createServer(): Server {
         },
         annotations: {
           title: 'List Devices',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      // Cross-Device Continuity Tools
+      {
+        name: 'handoff_device',
+        description: 'Seamlessly transfer context from one device to another. Use when switching devices - context, conversation topics, and active memories follow the user. "AI that knows you like a friend, every time you talk to it."',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sourceDeviceId: {
+              type: 'string',
+              description: 'Device ID to transfer context FROM. Use list_devices to see active devices.',
+            },
+            targetDeviceId: {
+              type: 'string',
+              description: 'Device ID to transfer context TO. Omit to create a pending handoff that the next connecting device can claim.',
+            },
+            targetDeviceType: {
+              type: 'string',
+              enum: ['mobile', 'desktop', 'web', 'api', 'mcp', 'wearable', 'smartglasses', 'smarthome', 'companion', 'pendant', 'robot', 'toy', 'vehicle'],
+              description: 'Type of the target device (helps with context adaptation)',
+            },
+            reason: {
+              type: 'string',
+              enum: ['user_initiated', 'device_switch', 'timeout', 'predicted'],
+              description: 'Why the handoff is happening (default: user_initiated)',
+            },
+          },
+          required: ['sourceDeviceId'],
+        },
+        annotations: {
+          title: 'Handoff Device',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'get_session_continuity',
+        description: 'Get cross-device session state. Shows what\'s happening on all devices, pending handoffs, and generates a continuity briefing. Call this when connecting to get caught up on context from other devices.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            deviceId: {
+              type: 'string',
+              description: 'This device\'s ID. If provided, claims any pending handoff and generates a personalized briefing.',
+            },
+            deviceType: {
+              type: 'string',
+              enum: ['mobile', 'desktop', 'web', 'api', 'mcp', 'wearable', 'smartglasses', 'smarthome', 'companion', 'pendant', 'robot', 'toy', 'vehicle'],
+              description: 'This device\'s type',
+            },
+          },
+        },
+        annotations: {
+          title: 'Session Continuity',
           readOnlyHint: true,
           destructiveHint: false,
           idempotentHint: true,
@@ -3787,6 +3856,21 @@ function createServer(): Server {
             { deviceId: effectiveDeviceId, deviceType: effectiveDeviceType }
           );
 
+          // Update session continuity with context change (async, don't block)
+          updateDeviceSession(
+            CONFIG.defaultUserId,
+            effectiveDeviceId,
+            effectiveDeviceType,
+            {
+              context: { location, activity, people },
+              conversationTopics: [
+                location ? `at ${location}` : '',
+                activity ? `doing ${activity}` : '',
+                ...(people || []).map(p => `with ${p}`),
+              ].filter(Boolean),
+            }
+          ).catch(() => { /* non-critical */ });
+
           // Format the response nicely
           const response: any = {
             contextSet: true,
@@ -3861,11 +3945,13 @@ function createServer(): Server {
                     type: 'unified',
                     activeDevices: unifiedContext.activeDeviceCount,
                     primaryDevice: unifiedContext.primaryDevice,
+                    isMultitasking: unifiedContext.isMultitasking,
                     currentContext: {
                       location: unifiedContext.location,
                       people: unifiedContext.people,
                       activity: unifiedContext.activity,
                     },
+                    deviceBreakdown: unifiedContext.deviceBreakdown,
                     note: 'Context fused from all active devices using brain-inspired integration (mobile wins for location, people merged, activity from most recent)',
                   }, null, 2),
                 },
@@ -3990,6 +4076,155 @@ function createServer(): Server {
                     activity: ctx.activity?.value,
                     peopleCount: ctx.people.length,
                   })),
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Cross-Device Continuity Tools
+        case 'handoff_device': {
+          const {
+            sourceDeviceId,
+            targetDeviceId,
+            targetDeviceType,
+            reason = 'user_initiated',
+          } = args as {
+            sourceDeviceId: string;
+            targetDeviceId?: string;
+            targetDeviceType?: DeviceType;
+            reason?: 'user_initiated' | 'device_switch' | 'timeout' | 'predicted';
+          };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request('POST', '/devices/handoff', {
+                sourceDeviceId,
+                targetDeviceId,
+                targetDeviceType,
+                reason,
+                transferContext: true,
+                transferTopics: true,
+              });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode handoff_device failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
+          const result = await initiateHandoff({
+            userId: CONFIG.defaultUserId,
+            sourceDeviceId,
+            targetDeviceId,
+            targetDeviceType,
+            reason,
+            transferContext: true,
+            transferTopics: true,
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  handoffId: result.handoffId,
+                  success: result.success,
+                  from: result.sourceDevice,
+                  to: result.targetDevice || 'Pending - next device to connect will claim this handoff',
+                  transferred: result.transferredContext,
+                  briefing: result.continuityBriefing,
+                }, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'get_session_continuity': {
+          const {
+            deviceId: contDeviceId,
+            deviceType: contDeviceType,
+          } = args as {
+            deviceId?: string;
+            deviceType?: DeviceType;
+          };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const params: Record<string, string> = {};
+              if (contDeviceId) params.deviceId = contDeviceId;
+              if (contDeviceType) params.deviceType = contDeviceType;
+              const result = await apiClient.request('GET', '/session/continuity', undefined, params);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_session_continuity failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
+          if (contDeviceId) {
+            // Get full continuity with handoff claim
+            const continuity = await getSessionContinuity(
+              CONFIG.defaultUserId,
+              contDeviceId,
+              contDeviceType || 'mcp'
+            );
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({
+                    thisDevice: continuity.thisDevice ? {
+                      sessionId: continuity.thisDevice.sessionId,
+                      startedAt: continuity.thisDevice.startedAt,
+                      context: continuity.thisDevice.context,
+                      topics: continuity.thisDevice.conversationTopics,
+                    } : null,
+                    otherDevices: continuity.otherDevices.map(d => ({
+                      deviceId: d.deviceId,
+                      deviceType: d.deviceType,
+                      context: d.context,
+                      topics: d.conversationTopics.slice(-3),
+                      lastActive: d.lastActiveAt,
+                    })),
+                    pendingHandoff: continuity.pendingHandoff ? {
+                      handoffId: continuity.pendingHandoff.handoffId,
+                      from: continuity.pendingHandoff.sourceDevice,
+                      briefing: continuity.pendingHandoff.continuityBriefing,
+                    } : null,
+                    briefing: continuity.continuityBriefing,
+                    crossDevice: {
+                      totalTopics: continuity.crossDeviceState.allTopics.length,
+                      totalMemories: continuity.crossDeviceState.allActiveMemoryIds.length,
+                      totalLoops: continuity.crossDeviceState.allActiveLoopIds.length,
+                      activeSessions: continuity.crossDeviceState.activeSessions.length,
+                    },
+                  }, null, 2),
+                },
+              ],
+            };
+          }
+
+          // No device ID - just show cross-device state
+          const state = await getCrossDeviceState(CONFIG.defaultUserId);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  activeSessions: state.activeSessions.map(s => ({
+                    deviceId: s.deviceId,
+                    deviceType: s.deviceType,
+                    context: s.context,
+                    topics: s.conversationTopics.slice(-3),
+                    lastActive: s.lastActiveAt,
+                  })),
+                  pendingHandoff: state.pendingHandoff || null,
+                  crossDevice: {
+                    allTopics: state.allTopics,
+                    activeMemoryCount: state.allActiveMemoryIds.length,
+                    activeLoopCount: state.allActiveLoopIds.length,
+                  },
                 }, null, 2),
               },
             ],

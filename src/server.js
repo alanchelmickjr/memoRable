@@ -27,6 +27,23 @@ import {
 // MCP Server - the core of MemoRable
 import { mountMcpEndpoint } from './services/mcp_server/index.ts';
 
+// Salience service - context frames, device context, session continuity
+import {
+  setContext as salienceSetContext,
+  whatMattersNow,
+  getUnifiedUserContext,
+  getAllDeviceContexts,
+  clearContextFrame,
+  clearDeviceContext,
+  initContextFrame,
+  initSessionContinuity,
+  updateDeviceSession,
+  getSessionContinuity,
+  initiateHandoff,
+  claimHandoff,
+  getCrossDeviceState,
+} from './services/salience_service/index.ts';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -9354,7 +9371,8 @@ app.delete('/memory/:id', (req, res) => {
 const deviceContextStore = new Map();
 
 // Sync device context (called by agents)
-app.post('/context/sync', (req, res) => {
+// Now wired to both in-memory store AND salience service for cross-device continuity
+app.post('/context/sync', async (req, res) => {
   try {
     const { userId, deviceId, deviceType, context, timestamp } = req.body;
 
@@ -9372,27 +9390,61 @@ app.post('/context/sync', (req, res) => {
       lastSeen: new Date().toISOString(),
     };
 
-    // Store by device
+    // Store by device (legacy in-memory)
     deviceContextStore.set(deviceId, deviceContext);
 
-    // Update unified user context
-    const userDevices = Array.from(deviceContextStore.values())
-      .filter(d => d.userId === userId);
+    // Wire to salience service context frame for cross-device integration
+    try {
+      const ctx = context || {};
+      await salienceSetContext(userId, {
+        location: ctx.location,
+        people: ctx.people,
+        activity: ctx.activity,
+      }, {
+        deviceId,
+        deviceType: deviceType || 'unknown',
+      });
+    } catch (salienceErr) {
+      // Non-critical: salience service integration is best-effort
+      console.warn('[Context] Salience service sync failed (non-critical):', salienceErr.message);
+    }
 
-    const unifiedContext = {
-      userId,
-      devices: userDevices.map(d => ({
-        deviceId: d.deviceId,
-        deviceType: d.deviceType,
-        isActive: d.context.isActive,
-        lastSeen: d.lastSeen,
-      })),
-      // Merge contexts - most recent active device wins
-      current: userDevices
-        .filter(d => d.context.isActive)
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]?.context || {},
-      timestamp: new Date().toISOString(),
-    };
+    // Get unified context (now enriched by salience service)
+    let unifiedContext;
+    try {
+      const unified = await getUnifiedUserContext(userId);
+      unifiedContext = {
+        userId,
+        devices: unified.deviceBreakdown || [],
+        current: {
+          location: unified.location,
+          activity: unified.activity,
+          people: unified.people,
+        },
+        primaryDevice: unified.primaryDevice,
+        activeDeviceCount: unified.activeDeviceCount,
+        isMultitasking: unified.isMultitasking,
+        timestamp: new Date().toISOString(),
+      };
+    } catch {
+      // Fallback to in-memory only
+      const userDevices = Array.from(deviceContextStore.values())
+        .filter(d => d.userId === userId);
+
+      unifiedContext = {
+        userId,
+        devices: userDevices.map(d => ({
+          deviceId: d.deviceId,
+          deviceType: d.deviceType,
+          isActive: d.context.isActive,
+          lastSeen: d.lastSeen,
+        })),
+        current: userDevices
+          .filter(d => d.context.isActive)
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]?.context || {},
+        timestamp: new Date().toISOString(),
+      };
+    }
 
     metrics.inc('context_sync_total', { deviceType });
 
@@ -10657,21 +10709,221 @@ app.get('/memory/tiers', (_req, res) => {
   res.json({ hot, warm, cold, total: memories.length });
 });
 
-// --- CONTEXT & DEVICES ---
+// --- CONTEXT & DEVICES (Wired to Salience Service) ---
 
-app.get('/context/relevant', (req, res) => {
-  const { deviceId, unified } = req.query;
-  // Return current context frame
-  res.json({ deviceId, unified: unified === 'true', memories: [], context: {} });
+// Get relevant context for a device or unified across all devices
+app.get('/context/relevant', async (req, res) => {
+  try {
+    const { deviceId, unified } = req.query;
+    const userId = req.userId || 'default';
+
+    if (unified === 'true') {
+      const unifiedContext = await getUnifiedUserContext(userId);
+      res.json({
+        type: 'unified',
+        activeDevices: unifiedContext.activeDeviceCount,
+        primaryDevice: unifiedContext.primaryDevice,
+        isMultitasking: unifiedContext.isMultitasking,
+        context: {
+          location: unifiedContext.location,
+          activity: unifiedContext.activity,
+          people: unifiedContext.people,
+        },
+        deviceBreakdown: unifiedContext.deviceBreakdown,
+      });
+      return;
+    }
+
+    // Device-specific or general context
+    const { frame, memories } = await whatMattersNow(userId, deviceId);
+
+    if (!frame) {
+      res.json({ deviceId, context: null, memories: [], message: 'No context set. Use POST /context/sync first.' });
+      return;
+    }
+
+    res.json({
+      deviceId: frame.deviceId,
+      deviceType: frame.deviceType,
+      context: {
+        location: frame.location?.value,
+        activity: frame.activity?.value,
+        people: frame.people.map(p => p.value),
+        timeOfDay: frame.timeOfDay,
+      },
+      memories: memories ? {
+        aboutPeople: memories.aboutPeople.length,
+        aboutLocation: memories.aboutLocation.length,
+        recentRelevant: memories.recentRelevant.slice(0, 5).map(m => ({
+          text: m.text,
+          matchedOn: m.matchedOn,
+          salience: m.salienceScore,
+        })),
+        suggestedTopics: memories.suggestedTopics,
+        sensitivities: memories.sensitivities,
+      } : null,
+    });
+  } catch (error) {
+    console.error('[Context] Relevant error:', error);
+    res.status(500).json({ error: 'Failed to get relevant context' });
+  }
 });
 
-app.delete('/context', (req, res) => {
-  const { deviceId, dimensions } = req.body || {};
-  res.json({ cleared: true, deviceId, dimensions });
+// Clear context for a device or user
+app.delete('/context', async (req, res) => {
+  try {
+    const { deviceId, dimensions } = req.body || {};
+    const userId = req.userId || 'default';
+
+    if (deviceId && !dimensions) {
+      // Clear entire device context
+      await clearDeviceContext(userId, deviceId);
+      res.json({ cleared: true, deviceId, dimensions: 'all' });
+      return;
+    }
+
+    // Clear specific dimensions
+    const frame = await clearContextFrame(userId, dimensions, deviceId);
+    res.json({
+      cleared: true,
+      deviceId: frame.deviceId,
+      dimensions: dimensions || 'all',
+      remainingContext: {
+        location: frame.location?.value,
+        people: frame.people.map(p => p.value),
+        activity: frame.activity?.value,
+      },
+    });
+  } catch (error) {
+    console.error('[Context] Clear error:', error);
+    res.status(500).json({ error: 'Failed to clear context' });
+  }
 });
 
-app.get('/devices', (_req, res) => {
-  res.json({ devices: [], count: 0 });
+// List all active devices and their context status
+app.get('/devices', async (_req, res) => {
+  try {
+    const userId = _req.userId || 'default';
+    const contexts = await getAllDeviceContexts(userId);
+
+    // Also include devices from the in-memory store for backwards compatibility
+    const storeDevices = Array.from(deviceContextStore.values())
+      .filter(d => d.userId === userId);
+
+    // Merge device lists (context frames take priority)
+    const knownDeviceIds = new Set(contexts.map(c => c.deviceId));
+    const additionalDevices = storeDevices
+      .filter(d => !knownDeviceIds.has(d.deviceId))
+      .map(d => ({
+        deviceId: d.deviceId,
+        deviceType: d.deviceType,
+        lastUpdated: d.lastSeen,
+        source: 'sync_store',
+      }));
+
+    res.json({
+      devices: [
+        ...contexts.map(ctx => ({
+          deviceId: ctx.deviceId,
+          deviceType: ctx.deviceType,
+          lastUpdated: ctx.lastUpdated,
+          location: ctx.location?.value,
+          activity: ctx.activity?.value,
+          peopleCount: ctx.people.length,
+          source: 'context_frame',
+        })),
+        ...additionalDevices,
+      ],
+      count: contexts.length + additionalDevices.length,
+    });
+  } catch (error) {
+    console.error('[Devices] List error:', error);
+    res.status(500).json({ error: 'Failed to list devices' });
+  }
+});
+
+// --- DEVICE HANDOFF & SESSION CONTINUITY ---
+
+// Initiate a device handoff (transfer context to another device)
+app.post('/devices/handoff', async (req, res) => {
+  try {
+    const userId = req.userId || 'default';
+    const {
+      sourceDeviceId,
+      targetDeviceId,
+      targetDeviceType,
+      reason = 'user_initiated',
+      transferContext = true,
+      transferTopics = true,
+    } = req.body;
+
+    if (!sourceDeviceId) {
+      res.status(400).json({ error: 'sourceDeviceId is required' });
+      return;
+    }
+
+    const result = await initiateHandoff({
+      userId,
+      sourceDeviceId,
+      targetDeviceId,
+      targetDeviceType,
+      reason,
+      transferContext,
+      transferTopics,
+    });
+
+    metrics.inc('device_handoff_total', { reason });
+    res.json(result);
+  } catch (error) {
+    console.error('[Handoff] Error:', error);
+    res.status(500).json({ error: 'Failed to initiate handoff' });
+  }
+});
+
+// Claim a pending handoff (when a new device connects)
+app.post('/devices/handoff/claim', async (req, res) => {
+  try {
+    const userId = req.userId || 'default';
+    const { deviceId, deviceType = 'unknown' } = req.body;
+
+    if (!deviceId) {
+      res.status(400).json({ error: 'deviceId is required' });
+      return;
+    }
+
+    const result = await claimHandoff(userId, deviceId, deviceType);
+
+    if (!result) {
+      res.json({ claimed: false, message: 'No pending handoff found' });
+      return;
+    }
+
+    res.json({ claimed: true, ...result });
+  } catch (error) {
+    console.error('[Handoff] Claim error:', error);
+    res.status(500).json({ error: 'Failed to claim handoff' });
+  }
+});
+
+// Get session continuity data (cross-device state)
+app.get('/session/continuity', async (req, res) => {
+  try {
+    const userId = req.userId || 'default';
+    const { deviceId, deviceType = 'unknown' } = req.query;
+
+    if (!deviceId) {
+      // Return cross-device state without claiming
+      const state = await getCrossDeviceState(userId);
+      res.json(state);
+      return;
+    }
+
+    const continuity = await getSessionContinuity(userId, deviceId, deviceType);
+    res.json(continuity);
+  } catch (error) {
+    console.error('[Session] Continuity error:', error);
+    res.status(500).json({ error: 'Failed to get session continuity' });
+  }
 });
 
 // --- PREDICTIONS & ANTICIPATION ---
