@@ -5,8 +5,6 @@
       "command": "npx",
       "args": ["tsx", "src/services/mcp_server/index.ts"],
       "env": {
-        "MEMORABLE_API_URL": "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com",
-        "USE_REMOTE_API": "true",
         "ALLOW_HTTP_DEV": "true"
       }
     }

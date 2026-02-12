@@ -17,7 +17,9 @@
 
 const { execSync } = require('child_process');
 
-const BASE_URL = process.env.MEMORABLE_API_URL || 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+// Set MEMORABLE_API_URL to your EC2 Elastic IP endpoint (port 8080)
+// Get IP: aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
+const BASE_URL = process.env.MEMORABLE_API_URL || process.env.API_BASE_URL || '';
 const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
 const MASTER_ENTITY = process.env.MEMORABLE_MASTER_ENTITY || 'alan';
 const TIMEOUT = 8;

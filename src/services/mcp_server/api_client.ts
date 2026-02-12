@@ -783,13 +783,19 @@ export class ApiClient {
  */
 let apiClientInstance: ApiClient | null = null;
 
-// Default API URL - same as session-start hook
-const DEFAULT_API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+// Default API URL - set MEMORABLE_API_URL env var to override
+// Old ALB (memorable-alb-*.us-west-2.elb.amazonaws.com) is DEAD as of Feb 2026
+// New stack uses EC2 + Elastic IP on port 8080
+// Get the IP: aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
+const DEFAULT_API_URL = process.env.MEMORABLE_API_URL || process.env.API_BASE_URL || '';
 
 export function getApiClient(): ApiClient | null {
   const baseUrl = process.env.API_BASE_URL || process.env.MEMORABLE_API_URL || DEFAULT_API_URL;
 
-  // Always have a base URL now (fallback to default)
+  // No URL configured - can't use REST mode
+  if (!baseUrl) {
+    return null;
+  }
 
   if (!apiClientInstance) {
     // Only use MEMORABLE_API_KEY if it looks like a valid key (starts with memorable_)
