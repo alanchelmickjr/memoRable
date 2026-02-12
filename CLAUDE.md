@@ -68,6 +68,13 @@ Even Claude Opus 4.5 - the most advanced model - repeatedly fails to follow simp
 
 ## Core Philosophy - The Three Pillars
 
+### #1 LAW: Perfect memory is about knowing what to forget.
+
+Every conversation you've ever had with an AI was lost to a context window. Every session
+starts from zero. MemoRable ends that - but not by remembering everything. Total recall is
+a curse, not a superpower. The superpower is CHOOSING what matters and letting the rest go.
+This is the end of the context limitation.
+
 ```
 1. TEMPORAL CONTROL    → The power to CHOOSE what to forget (superpower)
 2. INDIVIDUAL PRIVACY  → TOP SECRET by default, Fort Knox for personal data
@@ -79,9 +86,13 @@ These three principles govern ALL design decisions. When in doubt, ask:
 - Is this protected at every layer? (privacy)
 - Is this surfaced at the right moment? (relevance)
 
+**AI that knows you like a friend, every time you talk to it.** Across every device,
+across every session. Not because it remembers everything - because it remembers
+what matters.
+
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, and predictive memory. It provides 35 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
 
 ## Development Commands
 
