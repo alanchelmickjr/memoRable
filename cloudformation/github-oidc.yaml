@@ -39,7 +39,6 @@ Resources:
         - sts.amazonaws.com
       ThumbprintList:
         # GitHub's OIDC provider thumbprint (SHA-1 fingerprint of root CA)
-        # This is the thumbprint for GitHub Actions OIDC
         - 6938fd4d98bab03faadb97b34396831e3780aea1
         - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
       Tags:
@@ -76,118 +75,51 @@ Resources:
                   - !Sub repo:${GitHubOrg}/${GitHubRepo}:environment:production
       Policies:
         #############################################
-        # ECR Permissions - Push/Pull Docker images
+        # SSM - Run commands on EC2 instances
+        # Used by CI/CD to trigger update.sh remotely
         #############################################
-        - PolicyName: ECRAccess
+        - PolicyName: SSMAccess
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
-                  - ecr:GetAuthorizationToken
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:DescribeInstanceInformation
+                Resource: '*'
+
+        #############################################
+        # EC2 - Describe instances (find deploy targets)
+        #############################################
+        - PolicyName: EC2Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeTags
+                Resource: '*'
+
+        #############################################
+        # CloudFormation - Read stack outputs
+        # (get instance ID, health check URL, EIP)
+        #############################################
+        - PolicyName: CloudFormationAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ValidateTemplate
                 Resource: '*'
               - Effect: Allow
                 Action:
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                  - ecr:PutImage
-                  - ecr:InitiateLayerUpload
-                  - ecr:UploadLayerPart
-                  - ecr:CompleteLayerUpload
-                  - ecr:DescribeRepositories
-                  - ecr:DescribeImages
-                  - ecr:ListImages
-                  - ecr:ListTagsForResource
-                  - ecr:CreateRepository
-                  - ecr:DeleteRepository
-                  - ecr:TagResource
-                  - ecr:UntagResource
-                  - ecr:GetRepositoryPolicy
-                  - ecr:SetRepositoryPolicy
+                  - cloudformation:*
                 Resource:
-                  - !Sub arn:aws:ecr:*:${AWS::AccountId}:repository/memorable*
-
-        #############################################
-        # ECS Permissions - Deploy services
-        #############################################
-        - PolicyName: ECSAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecs:CreateCluster
-                  - ecs:DeleteCluster
-                  - ecs:CreateService
-                  - ecs:DeleteService
-                  - ecs:UpdateService
-                  - ecs:DescribeServices
-                  - ecs:DescribeClusters
-                  - ecs:DescribeTaskDefinition
-                  - ecs:RegisterTaskDefinition
-                  - ecs:DeregisterTaskDefinition
-                  - ecs:ListTaskDefinitions
-                  - ecs:ListServices
-                  - ecs:ListClusters
-                  - ecs:TagResource
-                  - ecs:UntagResource
-                  - ecs:PutClusterCapacityProviders
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - iam:PassRole
-                Resource:
-                  - !Sub arn:aws:iam::${AWS::AccountId}:role/memorable*
-
-        #############################################
-        # Terraform State - S3 backend
-        #############################################
-        - PolicyName: TerraformState
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                  - s3:ListBucket
-                Resource:
-                  - arn:aws:s3:::memorable-terraform-state-*
-                  - arn:aws:s3:::memorable-terraform-state-*/*
-                  - arn:aws:s3:::memorable-cloudformation-templates
-                  - arn:aws:s3:::memorable-cloudformation-templates/*
-              - Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:DeleteItem
-                Resource:
-                  - !Sub arn:aws:dynamodb:*:${AWS::AccountId}:table/memorable-terraform-locks*
-
-        #############################################
-        # Secrets Manager - Manage deployment secrets
-        #############################################
-        - PolicyName: SecretsAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:CreateSecret
-                  - secretsmanager:GetSecretValue
-                  - secretsmanager:PutSecretValue
-                  - secretsmanager:UpdateSecret
-                  - secretsmanager:DeleteSecret
-                  - secretsmanager:DescribeSecret
-                  - secretsmanager:GetResourcePolicy
-                  - secretsmanager:PutResourcePolicy
-                  - secretsmanager:DeleteResourcePolicy
-                  - secretsmanager:TagResource
-                  - secretsmanager:UntagResource
-                Resource:
-                  - !Sub arn:aws:secretsmanager:*:${AWS::AccountId}:secret:memorable/*
+                  - !Sub arn:aws:cloudformation:*:${AWS::AccountId}:stack/memorable*
 
         #############################################
         # CloudWatch Logs - View deployment logs
@@ -196,7 +128,6 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # DescribeLogGroups requires * or account-level scope
               - Effect: Allow
                 Action:
                   - logs:DescribeLogGroups
@@ -206,139 +137,26 @@ Resources:
                   - logs:DescribeLogStreams
                   - logs:GetLogEvents
                   - logs:CreateLogGroup
-                  - logs:DeleteLogGroup
                   - logs:CreateLogStream
-                  - logs:DeleteLogStream
                   - logs:PutLogEvents
                   - logs:TagResource
-                  - logs:UntagResource
-                  - logs:ListTagsForResource
-                  - logs:PutRetentionPolicy
-                  - logs:DeleteRetentionPolicy
-                  - logs:TagLogGroup
                 Resource:
-                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*
-                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/ecs/memorable*:*
+                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/memorable*
+                  - !Sub arn:aws:logs:*:${AWS::AccountId}:log-group:/memorable*:*
 
         #############################################
-        # Terraform Infrastructure Management
-        # (VPC, ALB, DocumentDB, ElastiCache, etc.)
+        # IAM - PassRole for memorable roles
         #############################################
-        - PolicyName: InfrastructureManagement
+        - PolicyName: IAMPassRole
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              # VPC and Networking
               - Effect: Allow
                 Action:
-                  - ec2:*Vpc*
-                  - ec2:*Subnet*
-                  - ec2:*Route*
-                  - ec2:*Gateway*
-                  - ec2:*SecurityGroup*
-                  - ec2:*NetworkAcl*
-                  - ec2:*Address*
-                  - ec2:Describe*
-                  - ec2:CreateTags
-                  - ec2:DeleteTags
-                Resource: '*'
-                Condition:
-                  StringEquals:
-                    aws:RequestedRegion:
-                      - us-east-1
-                      - us-west-2
-
-              # Load Balancer
-              - Effect: Allow
-                Action:
-                  - elasticloadbalancing:*
-                Resource: '*'
-
-              # DocumentDB (uses RDS API)
-              - Effect: Allow
-                Action:
-                  - rds:*DBCluster*
-                  - rds:*DBInstance*
-                  - rds:*DBSubnetGroup*
-                  - rds:*DBParameterGroup*
-                  - rds:*DBClusterParameterGroup*
-                  - rds:Describe*
-                  - rds:DescribeGlobalClusters
-                  - rds:CreateTags
-                  - rds:DeleteTags
-                  - rds:AddTagsToResource
-                  - rds:RemoveTagsFromResource
-                  - rds:ListTagsForResource
-                Resource:
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:cluster:memorable*
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:db:memorable*
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:subgrp:memorable*
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:pg:memorable*
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:cluster-pg:memorable*
-                  - !Sub arn:aws:rds:*:${AWS::AccountId}:global-cluster:*
-
-              # ElastiCache
-              - Effect: Allow
-                Action:
-                  - elasticache:*
-                Resource:
-                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:cluster:memorable*
-                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:subnetgroup:memorable*
-                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:replicationgroup:memorable*
-                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:parametergroup:memorable*
-                  - !Sub arn:aws:elasticache:*:${AWS::AccountId}:parametergroup:default.*
-
-              # Service Discovery (for ECS service mesh)
-              - Effect: Allow
-                Action:
-                  - servicediscovery:*
-                Resource: '*'
-
-              # Route53 (needed by Service Discovery for private DNS)
-              - Effect: Allow
-                Action:
-                  - route53:CreateHostedZone
-                  - route53:DeleteHostedZone
-                  - route53:GetHostedZone
-                  - route53:ListHostedZones
-                  - route53:ChangeResourceRecordSets
-                  - route53:GetChange
-                Resource: '*'
-
-              # CloudFormation (for stack updates and template validation)
-              - Effect: Allow
-                Action:
-                  - cloudformation:ValidateTemplate
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - cloudformation:*
-                Resource:
-                  - !Sub arn:aws:cloudformation:*:${AWS::AccountId}:stack/memorable*
-
-              # IAM - Limited to memorable roles
-              - Effect: Allow
-                Action:
+                  - iam:PassRole
                   - iam:GetRole
-                  - iam:GetRolePolicy
-                  - iam:ListRolePolicies
-                  - iam:ListAttachedRolePolicies
-                  - iam:CreateRole
-                  - iam:DeleteRole
-                  - iam:AttachRolePolicy
-                  - iam:DetachRolePolicy
-                  - iam:PutRolePolicy
-                  - iam:DeleteRolePolicy
-                  - iam:TagRole
-                  - iam:UntagRole
                 Resource:
                   - !Sub arn:aws:iam::${AWS::AccountId}:role/memorable*
-
-              # Application Auto Scaling
-              - Effect: Allow
-                Action:
-                  - application-autoscaling:*
-                Resource: '*'
 
 Outputs:
   GitHubActionsRoleArn:
@@ -361,6 +179,6 @@ Outputs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${GitHubActionsRole.Arn}
-          aws-region: us-east-1
+          aws-region: us-west-1
 
-      No secrets needed! Just deploy this stack first.
+      Then add AWS_ACCOUNT_ID as a GitHub secret. No other secrets needed!

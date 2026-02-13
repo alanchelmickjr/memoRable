@@ -19,10 +19,11 @@ on:
       - 'docker/**'
       - 'cloudformation/**'
       - '.github/workflows/**'
+      - 'Dockerfile'
+      - 'package.json'
 
 env:
-  AWS_REGION: us-west-2
-  # CloudFormation stack name (determines ECS cluster/service names)
+  AWS_REGION: us-west-1
   STACK_NAME: memorable
 
 # Required for OIDC authentication with AWS
@@ -48,70 +49,8 @@ jobs:
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
 
-  build-images:
+  deploy:
     needs: check-aws-config
-    if: needs.check-aws-config.outputs.aws_configured == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      # Output just the tag - full URL gets masked by GitHub Actions because it contains AWS_ACCOUNT_ID
-      image_tag: ${{ steps.build.outputs.image_tag }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # OIDC Authentication - No secrets needed!
-      # Requires: cloudformation/github-oidc.yaml deployed first
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/memorable-github-actions-memoRable
-          role-session-name: github-actions-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Ensure ECR repositories exist
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        run: |
-          # Create repositories if they don't exist
-          for repo in memorable memorable-ingestion memorable-mcp; do
-            aws ecr describe-repositories --repository-names $repo 2>/dev/null || \
-            aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true
-          done
-
-      - name: Build and push images
-        id: build
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          # Build and push main app
-          docker build -t $ECR_REGISTRY/memorable:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/memorable:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/memorable:$IMAGE_TAG $ECR_REGISTRY/memorable:latest
-          docker push $ECR_REGISTRY/memorable:latest
-
-          # Build and push ingestion service
-          docker build -t $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG -f src/services/ingestion_service/Dockerfile .
-          docker push $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/memorable-ingestion:$IMAGE_TAG $ECR_REGISTRY/memorable-ingestion:latest
-          docker push $ECR_REGISTRY/memorable-ingestion:latest
-
-          # Build and push MCP server
-          docker build -t $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG -f src/services/mcp_server/Dockerfile .
-          docker push $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG
-          docker tag $ECR_REGISTRY/memorable-mcp:$IMAGE_TAG $ECR_REGISTRY/memorable-mcp:latest
-          docker push $ECR_REGISTRY/memorable-mcp:latest
-
-          # Output just the tag - full URLs get masked because they contain AWS account ID
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-
-  ecs-deploy:
-    needs: [check-aws-config, build-images]
     if: needs.check-aws-config.outputs.aws_configured == 'true'
     runs-on: ubuntu-latest
 
@@ -123,76 +62,67 @@ jobs:
           role-session-name: github-actions-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy app service to ECS
-        env:
-          CLUSTER: ${{ env.STACK_NAME }}-cluster
-          SERVICE: ${{ env.STACK_NAME }}-app
-          # Reconstruct full URL here - can't pass through outputs because account ID gets masked
-          NEW_IMAGE: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/memorable:${{ needs.build-images.outputs.image_tag }}
+      - name: Get EC2 instance ID from CloudFormation
+        id: get-instance
         run: |
-          echo "Deploying $NEW_IMAGE to $CLUSTER/$SERVICE"
+          INSTANCE_ID=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.STACK_NAME }}" \
+            --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
+            --output text 2>/dev/null || echo "")
 
-          # Get the current task definition ARN from the running service
-          TASK_DEF_ARN=$(aws ecs describe-services \
-            --cluster "$CLUSTER" \
-            --services "$SERVICE" \
-            --query 'services[0].taskDefinition' \
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            # Fallback: find instance by stack tag
+            INSTANCE_ID=$(aws ec2 describe-instances \
+              --filters "Name=tag:aws:cloudformation:stack-name,Values=${{ env.STACK_NAME }}" \
+                        "Name=instance-state-name,Values=running" \
+              --query 'Reservations[0].Instances[0].InstanceId' \
+              --output text 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "Could not find EC2 instance for stack ${{ env.STACK_NAME }}"
+            exit 1
+          fi
+
+          echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+          echo "Found instance: $INSTANCE_ID"
+
+      - name: Deploy via SSM (git pull + rebuild on EC2)
+        id: deploy
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ steps.get-instance.outputs.instance_id }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["sudo /opt/memorable/update.sh"]' \
+            --timeout-seconds 300 \
+            --comment "Deploy from GitHub Actions - ${{ github.sha }}" \
+            --query 'Command.CommandId' \
             --output text)
 
-          echo "Current task definition: $TASK_DEF_ARN"
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          echo "SSM Command sent: $COMMAND_ID"
 
-          # Get the full task definition
-          aws ecs describe-task-definition \
-            --task-definition "$TASK_DEF_ARN" \
-            --query 'taskDefinition' > task-def.json
-
-          # Update the container image to the new build
-          jq --arg IMAGE "$NEW_IMAGE" \
-            '.containerDefinitions[0].image = $IMAGE' \
-            task-def.json > updated-task-def.json
-
-          # Strip runtime-only fields that can't be passed to register-task-definition
-          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' \
-            updated-task-def.json > register-task-def.json
-
-          # Register the new task definition revision
-          NEW_TASK_DEF_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://register-task-def.json \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
-
-          echo "New task definition: $NEW_TASK_DEF_ARN"
-
-          # Update the ECS service with the new task definition
-          aws ecs update-service \
-            --cluster "$CLUSTER" \
-            --service "$SERVICE" \
-            --task-definition "$NEW_TASK_DEF_ARN" \
-            --force-new-deployment
-
-          echo "ECS service update initiated"
-
-      - name: Wait for deployment to stabilize
-        env:
-          CLUSTER: ${{ env.STACK_NAME }}-cluster
-          SERVICE: ${{ env.STACK_NAME }}-app
-        run: |
-          echo "Waiting for ECS service to stabilize..."
-          # Wait up to 5 minutes for the new deployment to become stable
+          # Wait for command to complete
           for i in $(seq 1 30); do
-            STATUS=$(aws ecs describe-services \
-              --cluster "$CLUSTER" \
-              --services "$SERVICE" \
-              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
-              --output text)
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ steps.get-instance.outputs.instance_id }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
 
-            echo "[$i/30] Deployment status: $STATUS"
+            echo "[$i/30] Command status: $STATUS"
 
-            if [ "$STATUS" = "COMPLETED" ]; then
-              echo "Deployment completed successfully!"
+            if [ "$STATUS" = "Success" ]; then
+              echo "Deploy command completed successfully!"
               break
-            elif [ "$STATUS" = "FAILED" ]; then
-              echo "Deployment failed! Check ECS console for details."
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "TimedOut" ] || [ "$STATUS" = "Cancelled" ]; then
+              echo "Deploy command failed with status: $STATUS"
+              # Show output for debugging
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ steps.get-instance.outputs.instance_id }}" \
+                --query '[StandardOutputContent, StandardErrorContent]' \
+                --output text
               exit 1
             fi
 
@@ -201,8 +131,8 @@ jobs:
 
       - name: Health check
         run: |
-          # Get Elastic IP from CloudFormation stack outputs
-          ENDPOINT=$(aws cloudformation describe-stacks --stack-name memorable \
+          # Get health check URL from CloudFormation stack outputs
+          ENDPOINT=$(aws cloudformation describe-stacks --stack-name "${{ env.STACK_NAME }}" \
             --query 'Stacks[0].Outputs[?OutputKey==`HealthCheck`].OutputValue' \
             --output text 2>/dev/null || echo "")
           if [ -z "$ENDPOINT" ]; then
@@ -221,7 +151,7 @@ jobs:
           echo "Health check did not pass within timeout - service may still be starting"
 
   notify:
-    needs: [check-aws-config, build-images, ecs-deploy]
+    needs: [check-aws-config, deploy]
     runs-on: ubuntu-latest
     if: always()
 
@@ -235,17 +165,16 @@ jobs:
             echo "**Status:** Deployment skipped (AWS_ACCOUNT_ID not configured)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "To enable deployment, add the AWS_ACCOUNT_ID secret to this repository." >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ needs.ecs-deploy.result }}" == "success" ]; then
+          elif [ "${{ needs.deploy.result }}" == "success" ]; then
             echo "**Status:** Deployment successful!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Environment:** ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
             echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Image tag:** ${{ needs.build-images.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Infrastructure" >> $GITHUB_STEP_SUMMARY
             echo "- Auth: OIDC (no stored credentials)" >> $GITHUB_STEP_SUMMARY
             echo "- IaC: CloudFormation (stack: memorable)" >> $GITHUB_STEP_SUMMARY
-            echo "- Deploy: ECS force-new-deployment" >> $GITHUB_STEP_SUMMARY
+            echo "- Deploy: SSM → EC2 git pull + docker rebuild" >> $GITHUB_STEP_SUMMARY
           else
             echo "**Status:** Deployment failed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

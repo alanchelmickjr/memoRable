@@ -394,6 +394,10 @@ Resources:
             ComposeProfiles: !If [HasExternalMongo, '', 'local-mongo']
 
 Outputs:
+  InstanceId:
+    Description: EC2 instance ID (used by CI/CD for SSM deploy)
+    Value: !Ref Instance
+
   MCPEndpoint:
     Description: MCP StreamableHTTP endpoint (for Claude.ai connector)
     Value: !Sub 'http://${ElasticIP}:8080/mcp'
