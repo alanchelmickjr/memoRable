@@ -26,6 +26,12 @@ RUN npm install -g typescript && \
     tsc --outDir dist --declaration false --skipLibCheck true 2>&1 || true && \
     npm uninstall -g typescript
 
+# Fix MCP SDK: Node 22 doesn't resolve wildcard exports "./*" → "./dist/esm/*"
+# Create symlinks so filesystem paths match import specifiers
+RUN cd node_modules/@modelcontextprotocol/sdk && \
+    ln -sfn dist/esm/server server && \
+    ln -sfn dist/esm/types.js types.js
+
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────
 FROM public.ecr.aws/docker/library/node:22-slim
 
