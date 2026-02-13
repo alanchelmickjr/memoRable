@@ -7,11 +7,6 @@ on:
         description: 'S3 bucket name for templates'
         required: false
         default: 'memorable-cloudformation-templates'
-  push:
-    branches:
-      - main
-    paths:
-      - 'cloudformation/**'
 
 env:
   AWS_REGION: us-east-1
