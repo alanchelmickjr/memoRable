@@ -1,5 +1,16 @@
+# ═══════════════════════════════════════════════════════════════════════
+# DEPRECATED — Full Stack Reference (DO NOT DEPLOY)
+# ═══════════════════════════════════════════════════════════════════════
+# This is the "big version" with ALB + ECS Fargate + NAT + ElastiCache + EFS.
+# Kept as a reference for the future SaaS tier requiring auto-scaling,
+# HTTPS/TLS termination, and private subnets.
+#
+# For the current one-click deploy, use: memorable-ec2-stack.yaml
+# Deploy with: MONGODB_URI=<uri> ./scripts/deploy.sh
+# ═══════════════════════════════════════════════════════════════════════
+
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'MemoRable - One-Click Deploy. Context-aware memory for AI agents. Works in ALL AWS regions (uses MongoDB container, not DocumentDB).'
+Description: '[DEPRECATED] MemoRable Full Stack — ALB/ECS/NAT. See memorable-ec2-stack.yaml for current one-click deploy.'
 
 Metadata:
   AWS::CloudFormation::Interface:

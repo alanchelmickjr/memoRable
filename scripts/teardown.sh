@@ -3,7 +3,8 @@
 # MemoRable — Teardown
 # ═══════════════════════════════════════════════════════════════════════
 #
-# Deletes the Lambda stack. ECR repo is kept (DeletionPolicy: Retain).
+# Deletes the EC2 stack (VPC, instance, Elastic IP, security group, IAM).
+# ECR repo is kept (delete manually if wanted).
 # Run this to stop all billing. Re-deploy anytime with deploy.sh.
 #
 # Usage:
@@ -35,18 +36,25 @@ if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$RE
     exit 0
 fi
 
-# Get Function URL before deletion (for reference)
-FUNCTION_URL=$(aws cloudformation describe-stacks \
+# Get stack outputs before deletion (for reference)
+PUBLIC_IP=$(aws cloudformation describe-stacks \
     --stack-name "$STACK_NAME" \
     --region "$REGION" \
-    --query 'Stacks[0].Outputs[?OutputKey==`FunctionUrl`].OutputValue' \
+    --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' \
+    --output text 2>/dev/null || echo "unknown")
+
+MCP_ENDPOINT=$(aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`MCPEndpoint`].OutputValue' \
     --output text 2>/dev/null || echo "unknown")
 
 warn "This will delete:"
-echo "  - Lambda function (${STACK_NAME}-mcp)"
-echo "  - Function URL ($FUNCTION_URL)"
-echo "  - IAM role"
-echo "  - CloudWatch log group"
+echo "  - EC2 instance (${STACK_NAME}-mcp-daemon)"
+echo "  - Elastic IP ($PUBLIC_IP)"
+echo "  - MCP endpoint ($MCP_ENDPOINT)"
+echo "  - VPC, subnet, security group"
+echo "  - IAM role and instance profile"
 echo ""
 echo "  ECR repository will be KEPT (delete manually if wanted)"
 echo ""

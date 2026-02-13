@@ -1,23 +1,21 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  MemoRable — Always-on MCP memory server with Redis core and AI daemon.
-  EC2 (Docker: MCP server + Redis) + Elastic IP + MongoDB Atlas.
-  The daemon continuously prepares context — the smart kitten with his hand up.
-  One-click: MONGODB_URI=<uri> ./scripts/deploy.sh
+  MemoRable — One-click MCP memory server. Zero prerequisites.
+  EC2 builds from GitHub, runs MCP + MongoDB + Redis via Docker Compose.
+  One-click: ./scripts/deploy.sh
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: "Required"
-        Parameters:
-          - ImageUri
-          - MongoDBUri
-      - Label:
           default: "Instance"
         Parameters:
           - InstanceType
           - KeyName
+      - Label:
+          default: "Database (optional — local MongoDB included by default)"
+        Parameters:
+          - MongoDBUri
       - Label:
           default: "Security"
         Parameters:
@@ -28,16 +26,30 @@ Metadata:
         Parameters:
           - LLMProvider
           - AnthropicApiKey
+      - Label:
+          default: "Source"
+        Parameters:
+          - GitHubRepo
+          - GitHubBranch
 
 Parameters:
-  ImageUri:
+  GitHubRepo:
     Type: String
-    Description: ECR image URI (built and pushed by deploy.sh)
+    Default: https://github.com/alanchelmickjr/memoRable.git
+    Description: GitHub repository URL
+
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Branch to deploy
 
   MongoDBUri:
     Type: String
     NoEcho: true
-    Description: MongoDB Atlas connection string (free M0 at cloud.mongodb.com)
+    Default: ''
+    Description: >-
+      External MongoDB connection string (optional).
+      Leave empty to use the bundled MongoDB container.
 
   InstanceType:
     Type: String
@@ -81,6 +93,7 @@ Parameters:
 Conditions:
   HasKeyName: !Not [!Equals [!Ref KeyName, '']]
   HasAnthropicKey: !Not [!Equals [!Ref AnthropicApiKey, '']]
+  HasExternalMongo: !Not [!Equals [!Ref MongoDBUri, '']]
 
 Resources:
   # ─── Networking (minimal: 1 VPC, 1 public subnet, no NAT) ──────────
@@ -148,7 +161,7 @@ Resources:
           CidrIp: 0.0.0.0/0
           Description: SSH
 
-  # ─── IAM Role (Bedrock + ECR + SSM) ────────────────────────────────
+  # ─── IAM Role (Bedrock + SSM) ─────────────────────────────────────
   InstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -163,16 +176,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
-        - PolicyName: ECRPull
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                  - ecr:GetAuthorizationToken
-                Resource: '*'
         - PolicyName: BedrockAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -225,9 +228,9 @@ Resources:
             #!/bin/bash
             set -ex
 
-            # ── Install Docker ──
+            # ── Install Docker + git ──
             dnf update -y
-            dnf install -y docker
+            dnf install -y docker git
             systemctl enable docker && systemctl start docker
             usermod -a -G docker ec2-user
 
@@ -238,61 +241,97 @@ Resources:
               -o /usr/local/lib/docker/cli-plugins/docker-compose
             chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 
-            # ── ECR Login ──
-            REGISTRY=$(echo "${ImageUri}" | cut -d/ -f1)
-            aws ecr get-login-password --region ${AWS::Region} | \
-              docker login --username AWS --password-stdin "$REGISTRY"
+            # ── Clone repo and build image ──
+            git clone -b ${GitHubBranch} --depth 1 ${GitHubRepo} /opt/memorable-src
+            cd /opt/memorable-src
+            docker build -t memorable-mcp:latest .
 
-            # ── Generate Redis password ──
+            # ── Generate passwords ──
             REDIS_PASS=$(openssl rand -hex 16)
+            MONGO_PASS=$(openssl rand -hex 16)
 
-            # ── Write .env (secrets stay here, not in compose file) ──
+            # ── Determine MongoDB URI ──
+            EXTERNAL_MONGO="${MongoDBUri}"
+            if [ -n "$EXTERNAL_MONGO" ]; then
+              MONGO_URI="$EXTERNAL_MONGO"
+              USE_LOCAL_MONGO="false"
+            else
+              MONGO_URI="mongodb://memorable:$MONGO_PASS@mongodb:27017/memorable?authSource=admin"
+              USE_LOCAL_MONGO="true"
+            fi
+
+            # ── Write .env ──
             mkdir -p /opt/memorable
             cat > /opt/memorable/.env << ENVFILE
-            IMAGE_URI=${ImageUri}
-            MONGODB_URI=${MongoDBUri}
+            MONGODB_URI=$MONGO_URI
+            MONGO_INITDB_ROOT_USERNAME=memorable
+            MONGO_INITDB_ROOT_PASSWORD=$MONGO_PASS
+            USE_LOCAL_MONGO=$USE_LOCAL_MONGO
             REDIS_PASSWORD=$REDIS_PASS
             LLM_PROVIDER=${LLMProvider}
             ANTHROPIC_API_KEY=${AnthropicKeyValue}
             MEMORABLE_PASSPHRASE=${MemorablePassphrase}
             OAUTH_ENABLED=${OAuthEnabled}
+            GITHUB_REPO=${GitHubRepo}
+            GITHUB_BRANCH=${GitHubBranch}
             ENVFILE
 
             # ── Write docker-compose.yml ──
             cat > /opt/memorable/docker-compose.yml << 'COMPOSEFILE'
             services:
+              mongodb:
+                image: mongo:7.0
+                command: >-
+                  mongod
+                  --bind_ip_all
+                  --wiredTigerCacheSizeGB 0.25
+                environment:
+                  MONGO_INITDB_ROOT_USERNAME: ${!MONGO_INITDB_ROOT_USERNAME}
+                  MONGO_INITDB_ROOT_PASSWORD: ${!MONGO_INITDB_ROOT_PASSWORD}
+                  MONGO_INITDB_DATABASE: memorable
+                volumes:
+                  - mongo_data:/data/db
+                healthcheck:
+                  test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+                  interval: 10s
+                  timeout: 5s
+                  retries: 5
+                restart: unless-stopped
+                profiles:
+                  - local-mongo
+
               redis:
                 image: redis:alpine
                 command: >-
                   redis-server
                   --appendonly yes
-                  --requirepass $${REDIS_PASSWORD}
+                  --requirepass ${!REDIS_PASSWORD}
                   --maxmemory 256mb
                   --maxmemory-policy allkeys-lru
                 volumes:
                   - redis_data:/data
                 healthcheck:
-                  test: ["CMD", "redis-cli", "-a", "$${REDIS_PASSWORD}", "ping"]
+                  test: ["CMD", "redis-cli", "-a", "${!REDIS_PASSWORD}", "ping"]
                   interval: 10s
                   timeout: 5s
                   retries: 5
                 restart: unless-stopped
 
               mcp:
-                image: $${IMAGE_URI}
+                image: memorable-mcp:latest
                 ports:
                   - "8080:8080"
                 environment:
                   TRANSPORT_TYPE: http
                   MCP_HTTP_PORT: '8080'
                   PORT: '8080'
-                  MONGODB_URI: $${MONGODB_URI}
-                  REDIS_URL: redis://default:$${REDIS_PASSWORD}@redis:6379
-                  REDIS_PASSWORD: $${REDIS_PASSWORD}
-                  LLM_PROVIDER: $${LLM_PROVIDER}
-                  ANTHROPIC_API_KEY: $${ANTHROPIC_API_KEY}
-                  MEMORABLE_PASSPHRASE: $${MEMORABLE_PASSPHRASE}
-                  OAUTH_ENABLED: $${OAUTH_ENABLED}
+                  MONGODB_URI: ${!MONGODB_URI}
+                  REDIS_URL: redis://default:${!REDIS_PASSWORD}@redis:6379
+                  REDIS_PASSWORD: ${!REDIS_PASSWORD}
+                  LLM_PROVIDER: ${!LLM_PROVIDER}
+                  ANTHROPIC_API_KEY: ${!ANTHROPIC_API_KEY}
+                  MEMORABLE_PASSPHRASE: ${!MEMORABLE_PASSPHRASE}
+                  OAUTH_ENABLED: ${!OAUTH_ENABLED}
                   NODE_ENV: production
                 depends_on:
                   redis:
@@ -300,15 +339,39 @@ Resources:
                 restart: unless-stopped
 
             volumes:
+              mongo_data:
               redis_data:
             COMPOSEFILE
 
+            # ── Write update script ──
+            cat > /opt/memorable/update.sh << 'UPDATEFILE'
+            #!/bin/bash
+            set -ex
+            source /opt/memorable/.env
+            BRANCH="$GITHUB_BRANCH"
+            if [ -z "$BRANCH" ]; then BRANCH="main"; fi
+            cd /opt/memorable-src
+            git pull origin "$BRANCH"
+            docker build -t memorable-mcp:latest .
+            cd /opt/memorable
+            if [ "$USE_LOCAL_MONGO" = "true" ]; then
+              COMPOSE_PROFILES=local-mongo docker compose up -d
+            else
+              docker compose up -d
+            fi
+            UPDATEFILE
+            chmod +x /opt/memorable/update.sh
+
             # ── Start services ──
             cd /opt/memorable
-            docker compose up -d
+            if [ "$USE_LOCAL_MONGO" = "true" ]; then
+              COMPOSE_PROFILES=local-mongo docker compose up -d
+            else
+              docker compose up -d
+            fi
 
             # ── Systemd service for auto-restart on reboot ──
-            cat > /etc/systemd/system/memorable.service << 'SVCFILE'
+            cat > /etc/systemd/system/memorable.service << SVCFILE
             [Unit]
             Description=MemoRable MCP Daemon
             After=docker.service
@@ -318,6 +381,7 @@ Resources:
             Type=oneshot
             RemainAfterExit=yes
             WorkingDirectory=/opt/memorable
+            Environment=COMPOSE_PROFILES=${ComposeProfiles}
             ExecStart=/usr/local/lib/docker/cli-plugins/docker-compose up -d
             ExecStop=/usr/local/lib/docker/cli-plugins/docker-compose down
 
@@ -327,6 +391,7 @@ Resources:
             systemctl daemon-reload
             systemctl enable memorable
           - AnthropicKeyValue: !If [HasAnthropicKey, !Ref AnthropicApiKey, '']
+            ComposeProfiles: !If [HasExternalMongo, '', 'local-mongo']
 
 Outputs:
   MCPEndpoint:
@@ -348,6 +413,17 @@ Outputs:
       - !Sub 'ssh ec2-user@${ElasticIP}'
       - 'No SSH key configured. Use SSM Session Manager instead.'
 
+  UpdateCommand:
+    Description: Pull latest code and redeploy
+    Value: 'ssh ec2-user@<IP> sudo /opt/memorable/update.sh'
+
+  MongoDBMode:
+    Description: MongoDB configuration
+    Value: !If
+      - HasExternalMongo
+      - 'External (Atlas or self-managed)'
+      - 'Local (bundled MongoDB 7.0 container)'
+
   MonthlyCost:
     Description: Estimated monthly cost
-    Value: !Sub '~$11/mo (${InstanceType} + EIP + Redis local + Atlas free). Old stack was $122/mo.'
+    Value: !Sub '~$11/mo (${InstanceType} + EIP + local MongoDB + Redis). Old stack was $122/mo.'

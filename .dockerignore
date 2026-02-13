@@ -1,5 +1,5 @@
 # MemoRable Docker build context exclusions
-# Keeps Lambda image builds fast and small
+# Keeps image builds fast and small
 
 node_modules
 dist
@@ -32,6 +32,6 @@ Dockerfile*
 docker-compose*
 .dockerignore
 
-# Tests (not needed in Lambda)
+# Tests (not needed in production image)
 tests/
 jest.config.*

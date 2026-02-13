@@ -1,7 +1,7 @@
 # MemoRable MCP Server — Docker image
-# Runs on EC2 (Docker Compose with Redis) or Lambda (with Web Adapter layer).
+# Runs on EC2 (Docker Compose with Redis).
 #
-# Build:  docker build -f Dockerfile.lambda -t memorable-mcp .
+# Build:  docker build -t memorable-mcp .
 # Run:    docker run -p 8080:8080 -e MONGODB_URI=<uri> -e REDIS_URL=<url> memorable-mcp
 #
 

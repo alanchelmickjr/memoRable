@@ -3,26 +3,26 @@
 # MemoRable — One-Click Deploy
 # ═══════════════════════════════════════════════════════════════════════
 #
-# Always-on MCP daemon with Redis core. EC2 + Docker (MCP + Redis) + EIP.
-# The daemon runs continuously — preparing context before you ask for it.
+# One command. No Docker. No database setup. Everything builds in the cloud.
+# EC2 clones from GitHub, builds the image, runs MCP + MongoDB + Redis.
 #
-# Prerequisites:
-#   1. AWS CLI configured (aws configure)
-#   2. Docker running locally (for building the image)
-#   3. MongoDB Atlas M0 (free): https://cloud.mongodb.com
+# Prerequisites: AWS CLI configured (aws configure). That's it.
 #
 # Usage:
-#   MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/memorable" ./scripts/deploy.sh
+#   ./scripts/deploy.sh                                        # One-click
+#   MONGODB_URI="mongodb+srv://..." ./scripts/deploy.sh        # Use Atlas
+#   INSTANCE_TYPE=t4g.small KEY_NAME=mykey ./scripts/deploy.sh # Customize
 #
 # ═══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 STACK_NAME="${STACK_NAME:-memorable}"
 REGION="${AWS_REGION:-us-west-1}"
-ECR_REPO="${ECR_REPO:-memorable-mcp}"
 INSTANCE_TYPE="${INSTANCE_TYPE:-t4g.micro}"
 LLM_PROVIDER="${LLM_PROVIDER:-auto}"
 OAUTH_ENABLED="${OAUTH_ENABLED:-false}"
+GITHUB_REPO="${GITHUB_REPO:-https://github.com/alanchelmickjr/memoRable.git}"
+GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -33,105 +33,90 @@ warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
 err()   { echo -e "${RED}[deploy]${NC} $*" >&2; }
 
 # ─── Preflight ────────────────────────────────────────────────────────
-info "MemoRable deploy — always-on daemon with Redis core"
+echo ""
+echo "═══════════════════════════════════════════════════════════════"
+info "MemoRable — One-Click Deploy"
+echo "═══════════════════════════════════════════════════════════════"
 echo ""
 
-if [ -z "${MONGODB_URI:-}" ]; then
-    err "MONGODB_URI is required."
-    echo "  Free M0 at https://cloud.mongodb.com"
-    echo "  MONGODB_URI=\"mongodb+srv://...\" $0"
+if ! command -v aws &>/dev/null; then
+    err "AWS CLI not found. Install: https://aws.amazon.com/cli/"
     exit 1
 fi
 
-for cmd in aws docker; do
-    if ! command -v "$cmd" &>/dev/null; then
-        err "$cmd not found."
-        exit 1
-    fi
-done
-
-if ! docker info &>/dev/null; then
-    err "Docker daemon not running."
+if ! aws sts get-caller-identity &>/dev/null; then
+    err "AWS CLI not configured. Run: aws configure"
     exit 1
 fi
-
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region "$REGION")
-ECR_URI="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO}"
 
 info "Region:   $REGION"
 info "Stack:    $STACK_NAME"
 info "Instance: $INSTANCE_TYPE"
-info "ECR:      $ECR_URI"
+info "Source:   $GITHUB_REPO ($GITHUB_BRANCH)"
+if [ -n "${MONGODB_URI:-}" ]; then
+    info "MongoDB:  external (Atlas/self-managed)"
+else
+    info "MongoDB:  bundled (local container)"
+fi
 echo ""
 
-# ─── Step 1: ECR Repository ──────────────────────────────────────────
-info "Step 1/4: ECR repository..."
-aws ecr describe-repositories --repository-names "$ECR_REPO" --region "$REGION" &>/dev/null || \
-    aws ecr create-repository --repository-name "$ECR_REPO" --region "$REGION" \
-        --image-scanning-configuration scanOnPush=true >/dev/null
-ok "ECR ready: $ECR_REPO"
+# ─── Deploy CloudFormation ───────────────────────────────────────────
+info "Deploying stack (EC2 will clone, build, and start automatically)..."
 
-# ─── Step 2: Build Docker image ──────────────────────────────────────
-info "Step 2/4: Building image..."
-cd "$PROJECT_DIR"
-docker build -f Dockerfile.lambda -t "$ECR_REPO:latest" --platform linux/arm64 .
-ok "Image built"
-
-# ─── Step 3: Push to ECR ─────────────────────────────────────────────
-info "Step 3/4: Pushing to ECR..."
-aws ecr get-login-password --region "$REGION" | \
-    docker login --username AWS --password-stdin "${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
-
-docker tag "${ECR_REPO}:latest" "${ECR_URI}:latest"
-
-RETRIES=4  DELAY=2
-for i in $(seq 1 $RETRIES); do
-    docker push "${ECR_URI}:latest" && break
-    [ "$i" -eq "$RETRIES" ] && { err "Push failed after $RETRIES attempts"; exit 1; }
-    warn "Retry in ${DELAY}s ($i/$RETRIES)..."
-    sleep "$DELAY"; DELAY=$((DELAY * 2))
-done
-ok "Image pushed"
-
-# ─── Step 4: Deploy CloudFormation ───────────────────────────────────
-info "Step 4/4: Deploying stack..."
-PARAMS="ImageUri=${ECR_URI}:latest"
-PARAMS="$PARAMS MongoDBUri=${MONGODB_URI}"
-PARAMS="$PARAMS InstanceType=${INSTANCE_TYPE}"
+PARAMS="InstanceType=${INSTANCE_TYPE}"
 PARAMS="$PARAMS LLMProvider=${LLM_PROVIDER}"
 PARAMS="$PARAMS OAuthEnabled=${OAUTH_ENABLED}"
+PARAMS="$PARAMS GitHubRepo=${GITHUB_REPO}"
+PARAMS="$PARAMS GitHubBranch=${GITHUB_BRANCH}"
+[ -n "${MONGODB_URI:-}" ] && PARAMS="$PARAMS MongoDBUri=${MONGODB_URI}"
 [ -n "${MEMORABLE_PASSPHRASE:-}" ] && PARAMS="$PARAMS MemorablePassphrase=${MEMORABLE_PASSPHRASE}"
 [ -n "${ANTHROPIC_API_KEY:-}" ] && PARAMS="$PARAMS AnthropicApiKey=${ANTHROPIC_API_KEY}"
 [ -n "${KEY_NAME:-}" ] && PARAMS="$PARAMS KeyName=${KEY_NAME}"
 
-RETRIES=4  DELAY=2
-for i in $(seq 1 $RETRIES); do
-    aws cloudformation deploy \
-        --stack-name "$STACK_NAME" \
-        --template-file "${PROJECT_DIR}/cloudformation/memorable-lambda-stack.yaml" \
-        --parameter-overrides $PARAMS \
-        --capabilities CAPABILITY_NAMED_IAM \
-        --region "$REGION" \
-        --no-fail-on-empty-changeset && break
-    [ "$i" -eq "$RETRIES" ] && { err "Deploy failed"; exit 1; }
-    warn "Retry in ${DELAY}s ($i/$RETRIES)..."
-    sleep "$DELAY"; DELAY=$((DELAY * 2))
-done
-ok "Stack deployed"
+aws cloudformation deploy \
+    --stack-name "$STACK_NAME" \
+    --template-file "${PROJECT_DIR}/cloudformation/memorable-ec2-stack.yaml" \
+    --parameter-overrides $PARAMS \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --region "$REGION" \
+    --no-fail-on-empty-changeset
 
 # ─── Results ──────────────────────────────────────────────────────────
 echo ""
 echo "═══════════════════════════════════════════════════════════════"
-ok "MemoRable is running!"
+ok "Stack deployed!"
 echo "═══════════════════════════════════════════════════════════════"
 echo ""
 
 IP=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
     --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' --output text)
 
+MONGO_MODE=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
+    --query 'Stacks[0].Outputs[?OutputKey==`MongoDBMode`].OutputValue' --output text 2>/dev/null || echo "Local")
+
 info "MCP Endpoint:  http://${IP}:8080/mcp"
 info "Health Check:  http://${IP}:8080/health"
+info "MongoDB:       ${MONGO_MODE}"
 info "SSH:           ssh ec2-user@${IP}"
 echo ""
-info "~\$11/mo (was \$122/mo). Daemon always running. Redis core. Context always fresh."
+warn "EC2 is building the image from GitHub — health check may take 3-5 min."
+echo ""
+info "~\$11/mo (was \$122/mo). Daemon always running. Context always fresh."
+echo ""
+echo "───────────────────────────────────────────────────────────────"
+ok "MCP Config (add to ~/.claude.json or .mcp.json)"
+echo "───────────────────────────────────────────────────────────────"
+echo ""
+echo "  {"
+echo "    \"mcpServers\": {"
+echo "      \"memorable\": {"
+echo "        \"type\": \"http\","
+echo "        \"url\": \"http://${IP}:8080/mcp\""
+echo "      }"
+echo "    }"
+echo "  }"
+echo ""
+echo "───────────────────────────────────────────────────────────────"
+ok "Update later: ssh ec2-user@${IP} sudo /opt/memorable/update.sh"
+echo "───────────────────────────────────────────────────────────────"
 echo ""
