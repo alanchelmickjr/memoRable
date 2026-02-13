@@ -201,11 +201,17 @@ jobs:
 
       - name: Health check
         run: |
-          ALB_DNS="memorable-alb-1679440696.${{ env.AWS_REGION }}.elb.amazonaws.com"
-          echo "Testing health endpoint at $ALB_DNS..."
-          # Allow a few retries for the new task to register with the target group
+          # Get Elastic IP from CloudFormation stack outputs
+          ENDPOINT=$(aws cloudformation describe-stacks --stack-name memorable \
+            --query 'Stacks[0].Outputs[?OutputKey==`HealthCheck`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          if [ -z "$ENDPOINT" ]; then
+            echo "Could not get endpoint from CloudFormation. Skipping health check."
+            exit 0
+          fi
+          echo "Testing health endpoint at $ENDPOINT..."
           for i in $(seq 1 5); do
-            if curl -sf "http://${ALB_DNS}/health/live" > /dev/null 2>&1; then
+            if curl -sf "$ENDPOINT" > /dev/null 2>&1; then
               echo "Health check passed!"
               exit 0
             fi

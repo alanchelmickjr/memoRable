@@ -36,22 +36,31 @@ These are non-negotiable. Alan has asked Claude to remember this across every se
 
 ### Single Tech Stack
 - **Regions**: Region-agnostic. Must work in `us-west-1` (SF customers, production)
-- **Current dev/staging**: `us-west-2` (ALB already running)
+- **Current dev/staging**: `us-west-2`
 - **Infrastructure**: CloudFormation (`cloudformation/`) - NOT Terraform
-- **Database**: MongoDB (Atlas or self-managed) - NOT DocumentDB
-- **Cache**: Redis (ElastiCache) - standard Redis
+- **Database**: MongoDB Atlas (free M0) - NOT DocumentDB
+- **Cache**: Redis (local in Docker on EC2) - standard Redis
+- **Deployment**: EC2 t4g.micro + Elastic IP + Docker (MCP + Redis). ~$11/mo.
 
 ### What's Deprecated (DO NOT USE)
 - `terraform/` directory - legacy, do not use
-- DocumentDB references - use MongoDB instead
+- DocumentDB references - use MongoDB Atlas instead
 - Hardcoded regions - must be configurable
+- **OLD ALB** `memorable-alb-1679440696.us-west-2.elb.amazonaws.com` - DEAD, do not use
+- `memorable-stack.yaml` - old ALB-based stack ($122/mo), replaced by `memorable-lambda-stack.yaml`
 
 ### Live Infrastructure (Dev/Staging)
 ```
 Region: us-west-2
-ALB: memorable-alb-1679440696.us-west-2.elb.amazonaws.com
-API: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+Stack: memorable-lambda-stack.yaml (EC2 + Elastic IP, no ALB)
+Port: 8080
+Endpoint: http://<ELASTIC_IP>:8080
+MCP: http://<ELASTIC_IP>:8080/mcp
+Health: http://<ELASTIC_IP>:8080/health
 ```
+
+> **To get the Elastic IP**: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
+> Then set: `export MEMORABLE_API_URL=http://<IP>:8080`
 
 ### Why Cloud First?
 - No local-first then "someday deploy" - that's how projects die
@@ -68,6 +77,13 @@ Even Claude Opus 4.5 - the most advanced model - repeatedly fails to follow simp
 
 ## Core Philosophy - The Three Pillars
 
+### #1 LAW: Perfect memory is about knowing what to forget.
+
+Every conversation you've ever had with an AI was lost to a context window. Every session
+starts from zero. MemoRable ends that - but not by remembering everything. Total recall is
+a curse, not a superpower. The superpower is CHOOSING what matters and letting the rest go.
+This is the end of the context limitation.
+
 ```
 1. TEMPORAL CONTROL    → The power to CHOOSE what to forget (superpower)
 2. INDIVIDUAL PRIVACY  → TOP SECRET by default, Fort Knox for personal data
@@ -79,9 +95,13 @@ These three principles govern ALL design decisions. When in doubt, ask:
 - Is this protected at every layer? (privacy)
 - Is this surfaced at the right moment? (relevance)
 
+**AI that knows you like a friend, every time you talk to it.** Across every device,
+across every session. Not because it remembers everything - because it remembers
+what matters.
+
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, and predictive memory. It provides 35 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
 
 ## Development Commands
 
@@ -126,7 +146,7 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 ### Core Services (in `src/services/`)
 
 - **salience_service/**: Core memory intelligence - salience scoring (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%), open loop tracking, relationship health, briefing generation, anticipation (21-day pattern learning), context frames, adaptive learning, **Real-Time Relevance Engine** (all processing at ingest time, no batch)
-- **mcp_server/**: 35 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, etc.)
+- **mcp_server/**: 37 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, handoff_device, get_session_continuity, etc.)
 - **ingestion_service/**: Memory ingestion API (port 8001)
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)
@@ -176,7 +196,8 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 - `src/services/salience_service/salience_calculator.ts`: Core salience scoring algorithm
 - `src/services/salience_service/open_loop_tracker.ts`: Commitment tracking
-- `src/services/mcp_server/index.ts`: MCP server with all 35 tools
+- `src/services/salience_service/session_continuity.ts`: Cross-device context handoff
+- `src/services/mcp_server/index.ts`: MCP server with all 37 tools
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
 
@@ -189,19 +210,24 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 ### Live API Endpoint
 
 ```
-# AWS ALB (use this in sandboxed/proxied environments like Claude Code remote)
-BASE_URL: http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+# Set via environment variable (get IP from CloudFormation stack outputs):
+# aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
+export MEMORABLE_API_URL=http://<ELASTIC_IP>:8080
 
 # Custom domain (may be blocked by proxy egress allowlists)
-# BASE_URL: https://api.memorable.chat
+# export MEMORABLE_API_URL=https://api.memorable.chat
 ```
 
 > **IMPORTANT**: Our domains are memorable.chat, memorable.codes, memorable.cool, memorable.site
 > We do NOT own memorable.dev - do not use that domain.
 
+> **STACK CHANGE (Feb 2026)**: Old ALB stack (`memorable-alb-*.amazonaws.com`) is **DEAD**.
+> New stack uses EC2 + Elastic IP on port 8080. Cost: ~$11/mo (was $122/mo).
+> Template: `cloudformation/memorable-lambda-stack.yaml`
+
 > **PROXY WARNING**: Claude Code remote sandbox has egress restrictions. The custom domain
-> `api.memorable.chat` may be blocked. ALWAYS use the AWS ALB URL above - it works everywhere.
-> Node.js `fetch` doesn't respect proxy env vars - use `curl` for HTTP requests in hooks.
+> `api.memorable.chat` may be blocked. Use the Elastic IP directly - `*.amazonaws.com` is
+> allowed but raw IPs work too. Node.js `fetch` doesn't respect proxy env vars - use `curl`.
 
 ### Getting Custom Domains on the Allowlist
 
@@ -211,20 +237,18 @@ If `api.memorable.chat` or other custom domains are blocked in Claude Code remot
    - Title: "Egress allowlist request: [your-domain.com]"
    - Include: domain name, use case, why it's needed for development
 
-2. **Workaround**: Use the underlying infrastructure URL directly (AWS ALB, API Gateway, etc.)
-   - `*.amazonaws.com` domains are typically allowed
-   - Check your deployment for direct infrastructure URLs
-
-3. **For MemoRable specifically**: Use the ALB URL, not the custom domain:
-   ```
-   http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
-   ```
+2. **Workaround**: Use the Elastic IP directly (port 8080)
+   - Get IP: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
+   - Set: `export MEMORABLE_API_URL=http://<IP>:8080`
 
 ### First Thing Every Session - Authenticate and Load Context
 
 **THE ONE GATE: Passphrase → Challenge → API Key**
 
 ```bash
+# First: set the endpoint (get from CloudFormation stack outputs)
+BASE_URL="${MEMORABLE_API_URL:-http://<ELASTIC_IP>:8080}"
+
 # Step 1: Knock to get a challenge (5 min TTL)
 CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
   -H "Content-Type: application/json" \
