@@ -228,6 +228,13 @@ Resources:
             #!/bin/bash
             set -ex
 
+            # ── Swap (npm ci needs >1GB during Docker builds) ──
+            fallocate -l 2G /swapfile
+            chmod 600 /swapfile
+            mkswap /swapfile
+            swapon /swapfile
+            echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+
             # ── Install Docker + git ──
             dnf update -y
             dnf install -y docker git
@@ -352,12 +359,12 @@ Resources:
             if [ -z "$BRANCH" ]; then BRANCH="main"; fi
             cd /opt/memorable-src
             git pull origin "$BRANCH"
-            docker build -t memorable-mcp:latest .
+            docker build --no-cache -t memorable-mcp:latest .
             cd /opt/memorable
             if [ "$USE_LOCAL_MONGO" = "true" ]; then
-              COMPOSE_PROFILES=local-mongo docker compose up -d
+              COMPOSE_PROFILES=local-mongo docker compose up -d --force-recreate mcp
             else
-              docker compose up -d
+              docker compose up -d --force-recreate mcp
             fi
             UPDATEFILE
             chmod +x /opt/memorable/update.sh
