@@ -5,26 +5,26 @@
 # Run:    docker run -p 8080:8080 -e MONGODB_URI=<uri> -e REDIS_URL=<url> memorable-mcp
 #
 
-# ─── Stage 1: Build (native module compilation) ───────────────────────
+# ─── Stage 1: Build (compile TS, install prod deps) ─────────────────
 FROM public.ecr.aws/docker/library/node:22 AS builder
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
 
-# Install all deps (need devDeps for typescript compilation).
-RUN npm ci 2>&1 || \
+# Production deps only (keeps memory usage low for t4g.micro)
+RUN npm ci --omit=dev 2>&1 || \
     (echo "=== Retrying without native scripts ===" && \
-     npm ci --ignore-scripts && \
+     npm ci --omit=dev --ignore-scripts && \
      cd node_modules/argon2 && npx --yes node-pre-gyp install --fallback-to-build 2>/dev/null || true)
 
 COPY src/ src/
 COPY tsconfig.json ./
 
-# Compile TypeScript to JavaScript (avoids tsx ESM resolution issues at runtime)
-RUN npx tsc --outDir dist --declaration false 2>&1 || true
-# Prune devDependencies for smaller image
-RUN npm prune --omit=dev
+# Compile TypeScript (typescript installed temporarily, not in node_modules)
+RUN npm install -g typescript && \
+    tsc --outDir dist --declaration false --skipLibCheck true 2>&1 || true && \
+    npm uninstall -g typescript
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────
 FROM public.ecr.aws/docker/library/node:22-slim
