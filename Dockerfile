@@ -6,7 +6,7 @@
 #
 
 # ─── Stage 1: Build (compile TS, install prod deps) ─────────────────
-FROM public.ecr.aws/docker/library/node:22 AS builder
+FROM public.ecr.aws/docker/library/node:23 AS builder
 
 WORKDIR /app
 
@@ -26,20 +26,20 @@ RUN npm install -g typescript && \
     tsc --outDir dist --declaration false --skipLibCheck true 2>&1 || true && \
     npm uninstall -g typescript
 
-# Fix MCP SDK: Node 22 doesn't resolve wildcard exports "./*" → "./dist/esm/*"
-# Create symlinks so filesystem paths match import specifiers
-RUN cd node_modules/@modelcontextprotocol/sdk && \
-    ln -sfn dist/esm/server server && \
-    ln -sfn dist/esm/types.js types.js
-
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────
-FROM public.ecr.aws/docker/library/node:22-slim
+FROM public.ecr.aws/docker/library/node:23-slim
 
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
+
+# Fix MCP SDK: exports wildcard "./*" → "./dist/esm/*" not resolved by all node versions
+# Symlinks must be in runtime stage (Docker COPY follows symlinks, doesn't preserve them)
+RUN cd node_modules/@modelcontextprotocol/sdk && \
+    ln -sfn dist/esm/server server && \
+    ln -sfn dist/esm/types.js types.js
 
 # MCP server defaults (overridden by docker-compose environment)
 ENV TRANSPORT_TYPE=http
