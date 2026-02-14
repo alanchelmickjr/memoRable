@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "memorable": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["tsx", "src/services/mcp_server/index.ts"],
-      "env": {
-        "ALLOW_HTTP_DEV": "true"
-      }
+      "type": "http",
+      "url": "http://52.9.62.72:8080/mcp"
     }
   }
 }
