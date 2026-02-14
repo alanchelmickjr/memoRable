@@ -18,6 +18,7 @@
 
 ## NEXT
 
+- **Smart context compaction** - PreCompact hook analyzes task complexity and signals optimal threshold (static threshold is dumb)
 - Anger/toxicity filtering
 - Prosody tagging at ingest
 - Gun.js mesh for edge

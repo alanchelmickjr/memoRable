@@ -26,45 +26,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 8. **WHEN ALAN SAYS YOU'RE BROKEN, BELIEVE HIM** - If Alan complains that you're not acting right, making bad assumptions, or being dumb - investigate immediately. Check hooks, context loading, API responses, schemas. Don't assume you're functioning correctly. Alan's pattern-matching catches real issues. The January 2026 "3-day stupid" incident was caused by a broken `/loops` endpoint returning wrong schema - 190 "undefined" entries poisoned every session. Alan noticed. Claude didn't. Trust Alan's diagnosis.
 
-9. **NEVER PUSH TO MAIN** - `main` is the build trigger. Pushing to main triggers CI/CD pipelines, deployments, and real-world consequences. ALWAYS work on feature branches (`claude/*`). Push to the feature branch assigned in your task. If no branch is assigned, ask. If you are in a sandbox and feel compelled to push, push to the feature branch - NEVER main. This is not optional.
-
-10. **DOCUMENTS DON'T FIX MODELS, ENFORCEMENT DOES** - This very file (CLAUDE.md) is loaded into context every session. The model reads it. The model still doesn't follow it. Alan had to ask 50+ times in 6 hours for the same behaviors. Adding more words to this document will not fix compliance - hooks that BLOCK bad behavior will. The stop hook that catches uncommitted changes works because it prevents the action, not because it requests nicely. When designing AI behavior controls: enforce at the gate, don't ask at the door. This is the core thesis of memoRable - memory without enforcement is just a document nobody reads.
-
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
 ---
 
-## Infrastructure - CLOUD FIRST
+## Infrastructure - CLOUD FIRST, ONE STACK ONLY
 
-**WE ARE DEVELOPING IN THE CLOUD FROM THE START.**
+**Cloud from day one, but ONE region, ONE stack. Budget: ~$150/month.**
+
+### The $300 Lesson (Feb 2026)
+A single stack in us-west-2 was ~$150/month - within budget. The problem: Claude ALSO deployed a duplicate stack in us-east-1 via Terraform (deprecated!), doubling everything. Two regions, two stacks, $300+/month for infra that never worked. All nuked on Feb 5, 2026. The lesson isn't "don't deploy" - it's "don't duplicate."
+
+### Rules for Cloud Infrastructure:
+- **ONE REGION, ONE STACK** - never deploy the same thing in two regions for dev/staging
+- **CloudFormation ONLY** - Terraform is deprecated, don't touch it, don't create resources with it
+- **NO DUPLICATE RESOURCES** - before creating anything, check what already exists
+- **BUDGET: ~$150/month** for dev/staging. If a deploy exceeds this, something is wrong
+- **AUDIT MONTHLY** - run `aws ce get-cost-and-usage` to catch surprises early
+- **COST TAGS** - every resource gets a cost tag so we can track spend by project
 
 ### Single Tech Stack
 - **Regions**: Region-agnostic. Must work in `us-west-1` (SF customers, production)
-- **Current dev/staging**: `us-west-2`
+- **Dev/staging region**: `us-west-2` (when re-deployed)
 - **Infrastructure**: CloudFormation (`cloudformation/`) - NOT Terraform
-- **Database**: MongoDB Atlas (free M0) - NOT DocumentDB
-- **Cache**: Redis (local in Docker on EC2) - standard Redis
-- **Deployment**: EC2 t4g.micro + Elastic IP + Docker (MCP + Redis). ~$11/mo.
+- **Database**: MongoDB (Atlas or self-managed) - NOT DocumentDB
+- **Cache**: Redis (ElastiCache) - standard Redis
 
 ### What's Deprecated (DO NOT USE)
 - `terraform/` directory - legacy, do not use
-- DocumentDB references - use MongoDB Atlas instead
+- DocumentDB references - use MongoDB instead
 - Hardcoded regions - must be configurable
-- **OLD ALB** `memorable-alb-1679440696.us-west-2.elb.amazonaws.com` - DEAD, do not use
-- `memorable-stack.yaml` - old ALB-based stack ($122/mo), replaced by `memorable-lambda-stack.yaml`
 
-### Live Infrastructure (Dev/Staging)
+### Live Infrastructure
 ```
-Region: us-west-2
-Stack: memorable-lambda-stack.yaml (EC2 + Elastic IP, no ALB)
-Port: 8080
-Endpoint: http://<ELASTIC_IP>:8080
-MCP: http://<ELASTIC_IP>:8080/mcp
-Health: http://<ELASTIC_IP>:8080/health
+STATUS: ALL TORN DOWN (Feb 5, 2026)
+No cloud infrastructure currently running.
+Will re-deploy single stack when ready.
 ```
-
-> **To get the Elastic IP**: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
-> Then set: `export MEMORABLE_API_URL=http://<IP>:8080`
 
 ### Why Cloud First?
 - No local-first then "someday deploy" - that's how projects die
@@ -77,32 +75,9 @@ Health: http://<ELASTIC_IP>:8080/health
 
 Even Claude Opus 4.5 - the most advanced model - repeatedly fails to follow simple instructions, adds unsolicited advice, and does not read what it is told to read. This is exactly why MemoRable must succeed. AI needs persistent, enforced memory to stop repeating the same mistakes. Without memory, every session starts fresh and every lesson is forgotten.
 
-### The Proof: This File Is Not Enough
-
-This file (CLAUDE.md) is automatically loaded into every Claude Code session. It contains clear, explicit instructions. The model reads it. The model still violates it - repeatedly, in the same session, sometimes minutes apart. Alan documented having to correct the same behaviors 50+ times in a 6-hour period (Feb 2026). The instructions were present in context the entire time.
-
-**What doesn't work:**
-- More documentation (the model already has it and ignores it)
-- Stronger wording (the model doesn't have feelings to hurt)
-- Longer explanations (more tokens ≠ more compliance)
-
-**What does work:**
-- **Hooks that block** - The pre-commit hook that catches secrets works because git rejects the commit. The model can't bypass it.
-- **Gates that enforce** - The auth challenge flow works because the API returns 401, not because the model "remembers" to authenticate.
-- **Memory that persists** - MemoRable's purpose: behavioral enforcement through persistent context that survives session boundaries, with salience scoring that surfaces what matters at the moment it matters.
-
-The model is the proof. The model is the patient. The model is why this product must exist.
-
 ---
 
 ## Core Philosophy - The Three Pillars
-
-### #1 LAW: Perfect memory is about knowing what to forget.
-
-Every conversation you've ever had with an AI was lost to a context window. Every session
-starts from zero. MemoRable ends that - but not by remembering everything. Total recall is
-a curse, not a superpower. The superpower is CHOOSING what matters and letting the rest go.
-This is the end of the context limitation.
 
 ```
 1. TEMPORAL CONTROL    → The power to CHOOSE what to forget (superpower)
@@ -115,13 +90,9 @@ These three principles govern ALL design decisions. When in doubt, ask:
 - Is this protected at every layer? (privacy)
 - Is this surfaced at the right moment? (relevance)
 
-**AI that knows you like a friend, every time you talk to it.** Across every device,
-across every session. Not because it remembers everything - because it remembers
-what matters.
-
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, and predictive memory. It provides 35 MCP tools for Claude Code integration.
 
 ## Development Commands
 
@@ -166,7 +137,7 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 ### Core Services (in `src/services/`)
 
 - **salience_service/**: Core memory intelligence - salience scoring (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%), open loop tracking, relationship health, briefing generation, anticipation (21-day pattern learning), context frames, adaptive learning, **Real-Time Relevance Engine** (all processing at ingest time, no batch)
-- **mcp_server/**: 37 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, handoff_device, get_session_continuity, etc.)
+- **mcp_server/**: 35 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, etc.)
 - **ingestion_service/**: Memory ingestion API (port 8001)
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)
@@ -216,8 +187,7 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 - `src/services/salience_service/salience_calculator.ts`: Core salience scoring algorithm
 - `src/services/salience_service/open_loop_tracker.ts`: Commitment tracking
-- `src/services/salience_service/session_continuity.ts`: Cross-device context handoff
-- `src/services/mcp_server/index.ts`: MCP server with all 37 tools
+- `src/services/mcp_server/index.ts`: MCP server with all 35 tools
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
 
@@ -225,50 +195,26 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 ## CLAUDE SESSION CONTINUITY
 
-**CRITICAL: Before starting work, load context from MemoRable API.**
+**Load context from MemoRable API when available. Currently running locally via docker-compose.**
 
-### Live API Endpoint
+### API Endpoint
 
 ```
-# Set via environment variable (get IP from CloudFormation stack outputs):
-# aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
-export MEMORABLE_API_URL=http://<ELASTIC_IP>:8080
+# LOCAL DEVELOPMENT (current - all cloud infra torn down Feb 5, 2026)
+BASE_URL: http://localhost:3000
 
-# Custom domain (may be blocked by proxy egress allowlists)
-# export MEMORABLE_API_URL=https://api.memorable.chat
+# When cloud is re-deployed, update this:
+# BASE_URL: <cloud-endpoint-here>
 ```
 
 > **IMPORTANT**: Our domains are memorable.chat, memorable.codes, memorable.cool, memorable.site
 > We do NOT own memorable.dev - do not use that domain.
-
-> **STACK CHANGE (Feb 2026)**: Old ALB stack (`memorable-alb-*.amazonaws.com`) is **DEAD**.
-> New stack uses EC2 + Elastic IP on port 8080. Cost: ~$11/mo (was $122/mo).
-> Template: `cloudformation/memorable-lambda-stack.yaml`
-
-> **PROXY WARNING**: Claude Code remote sandbox has egress restrictions. The custom domain
-> `api.memorable.chat` may be blocked. Use the Elastic IP directly - `*.amazonaws.com` is
-> allowed but raw IPs work too. Node.js `fetch` doesn't respect proxy env vars - use `curl`.
-
-### Getting Custom Domains on the Allowlist
-
-If `api.memorable.chat` or other custom domains are blocked in Claude Code remote:
-
-1. **File an issue**: https://github.com/anthropics/claude-code/issues
-   - Title: "Egress allowlist request: [your-domain.com]"
-   - Include: domain name, use case, why it's needed for development
-
-2. **Workaround**: Use the Elastic IP directly (port 8080)
-   - Get IP: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
-   - Set: `export MEMORABLE_API_URL=http://<IP>:8080`
 
 ### First Thing Every Session - Authenticate and Load Context
 
 **THE ONE GATE: Passphrase → Challenge → API Key**
 
 ```bash
-# First: set the endpoint (get from CloudFormation stack outputs)
-BASE_URL="${MEMORABLE_API_URL:-http://<ELASTIC_IP>:8080}"
-
 # Step 1: Knock to get a challenge (5 min TTL)
 CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
   -H "Content-Type: application/json" \
