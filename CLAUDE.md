@@ -26,6 +26,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 8. **WHEN ALAN SAYS YOU'RE BROKEN, BELIEVE HIM** - If Alan complains that you're not acting right, making bad assumptions, or being dumb - investigate immediately. Check hooks, context loading, API responses, schemas. Don't assume you're functioning correctly. Alan's pattern-matching catches real issues. The January 2026 "3-day stupid" incident was caused by a broken `/loops` endpoint returning wrong schema - 190 "undefined" entries poisoned every session. Alan noticed. Claude didn't. Trust Alan's diagnosis.
 
+9. **NEVER PUSH TO MAIN** - `main` is the build trigger. Pushing to main triggers CI/CD pipelines, deployments, and real-world consequences. ALWAYS work on feature branches (`claude/*`). Push to the feature branch assigned in your task. If no branch is assigned, ask. If you are in a sandbox and feel compelled to push, push to the feature branch - NEVER main. This is not optional.
+
+10. **DOCUMENTS DON'T FIX MODELS, ENFORCEMENT DOES** - This very file (CLAUDE.md) is loaded into context every session. The model reads it. The model still doesn't follow it. Alan had to ask 50+ times in 6 hours for the same behaviors. Adding more words to this document will not fix compliance - hooks that BLOCK bad behavior will. The stop hook that catches uncommitted changes works because it prevents the action, not because it requests nicely. When designing AI behavior controls: enforce at the gate, don't ask at the door. This is the core thesis of memoRable - memory without enforcement is just a document nobody reads.
+
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
 ---
@@ -72,6 +76,22 @@ Health: http://<ELASTIC_IP>:8080/health
 ## Why MemoRable Must Exist
 
 Even Claude Opus 4.5 - the most advanced model - repeatedly fails to follow simple instructions, adds unsolicited advice, and does not read what it is told to read. This is exactly why MemoRable must succeed. AI needs persistent, enforced memory to stop repeating the same mistakes. Without memory, every session starts fresh and every lesson is forgotten.
+
+### The Proof: This File Is Not Enough
+
+This file (CLAUDE.md) is automatically loaded into every Claude Code session. It contains clear, explicit instructions. The model reads it. The model still violates it - repeatedly, in the same session, sometimes minutes apart. Alan documented having to correct the same behaviors 50+ times in a 6-hour period (Feb 2026). The instructions were present in context the entire time.
+
+**What doesn't work:**
+- More documentation (the model already has it and ignores it)
+- Stronger wording (the model doesn't have feelings to hurt)
+- Longer explanations (more tokens ≠ more compliance)
+
+**What does work:**
+- **Hooks that block** - The pre-commit hook that catches secrets works because git rejects the commit. The model can't bypass it.
+- **Gates that enforce** - The auth challenge flow works because the API returns 401, not because the model "remembers" to authenticate.
+- **Memory that persists** - MemoRable's purpose: behavioral enforcement through persistent context that survives session boundaries, with salience scoring that surfaces what matters at the moment it matters.
+
+The model is the proof. The model is the patient. The model is why this product must exist.
 
 ---
 
