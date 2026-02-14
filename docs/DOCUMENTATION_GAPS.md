@@ -294,18 +294,20 @@ Features:
 
 ---
 
-### 9. Legacy Services (Need Deprecation Notes)
-**Files:** Various `.js` files in services/
-**Status:** Code exists, unclear if active
+### 9. Legacy Services — RESOLVED (2026-02-14)
 
-| Service | Status | Action |
+Audited all 6 services. 3 deleted (zero imports), 3 kept:
+
+| Service | Action | Reason |
 |---------|--------|--------|
-| `confidenceService.js` | Superseded by 3×7 model | Mark deprecated |
-| `taskHopperService.js` | Unknown | Audit and document or remove |
-| `responseRefinementService.js` | Unknown | Audit and document or remove |
-| `modelSelectionService.js` | Unknown | Audit and document or remove |
-| `customModelService.js` | Unknown | Audit and document or remove |
-| `videoStreamService.js` | Used by emotionalContext | Document |
+| `confidenceService.js` | **DELETED** | Zero imports, superseded by 3x7 model |
+| `taskHopperService.js` | **DELETED** | Zero imports |
+| `responseRefinementService.js` | **DELETED** | Zero imports |
+| `modelSelectionService.js` | **KEPT** | SDK entrypoint (index.js), Ollama model selection |
+| `customModelService.js` | **KEPT** | SDK entrypoint (index.js), Hume training jobs |
+| `videoStreamService.js` | **KEPT** | Active, used by emotionalContext |
+
+Also removed 21 duplicate .js files from salience_service/ (.ts is canonical).
 
 ---
 

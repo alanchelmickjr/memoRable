@@ -92,7 +92,7 @@ These three principles govern ALL design decisions. When in doubt, ask:
 
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, and predictive memory. It provides 35 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, and predictive memory. It provides 43+ MCP tools for Claude Code integration.
 
 ## Development Commands
 
@@ -137,7 +137,7 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 ### Core Services (in `src/services/`)
 
 - **salience_service/**: Core memory intelligence - salience scoring (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%), open loop tracking, relationship health, briefing generation, anticipation (21-day pattern learning), context frames, adaptive learning, **Real-Time Relevance Engine** (all processing at ingest time, no batch)
-- **mcp_server/**: 35 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, etc.)
+- **mcp_server/**: 43+ MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, etc.)
 - **ingestion_service/**: Memory ingestion API (port 8001)
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)

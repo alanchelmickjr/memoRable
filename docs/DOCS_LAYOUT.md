@@ -93,6 +93,7 @@
 | [ROBOT_FLEET_DEPLOYMENT.md](./ROBOT_FLEET_DEPLOYMENT.md) | AR glasses, robots, IoT sensors |
 | [SENSOR_PUBSUB_ARCHITECTURE.md](./SENSOR_PUBSUB_ARCHITECTURE.md) | Pub/Sub for sensor data |
 | [CHLOE_SENSORY_MEMORY_INTEGRATION.md](./CHLOE_SENSORY_MEMORY_INTEGRATION.md) | Chloe: full-time awareness, sensory conjunction, multi-body continuity |
+| [DASHBOARD_AUTH_PLAN.md](./DASHBOARD_AUTH_PLAN.md) | Dashboard passphrase login, session auth, logging |
 
 ---
 
@@ -168,4 +169,4 @@
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-02-14*
