@@ -230,7 +230,7 @@ describe('Feature Extractor', () => {
         },
       };
 
-      const features = await extractFeatures('Test text', errorClient);
+      const features = await extractFeatures('Test text', errorClient, new Date(), 'Tier1_General');
 
       expect(features.emotionalKeywords).toHaveLength(0);
       expect(features.peopleMentioned).toHaveLength(0);
@@ -311,7 +311,7 @@ describe('Feature Extractor', () => {
           }),
       };
 
-      const features = await extractFeatures('I need to send the report', client);
+      const features = await extractFeatures('I need to send the report', client, new Date(), 'Tier1_General');
 
       expect(features.actionItems).toHaveLength(1);
       expect(features.actionItems[0].description).toBe('Send report');
@@ -351,7 +351,7 @@ describe('Feature Extractor', () => {
           }),
       };
 
-      const features = await extractFeatures('I promised John to send the report', client);
+      const features = await extractFeatures('I promised John to send the report', client, new Date(), 'Tier1_General');
 
       expect(features.commitments).toHaveLength(1);
       expect(features.commitments[0].type).toBe('made');
@@ -382,7 +382,7 @@ describe('Feature Extractor', () => {
           }),
       };
 
-      const features = await extractFeatures('Test', client);
+      const features = await extractFeatures('Test', client, new Date(), 'Tier1_General');
 
       expect(features.sentimentScore).toBeLessThanOrEqual(1);
       expect(features.sentimentScore).toBeGreaterThanOrEqual(-1);
@@ -413,7 +413,7 @@ describe('Feature Extractor', () => {
           }),
       };
 
-      const features = await extractFeatures('Test', client);
+      const features = await extractFeatures('Test', client, new Date(), 'Tier1_General');
 
       expect(features.relationshipEvents).toContain('death');
       expect(features.relationshipEvents).toContain('marriage');
