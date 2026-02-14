@@ -92,6 +92,7 @@
 | [api-reference.md](./api-reference.md) | REST API documentation |
 | [ROBOT_FLEET_DEPLOYMENT.md](./ROBOT_FLEET_DEPLOYMENT.md) | AR glasses, robots, IoT sensors |
 | [SENSOR_PUBSUB_ARCHITECTURE.md](./SENSOR_PUBSUB_ARCHITECTURE.md) | Pub/Sub for sensor data |
+| [CHLOE_SENSORY_MEMORY_INTEGRATION.md](./CHLOE_SENSORY_MEMORY_INTEGRATION.md) | Chloe: full-time awareness, sensory conjunction, multi-body continuity |
 
 ---
 
