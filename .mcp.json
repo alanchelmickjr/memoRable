@@ -2,8 +2,8 @@
   "mcpServers": {
     "memorable": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["tsx", "src/services/mcp_server/index.ts"],
+      "command": "bash",
+      "args": ["scripts/mcp-start.sh"],
       "env": {
         "ALLOW_HTTP_DEV": "true"
       }
