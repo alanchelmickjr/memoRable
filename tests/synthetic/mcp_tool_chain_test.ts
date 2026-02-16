@@ -105,7 +105,7 @@ interface TestResult {
 
 const results: TestResult[] = [];
 
-async function test(tool: string, fn: () => Promise<string>): Promise<void> {
+async function testTool(tool: string, fn: () => Promise<string>): Promise<void> {
   const start = Date.now();
   try {
     const detail = await fn();
@@ -141,7 +141,7 @@ async function run() {
   // ─── 1. STORE + RECALL ───────────────────────────────────
   console.log('--- Memory Lifecycle ---');
 
-  await test('store_memory', async () => {
+  await testTool('store_memory', async () => {
     const result = await client.callTool('store_memory', {
       text: `Integration test memory ${Date.now()}: testing the full MCP pipeline on the boat`,
       context: { location: 'boat', activity: 'testing', mood: 'focused', people: ['Alan'] },
@@ -152,7 +152,7 @@ async function run() {
     return `memoryId=${result.memoryId}, salience=${result.salienceScore || result.salience?.score}`;
   });
 
-  await test('recall', async () => {
+  await testTool('recall', async () => {
     const result = await client.callTool('recall', {
       query: 'integration test pipeline boat',
       limit: 3,
@@ -161,7 +161,7 @@ async function run() {
     return `${result.length} results, first: "${result[0].text?.slice(0, 50)}..."`;
   });
 
-  await test('recall (person filter)', async () => {
+  await testTool('recall (person filter)', async () => {
     const result = await client.callTool('recall', {
       query: 'boat testing',
       limit: 3,
@@ -170,7 +170,7 @@ async function run() {
     return `${Array.isArray(result) ? result.length : 0} results for person=Alan`;
   });
 
-  await test('search_memories', async () => {
+  await testTool('search_memories', async () => {
     const result = await client.callTool('search_memories', {
       query: 'morning routine',
       limit: 3,
@@ -182,7 +182,7 @@ async function run() {
   // ─── 2. CONTEXT ──────────────────────────────────────────
   console.log('\n--- Context System ---');
 
-  await test('set_context', async () => {
+  await testTool('set_context', async () => {
     const result = await client.callTool('set_context', {
       location: 'boat',
       activity: 'testing MemoRable',
@@ -193,12 +193,12 @@ async function run() {
     return `context set: ${JSON.stringify(result).slice(0, 80)}`;
   });
 
-  await test('whats_relevant', async () => {
+  await testTool('whats_relevant', async () => {
     const result = await client.callTool('whats_relevant', {}) as any;
     return `${JSON.stringify(result).slice(0, 100)}`;
   });
 
-  await test('clear_context', async () => {
+  await testTool('clear_context', async () => {
     const result = await client.callTool('clear_context', {}) as any;
     return `cleared: ${JSON.stringify(result).slice(0, 80)}`;
   });
@@ -206,7 +206,7 @@ async function run() {
   // ─── 3. BRIEFING ─────────────────────────────────────────
   console.log('\n--- Briefing ---');
 
-  await test('get_briefing', async () => {
+  await testTool('get_briefing', async () => {
     const result = await client.callTool('get_briefing', {
       person: 'Sarah',
       quick: true,
@@ -217,7 +217,7 @@ async function run() {
   // ─── 4. LOOPS ────────────────────────────────────────────
   console.log('\n--- Open Loops ---');
 
-  await test('store_memory (with commitment)', async () => {
+  await testTool('store_memory (with commitment)', async () => {
     const result = await client.callTool('store_memory', {
       text: `I promised Alan I would finish the 66-day test by end of day ${new Date().toISOString().split('T')[0]}`,
       context: { activity: 'planning', people: ['Alan'] },
@@ -226,7 +226,7 @@ async function run() {
     return `memoryId=${result.memoryId}, salience=${result.salienceScore || result.salience?.score}`;
   });
 
-  await test('list_loops', async () => {
+  await testTool('list_loops', async () => {
     const result = await client.callTool('list_loops', {}) as any;
     const count = result.loops?.length || result.openLoops?.length || (Array.isArray(result) ? result.length : 0);
     return `${count} open loops`;
@@ -235,12 +235,12 @@ async function run() {
   // ─── 5. STATUS + PATTERNS ────────────────────────────────
   console.log('\n--- System Intelligence ---');
 
-  await test('get_status', async () => {
+  await testTool('get_status', async () => {
     const result = await client.callTool('get_status', {}) as any;
     return `loops: ${JSON.stringify(result.openLoopsCount)}, weights: ${result.weightsLearned}`;
   });
 
-  await test('pattern_stats', async () => {
+  await testTool('pattern_stats', async () => {
     const result = await client.callTool('pattern_stats', {}) as any;
     return `patterns=${result.totalPatterns}, formed=${result.formedPatterns}, days=${result.dataCollectionDays}`;
   });
@@ -248,19 +248,19 @@ async function run() {
   // ─── 6. ANTICIPATION + PREDICTIONS ───────────────────────
   console.log('\n--- Predictive Memory ---');
 
-  await test('anticipate', async () => {
+  await testTool('anticipate', async () => {
     const result = await client.callTool('anticipate', {
       lookAheadMinutes: 60,
     }) as any;
     return `ready=${result.readyForPrediction}, days=${result.dataCollectionDays}, contexts=${result.anticipatedContexts?.length || 0}`;
   });
 
-  await test('day_outlook', async () => {
+  await testTool('day_outlook', async () => {
     const result = await client.callTool('day_outlook', {}) as any;
     return `${JSON.stringify(result).slice(0, 100)}`;
   });
 
-  await test('get_predictions', async () => {
+  await testTool('get_predictions', async () => {
     const result = await client.callTool('get_predictions', {
       context: { activity: 'coding', location: 'boat' },
       max_results: 3,
@@ -268,7 +268,7 @@ async function run() {
     return `surfaced=${result.surfaced_count}, hooks=${result.total_hooks_evaluated}`;
   });
 
-  await test('get_anticipated_context', async () => {
+  await testTool('get_anticipated_context', async () => {
     const result = await client.callTool('get_anticipated_context', {
       max_memories: 3,
     }) as any;
@@ -278,19 +278,19 @@ async function run() {
   // ─── 7. EMOTION ──────────────────────────────────────────
   console.log('\n--- Emotion Analysis ---');
 
-  await test('analyze_emotion', async () => {
+  await testTool('analyze_emotion', async () => {
     const result = await client.callTool('analyze_emotion', {
       text: 'I am absolutely thrilled that the system is working! This makes me so happy and hopeful.',
     }) as any;
     return `${JSON.stringify(result).slice(0, 120)}`;
   });
 
-  await test('get_emotion_filters', async () => {
+  await testTool('get_emotion_filters', async () => {
     const result = await client.callTool('get_emotion_filters', {}) as any;
     return `${JSON.stringify(result).slice(0, 100)}`;
   });
 
-  await test('get_memories_by_emotion', async () => {
+  await testTool('get_memories_by_emotion', async () => {
     const result = await client.callTool('get_memories_by_emotion', {
       emotions: ['happy', 'focused'],
       limit: 3,
@@ -301,7 +301,7 @@ async function run() {
   // ─── 8. RELATIONSHIPS ────────────────────────────────────
   console.log('\n--- Relationship Intelligence ---');
 
-  await test('get_relationship', async () => {
+  await testTool('get_relationship', async () => {
     const result = await client.callTool('get_relationship', {
       entity_a: 'Alan',
       entity_b: 'Sarah',
@@ -309,7 +309,7 @@ async function run() {
     return `${JSON.stringify(result).slice(0, 120)}`;
   });
 
-  await test('get_entity_pressure', async () => {
+  await testTool('get_entity_pressure', async () => {
     const result = await client.callTool('get_entity_pressure', {
       entity_id: 'Alan',
       days: 30,
@@ -320,12 +320,12 @@ async function run() {
   // ─── 9. DEVICES ──────────────────────────────────────────
   console.log('\n--- Device Management ---');
 
-  await test('list_devices', async () => {
+  await testTool('list_devices', async () => {
     const result = await client.callTool('list_devices', {}) as any;
     return `${JSON.stringify(result).slice(0, 100)}`;
   });
 
-  await test('get_session_continuity', async () => {
+  await testTool('get_session_continuity', async () => {
     const result = await client.callTool('get_session_continuity', {
       deviceId: 'test_device_claude',
       deviceType: 'desktop',
@@ -336,7 +336,7 @@ async function run() {
   // ─── 10. EXPORT/IMPORT ROUNDTRIP ─────────────────────────
   console.log('\n--- Export/Import ---');
 
-  await test('export_memories', async () => {
+  await testTool('export_memories', async () => {
     const result = await client.callTool('export_memories', {
       topics: ['testing'],
     }) as any;
@@ -347,17 +347,17 @@ async function run() {
   // ─── 11. BEHAVIORAL + TIER STATS ────────────────────────
   console.log('\n--- System Stats ---');
 
-  await test('get_tier_stats', async () => {
+  await testTool('get_tier_stats', async () => {
     const result = await client.callTool('get_tier_stats', {}) as any;
     return `${JSON.stringify(result).slice(0, 120)}`;
   });
 
-  await test('get_pattern_stats', async () => {
+  await testTool('get_pattern_stats', async () => {
     const result = await client.callTool('get_pattern_stats', {}) as any;
     return `${JSON.stringify(result).slice(0, 120)}`;
   });
 
-  await test('get_daemon_status', async () => {
+  await testTool('get_daemon_status', async () => {
     const result = await client.callTool('get_daemon_status', {}) as any;
     return `${JSON.stringify(result).slice(0, 100)}`;
   });
@@ -365,7 +365,7 @@ async function run() {
   // ─── 12. RECALL VOTE (feedback loop) ─────────────────────
   console.log('\n--- Feedback ---');
 
-  await test('recall_vote', async () => {
+  await testTool('recall_vote', async () => {
     if (!storedMemoryId) throw new Error('No memory to vote on');
     const result = await client.callTool('recall_vote', {
       votes: [{ memoryId: storedMemoryId, vote: 'hot' }],
