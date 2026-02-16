@@ -250,6 +250,11 @@ const PUBLIC_PATHS = [
   '/auth/knock',
   '/auth/exchange',
   '/auth/register',
+  '/.well-known/oauth-authorization-server',
+  '/.well-known/oauth-protected-resource',
+  '/authorize',
+  '/token',
+  '/revoke',
   '/privacy',
   '/terms'
 ];
@@ -329,7 +334,7 @@ async function initPassphraseAuth() {
 
 const authMiddleware = async (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
-  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health'))) {
+  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health') || req.path.startsWith('/.well-known'))) {
     return next();
   }
 

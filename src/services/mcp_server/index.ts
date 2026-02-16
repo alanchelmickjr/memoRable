@@ -42,7 +42,7 @@ import { MongoClient, Db } from 'mongodb';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
-import { randomUUID, createCipheriv, createDecipheriv, scryptSync, randomBytes } from 'crypto';
+import { randomUUID, createCipheriv, createDecipheriv, scryptSync, randomBytes, createHash } from 'crypto';
 import { createClient, RedisClientType } from 'redis';
 
 // Import API client for remote mode (HTTP instead of direct MongoDB)
@@ -7707,6 +7707,208 @@ export async function mountMcpEndpoint(
 
     return res.status(401).json({ error: 'unauthorized' });
   };
+
+  // ─── MCP-spec OAuth 2.1 endpoints ──────────────────────────────────
+  // Claude.ai follows the MCP authorization spec which requires these
+  // discovery and auth endpoints at the server root (not /oauth/*).
+  // See: https://spec.modelcontextprotocol.io/specification/2025-03-26/basic/authorization/
+
+  // Dynamic client registration (MCP spec §5.3)
+  // Stores registered clients in-memory (persists in Redis when available)
+  const registeredClients = new Map<string, { clientId: string; clientSecret: string; redirectUris: string[]; clientName: string; createdAt: Date }>();
+
+  app.post('/register', async (req: Request, res: Response) => {
+    const { redirect_uris, client_name, grant_types, response_types, token_endpoint_auth_method } = req.body;
+
+    if (!redirect_uris || !Array.isArray(redirect_uris) || redirect_uris.length === 0) {
+      return res.status(400).json({ error: 'invalid_redirect_uri', error_description: 'At least one redirect_uri is required' });
+    }
+
+    const clientId = randomUUID();
+    const clientSecret = randomUUID();
+
+    registeredClients.set(clientId, {
+      clientId,
+      clientSecret,
+      redirectUris: redirect_uris,
+      clientName: client_name || 'MCP Client',
+      createdAt: new Date(),
+    });
+
+    // Also accept as valid OAuth client for the existing token flow
+    console.error(`[MCP] Dynamic client registered: ${clientId} (${client_name || 'unnamed'})`);
+
+    return res.status(201).json({
+      client_id: clientId,
+      client_secret: clientSecret,
+      client_name: client_name || 'MCP Client',
+      redirect_uris,
+      grant_types: grant_types || ['authorization_code', 'refresh_token'],
+      response_types: response_types || ['code'],
+      token_endpoint_auth_method: token_endpoint_auth_method || 'client_secret_post',
+    });
+  });
+
+  // OAuth Authorization Server Metadata (RFC 8414 / MCP spec)
+  app.get('/.well-known/oauth-authorization-server', (_req: Request, res: Response) => {
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.json({
+      issuer: baseUrl,
+      authorization_endpoint: `${baseUrl}/authorize`,
+      token_endpoint: `${baseUrl}/token`,
+      registration_endpoint: `${baseUrl}/register`,
+      revocation_endpoint: `${baseUrl}/revoke`,
+      response_types_supported: ['code'],
+      grant_types_supported: ['authorization_code', 'refresh_token'],
+      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      code_challenge_methods_supported: ['S256'],
+      scopes_supported: ['read', 'write', 'mcp'],
+    });
+  });
+
+  // OAuth Protected Resource Metadata (RFC 9728)
+  app.get('/.well-known/oauth-protected-resource', (_req: Request, res: Response) => {
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.json({
+      resource: `${baseUrl}/mcp`,
+      authorization_servers: [baseUrl],
+      scopes_supported: ['read', 'write', 'mcp'],
+    });
+  });
+
+  // Authorization endpoint (MCP spec — at /authorize, not /oauth/authorize)
+  app.get('/authorize', async (req: Request, res: Response) => {
+    const { client_id, redirect_uri, response_type, scope, state, code_challenge, code_challenge_method } = req.query;
+
+    if (response_type !== 'code') {
+      return res.status(400).json({ error: 'unsupported_response_type' });
+    }
+
+    // Validate client — accept both statically configured and dynamically registered
+    const dynamicClient = registeredClients.get(client_id as string);
+    const isStaticClient = client_id === CONFIG.oauth.clientId;
+
+    if (!dynamicClient && !isStaticClient) {
+      return res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id. Register via /register first.' });
+    }
+
+    // Validate redirect_uri for dynamic clients
+    if (dynamicClient && !dynamicClient.redirectUris.includes(redirect_uri as string)) {
+      return res.status(400).json({ error: 'invalid_redirect_uri' });
+    }
+
+    // Generate authorization code
+    const code = randomUUID();
+    const authCode: AuthorizationCode = {
+      code,
+      clientId: client_id as string,
+      redirectUri: redirect_uri as string,
+      userId: CONFIG.defaultUserId,
+      scope: (scope as string || 'read write mcp').split(' '),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    };
+
+    // Store PKCE challenge alongside the auth code
+    if (code_challenge) {
+      (authCode as any).codeChallenge = code_challenge;
+      (authCode as any).codeChallengeMethod = code_challenge_method || 'S256';
+    }
+
+    await storeAuthCode(code, authCode);
+    console.error(`[MCP] Auth code issued for client ${client_id}, redirect to ${redirect_uri}`);
+
+    // Redirect back with code
+    const redirectUrl = new URL(redirect_uri as string);
+    redirectUrl.searchParams.set('code', code);
+    if (state) redirectUrl.searchParams.set('state', state as string);
+
+    res.redirect(redirectUrl.toString());
+  });
+
+  // Token endpoint (MCP spec — at /token, not /oauth/token)
+  app.post('/token', async (req: Request, res: Response) => {
+    const { grant_type, code, client_id, client_secret, refresh_token, code_verifier } = req.body;
+
+    // Validate client — accept dynamic or static
+    const dynamicClient = registeredClients.get(client_id);
+    const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
+    const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
+
+    if (!isStaticClient && !isDynamicValid) {
+      return res.status(401).json({ error: 'invalid_client' });
+    }
+
+    if (grant_type === 'authorization_code') {
+      const authCode = await getAuthCode(code);
+      if (!authCode || new Date(authCode.expiresAt) < new Date()) {
+        await deleteAuthCode(code);
+        return res.status(400).json({ error: 'invalid_grant' });
+      }
+
+      // Verify PKCE if challenge was set
+      if ((authCode as any).codeChallenge && code_verifier) {
+        const hash = createHash('sha256').update(code_verifier).digest('base64url');
+        if (hash !== (authCode as any).codeChallenge) {
+          return res.status(400).json({ error: 'invalid_grant', error_description: 'PKCE verification failed' });
+        }
+      }
+
+      await deleteAuthCode(code);
+
+      const accessToken = jwt.sign(
+        { userId: authCode.userId, scope: authCode.scope, clientId: client_id },
+        CONFIG.oauth.jwtSecret,
+        { expiresIn: CONFIG.oauth.tokenExpiry } as jwt.SignOptions
+      );
+
+      const newRefreshToken = randomUUID();
+      const token: OAuthToken = {
+        accessToken,
+        refreshToken: newRefreshToken,
+        userId: authCode.userId,
+        clientId: client_id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        scope: authCode.scope,
+      };
+      await storeToken(newRefreshToken, token);
+
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        refresh_token: newRefreshToken,
+        scope: authCode.scope.join(' '),
+      });
+    } else if (grant_type === 'refresh_token') {
+      const token = await getToken(refresh_token);
+      if (!token || new Date(token.expiresAt) < new Date()) {
+        await deleteToken(refresh_token);
+        return res.status(400).json({ error: 'invalid_grant' });
+      }
+
+      const accessToken = jwt.sign(
+        { userId: token.userId, scope: token.scope, clientId: client_id },
+        CONFIG.oauth.jwtSecret,
+        { expiresIn: CONFIG.oauth.tokenExpiry } as jwt.SignOptions
+      );
+
+      return res.json({
+        access_token: accessToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        scope: token.scope.join(' '),
+      });
+    }
+
+    return res.status(400).json({ error: 'unsupported_grant_type' });
+  });
+
+  // Revocation endpoint
+  app.post('/revoke', async (req: Request, res: Response) => {
+    const { token } = req.body;
+    if (token) await deleteToken(token);
+    res.status(200).json({ revoked: true });
+  });
 
   // Mount MCP endpoint with per-session isolation
   app.all('/mcp', mcpAuthMiddleware, async (req: Request, res: Response) => {
