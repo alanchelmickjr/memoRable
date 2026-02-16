@@ -1,5 +1,7 @@
 # REST Mode Security - Transit Encryption
 
+> **DEPRECATED (Feb 2026):** This doc references the old ALB/DocumentDB architecture. Current stack is EC2 + Elastic IP + MongoDB Atlas + MCP StreamableHTTP. DocumentDB was dropped for Atlas. ALB was dropped for direct EC2.
+
 > **SECURITY HIERARCHY**
 >
 > 1. HTTP: **NEVER** - blocked at code level

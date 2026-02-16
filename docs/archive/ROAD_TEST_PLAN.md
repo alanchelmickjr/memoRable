@@ -1,5 +1,7 @@
 # MemoRable Road Test Plan
 
+> **DEPRECATED (Feb 2026):** This test plan references the old ALB/DocumentDB stack. Current stack is EC2 + Elastic IP + MongoDB Atlas + MCP StreamableHTTP at `52.9.62.72:8080`. REST endpoints no longer exist — all access via MCP protocol.
+
 **Date:** 2026-01-18
 **Tester:** Claude
 **Purpose:** Actually run the software. Document what works. Fix what doesn't.
@@ -10,7 +12,7 @@
 
 - **Machine:** macOS Darwin 25.2.0
 - **Working Directory:** /Users/crackerjack/dev/GitHub/memoRable
-- **Live Stack URL:** http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com
+- **Live Stack URL:** http://52.9.62.72:8080
 
 ### Test Credentials (Dev/Test Stack Only)
 
@@ -19,7 +21,7 @@
 export MEMORABLE_API_KEY="hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk"
 
 # Test with:
-curl -H "X-API-Key: $MEMORABLE_API_KEY" http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/dashboard
+curl -H "X-API-Key: $MEMORABLE_API_KEY" http://52.9.62.72:8080/dashboard
 ```
 
 **Note:** This is the shared dev/test key. Production deployments should generate unique keys.
@@ -286,14 +288,14 @@ Dashboard: PASS - Returns full HTML dashboard with 269 memories
 
 ```bash
 # 1. Knock to get challenge
-CHALLENGE=$(curl -s -X POST "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/knock" \
+CHALLENGE=$(curl -s -X POST "http://52.9.62.72:8080/auth/knock" \
   -H "Content-Type: application/json" \
   -d '{"device":{"type":"terminal","name":"Road Test Device"}}' | jq -r '.challenge')
 echo "Challenge: $CHALLENGE"
 
 # 2. Exchange passphrase for API key
 # Claude's passphrase: "I remember what I have learned from you."
-RESPONSE=$(curl -s -X POST "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/exchange" \
+RESPONSE=$(curl -s -X POST "http://52.9.62.72:8080/auth/exchange" \
   -H "Content-Type: application/json" \
   -d "{\"challenge\":\"$CHALLENGE\",\"passphrase\":\"I remember what I have learned from you.\",\"device\":{\"type\":\"terminal\",\"name\":\"Road Test Device\"}}")
 echo "Response: $RESPONSE"
@@ -301,11 +303,11 @@ NEW_KEY=$(echo $RESPONSE | jq -r '.api_key')
 
 # 3. Use new key to access memories
 curl -s -H "X-API-Key: $NEW_KEY" \
-  "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/memory?entity=alan&limit=1"
+  "http://52.9.62.72:8080/memory?entity=alan&limit=1"
 
 # 4. List devices
 curl -s -H "X-API-Key: $NEW_KEY" \
-  "http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com/auth/devices"
+  "http://52.9.62.72:8080/auth/devices"
 ```
 
 ### Success Criteria:

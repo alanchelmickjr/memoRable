@@ -1,5 +1,7 @@
 # MCP Authentication Fix
 
+> **DEPRECATED (Feb 2026):** This doc references the old ALB stack ($280/40min). Current stack is EC2 + Elastic IP at `52.9.62.72:8080` (us-west-1, ~$11/mo). MCP StreamableHTTP only — no REST endpoints. The hardcoded ALB URL referenced below is DEAD.
+
 ## Problem
 
 MCP server doesn't authenticate itself automatically. Users have to manually run curl to authenticate via REST endpoints, then MCP works.
@@ -13,7 +15,7 @@ MCP server doesn't authenticate itself automatically. Users have to manually run
 Add the same fallback URL to `api_client.ts` that session-start hook uses:
 
 ```typescript
-const DEFAULT_API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+const DEFAULT_API_URL = 'http://52.9.62.72:8080';
 
 export function getApiClient(): ApiClient | null {
   const baseUrl = process.env.API_BASE_URL || process.env.MEMORABLE_API_URL || DEFAULT_API_URL;

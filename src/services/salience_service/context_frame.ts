@@ -767,8 +767,8 @@ function determineMatchReasons(
   frame: ContextFrame
 ): ('person' | 'location' | 'activity' | 'topic' | 'time')[] {
   const reasons: ('person' | 'location' | 'activity' | 'topic' | 'time')[] = [];
-  const text = (memory.memory.text || '').toLowerCase();
-  const people = memory.memory.extractedFeatures?.peopleMentioned || [];
+  const text = (memory.text || '').toLowerCase();
+  const people = memory.extractedFeatures?.peopleMentioned || memory.peopleMentioned || [];
 
   // Check people
   for (const personDim of frame.people) {

@@ -1,8 +1,12 @@
 # Gap Analysis: Documentation & Implementation
 
 **Generated:** 2026-01-17
-**Updated:** 2026-01-18
+**Updated:** 2026-02-15
 **Purpose:** Identify what's missing - both docs AND implementation
+
+> **Feb 2026 Update:** Tool count is now 43 (was 35). Event daemon, emotion analysis,
+> behavioral identity, care circle tools all implemented. ALB-era docs archived.
+> Key new doc: `SALIENCE_AUDIT_AND_CONTEXT_ARCHITECTURE.md` (salience audit + entity vision).
 
 ---
 
@@ -28,7 +32,7 @@
 | **Anger/Toxicity Filtering** | Emotions detected, NO action | CRITICAL |
 | **Automatic Prosody Tagging** | Pieces exist, not wired | HIGH |
 | **Persistent Stack / Swarm** | Not built | HIGH |
-| **Daemon / Background Workers** | Not built | MEDIUM |
+| **Daemon / Background Workers** | ✅ BUILT (event_daemon/index.ts) | DONE |
 | **Gun.js Mesh Sync** | Not built | MEDIUM |
 
 ### DOCUMENTATION GAPS (Built, Not Documented)

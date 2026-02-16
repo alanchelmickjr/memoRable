@@ -1,5 +1,7 @@
 # MemoRable Deployment Diagnostic
 
+> **DEPRECATED (Feb 2026):** Historical record of the old ALB/ECS/Fargate/DocumentDB stack. Replaced by EC2 + Elastic IP + MongoDB Atlas (~$11/mo). See `cloudformation/memorable-ec2-stack.yaml` for current architecture.
+
 **Date:** 2026-01-21
 **Problem:** "Cut out part of the quilt, now we have a hole and two patches"
 
@@ -15,7 +17,7 @@
 │   ─────────────────────────────────                                         │
 │   • One-click deploy button in README                                       │
 │   • memorable-stack.yaml                                                    │
-│   • ALB: memorable-alb-1679440696.us-west-2.elb.amazonaws.com              │
+│   • ALB: 52.9.62.72:8080 (EC2 Elastic IP)              │
 │   • DocumentDB (persistent storage)                                         │
 │   • ElastiCache (Redis)                                                     │
 │   • ECS Fargate                                                             │
