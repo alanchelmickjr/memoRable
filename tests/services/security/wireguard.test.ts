@@ -1,3 +1,4 @@
+// CLOUD ONLY — No local dev, no local Docker, no localhost. All infra runs in AWS. No exceptions.
 /**
  * WireGuard Mesh Tests
  *
@@ -21,7 +22,7 @@ describe('WireGuard Mesh Module', () => {
   // Key Generation
   // ==========================================================================
   describe('Key Generation', () => {
-    test('generateKeyPair creates valid keypair', () => {
+    test('generateKeyPair creates valid keypair', async () => {
       const keypair = generateKeyPair();
 
       expect(keypair).toHaveProperty('privateKey');
@@ -32,7 +33,7 @@ describe('WireGuard Mesh Module', () => {
       expect(keypair.publicKey.length).toBeGreaterThan(0);
     });
 
-    test('generateKeyPair creates unique keypairs', () => {
+    test('generateKeyPair creates unique keypairs', async () => {
       const keypair1 = generateKeyPair();
       const keypair2 = generateKeyPair();
 
@@ -40,14 +41,14 @@ describe('WireGuard Mesh Module', () => {
       expect(keypair1.publicKey).not.toBe(keypair2.publicKey);
     });
 
-    test('generatePresharedKey creates valid key', () => {
+    test('generatePresharedKey creates valid key', async () => {
       const psk = generatePresharedKey();
 
       expect(typeof psk).toBe('string');
       expect(psk.length).toBeGreaterThan(0);
     });
 
-    test('generatePresharedKey creates unique keys', () => {
+    test('generatePresharedKey creates unique keys', async () => {
       const psk1 = generatePresharedKey();
       const psk2 = generatePresharedKey();
 
@@ -59,19 +60,19 @@ describe('WireGuard Mesh Module', () => {
   // IP Allocation
   // ==========================================================================
   describe('IP Allocation', () => {
-    test('allocateMeshIP returns valid IP', () => {
+    test('allocateMeshIP returns valid IP', async () => {
       const ip = allocateMeshIP(5);
 
       expect(ip).toBe('10.100.0.5');
     });
 
-    test('allocateMeshIP throws on invalid index', () => {
+    test('allocateMeshIP throws on invalid index', async () => {
       expect(() => allocateMeshIP(0)).toThrow();
       expect(() => allocateMeshIP(255)).toThrow();
       expect(() => allocateMeshIP(-1)).toThrow();
     });
 
-    test('allocateMeshIP handles boundary values', () => {
+    test('allocateMeshIP handles boundary values', async () => {
       expect(allocateMeshIP(1)).toBe('10.100.0.1');
       expect(allocateMeshIP(254)).toBe('10.100.0.254');
     });
@@ -110,7 +111,7 @@ describe('WireGuard Mesh Module', () => {
       }
     ];
 
-    test('generateDeviceConfig creates valid config structure', () => {
+    test('generateDeviceConfig creates valid config structure', async () => {
       const config = generateDeviceConfig(mockDevice, mockPeers);
 
       expect(config).toHaveProperty('interface');
@@ -120,7 +121,7 @@ describe('WireGuard Mesh Module', () => {
       expect(Array.isArray(config.peers)).toBe(true);
     });
 
-    test('generateDeviceConfig includes all peers except self', () => {
+    test('generateDeviceConfig includes all peers except self', async () => {
       const allDevices = [mockDevice, ...mockPeers];
       const config = generateDeviceConfig(mockDevice, allDevices);
 
@@ -132,7 +133,7 @@ describe('WireGuard Mesh Module', () => {
       expect(peerKeys).not.toContain(mockDevice.publicKey);
     });
 
-    test('generateDeviceConfig includes endpoint when available', () => {
+    test('generateDeviceConfig includes endpoint when available', async () => {
       const config = generateDeviceConfig(mockDevice, mockPeers);
 
       const robotPeer = config.peers.find(p => p.publicKey === 'test-public-key-2');
@@ -142,7 +143,7 @@ describe('WireGuard Mesh Module', () => {
       expect(pendantPeer?.endpoint).toBeUndefined();
     });
 
-    test('toConfFile generates valid WireGuard format', () => {
+    test('toConfFile generates valid WireGuard format', async () => {
       const config = generateDeviceConfig(mockDevice, mockPeers);
       const confFile = toConfFile(config);
 
@@ -154,7 +155,7 @@ describe('WireGuard Mesh Module', () => {
       expect(confFile).toContain('AllowedIPs =');
     });
 
-    test('toConfFile includes endpoint only when present', () => {
+    test('toConfFile includes endpoint only when present', async () => {
       const config = generateDeviceConfig(mockDevice, mockPeers);
       const confFile = toConfFile(config);
 

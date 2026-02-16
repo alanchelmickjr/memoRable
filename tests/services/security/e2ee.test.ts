@@ -1,3 +1,4 @@
+// CLOUD ONLY — No local dev, no local Docker, no localhost. All infra runs in AWS. No exceptions.
 /**
  * E2EE Encryption Tests
  *
@@ -139,7 +140,7 @@ describe('E2EE Encryption Module', () => {
       expect(() => decrypt(tampered, alice.secretKey)).toThrow('Decryption failed');
     });
 
-    test('handles unicode and special characters', () => {
+    test('handles unicode and special characters', async () => {
       const plaintext = '你好世界 🌍 Ñoño مرحبا';
       const payload = encrypt(plaintext, alice.publicKey);
       const decrypted = decrypt(payload, alice.secretKey);
@@ -147,7 +148,7 @@ describe('E2EE Encryption Module', () => {
       expect(decrypted).toBe(plaintext);
     });
 
-    test('handles empty string', () => {
+    test('handles empty string', async () => {
       const plaintext = '';
       const payload = encrypt(plaintext, alice.publicKey);
       const decrypted = decrypt(payload, alice.secretKey);
@@ -155,7 +156,7 @@ describe('E2EE Encryption Module', () => {
       expect(decrypted).toBe(plaintext);
     });
 
-    test('handles large content', () => {
+    test('handles large content', async () => {
       const plaintext = 'x'.repeat(100000); // 100KB
       const payload = encrypt(plaintext, alice.publicKey);
       const decrypted = decrypt(payload, alice.secretKey);
@@ -168,7 +169,7 @@ describe('E2EE Encryption Module', () => {
   // Multi-Recipient Encryption
   // ==========================================================================
   describe('Multi-Recipient Encryption', () => {
-    test('encryptForMultiple encrypts for all recipients', () => {
+    test('encryptForMultiple encrypts for all recipients', async () => {
       const alice = generateUserKeyPair();
       const bob = generateUserKeyPair();
       const carol = generateUserKeyPair();
@@ -190,7 +191,7 @@ describe('E2EE Encryption Module', () => {
   // Utility Functions
   // ==========================================================================
   describe('Utility Functions', () => {
-    test('isEncrypted correctly identifies encrypted payloads', () => {
+    test('isEncrypted correctly identifies encrypted payloads', async () => {
       const keypair = generateUserKeyPair();
       const payload = encrypt('test', keypair.publicKey);
 
@@ -201,14 +202,14 @@ describe('E2EE Encryption Module', () => {
       expect(isEncrypted(undefined)).toBe(false);
     });
 
-    test('hasE2EEMarker detects marker in text', () => {
+    test('hasE2EEMarker detects marker in text', async () => {
       expect(hasE2EEMarker(E2EE_MARKER)).toBe(true);
       expect(hasE2EEMarker('[E2EE:nacl-box:v1] encrypted content')).toBe(true);
       expect(hasE2EEMarker('regular text')).toBe(false);
       expect(hasE2EEMarker('')).toBe(false);
     });
 
-    test('E2EE_MARKER has expected format', () => {
+    test('E2EE_MARKER has expected format', async () => {
       expect(E2EE_MARKER).toMatch(/^\[E2EE:/);
     });
   });

@@ -1,56 +1,69 @@
 #!/usr/bin/env node
+// CLOUD ONLY — No local dev, no local Docker, no localhost. All infra runs in AWS. No exceptions.
 /**
  * SessionStart Hook - MemoRable Context Loader
  *
- * ENTITY HIERARCHY:
- *   master (alan) → sees ALL sub-entity data
- *   └── sub-entity (repo) → sees ONLY its own data
+ * NOTHING IS EVER LOCAL. All memory lives in the cloud.
+ * Uses MCP StreamableHTTP protocol — no REST, no knock/exchange.
+ * Auth is skin: the device trust is the MCP session.
+ *
+ * Identity resolution:
+ * 1. Check identity cache (cross-session persistence)
+ * 2. If cached + high confidence → greet by name, load their context
+ * 3. If no cache or low confidence → greet as unknown, wait for first message
+ * 4. UserPromptSubmit hook handles stylometry on first message
  *
  * On Claude Code start:
- * 1. Authenticate with MemoRable
- * 2. Detect repo → becomes sub-entity of master
- * 3. Load ONLY sub-entity's context (scoped queries)
- * 4. Check for doc changes → prompt to index
- *
- * NO TIME ESTIMATES. Just what needs doing.
+ * 1. Initialize MCP session (skin — no auth ceremony)
+ * 2. Resolve identity from cache + device fingerprint
+ * 3. Call MCP tools for context (recall, list_loops, etc.)
+ * 4. Build predictive greeting + context
+ * 5. Output as additionalContext
  */
 
 const { execSync } = require('child_process');
-
-// Set MEMORABLE_API_URL to your EC2 Elastic IP endpoint (port 8080)
-// Get IP: aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
-const BASE_URL = process.env.MEMORABLE_API_URL || process.env.API_BASE_URL || '';
-const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
-const MASTER_ENTITY = process.env.MEMORABLE_MASTER_ENTITY || 'alan';
-const TIMEOUT = 8;
+const { mcpInit, mcpCall, isConnected } = require('./mcp-transport.cjs');
+const { resolveFromCache, buildChallengeContext, getDeviceFingerprint } = require('./identity.cjs');
 
 // HARD LIMIT: Configurable per model via env var
-// Default 3000 to leave room for CLAUDE.md and system context
 const MAX_CONTEXT_CHARS = parseInt(process.env.MEMORABLE_MAX_CONTEXT || '4000', 10);
 
-function curl(method, url, apiKey, data) {
-  try {
-    let cmd = `curl -s --connect-timeout ${TIMEOUT} -X ${method} "${url}"`;
-    cmd += ` -H "Content-Type: application/json"`;
-    if (apiKey) cmd += ` -H "X-API-Key: ${apiKey}"`;
-    if (data) cmd += ` -d '${JSON.stringify(data).replace(/'/g, "'\\''")}'`;
-    return JSON.parse(execSync(cmd, { encoding: 'utf8', timeout: (TIMEOUT + 3) * 1000 }));
-  } catch { return null; }
+// ─── Data Fetchers (MCP tools) ──────────────────────────────────────────────
+
+function getRecall(query, limit = 3) {
+  const result = mcpCall('recall', { query, limit });
+  if (Array.isArray(result)) return result;
+  if (result?.memories) return result.memories;
+  return [];
 }
 
-function authenticate() {
-  const knock = curl('POST', `${BASE_URL}/auth/knock`, null, {
-    device: { type: 'terminal', name: 'Claude Code' }
-  });
-  if (!knock?.challenge) return null;
-
-  const exchange = curl('POST', `${BASE_URL}/auth/exchange`, null, {
-    challenge: knock.challenge,
-    passphrase: PASSPHRASE,
-    device: { type: 'terminal', name: 'Claude Code' }
-  });
-  return exchange?.api_key || null;
+function getLoops() {
+  const result = mcpCall('list_loops', {});
+  if (Array.isArray(result)) return result;
+  if (result?.loops) return result.loops;
+  return [];
 }
+
+function getAnticipated(project) {
+  const result = mcpCall('get_anticipated_context', {
+    context_frame: { project, activity: 'coding' },
+    max_memories: 3
+  });
+  if (result?.memories) return result.memories;
+  if (result?.anticipated) return result.anticipated;
+  return [];
+}
+
+function getStatus() {
+  return mcpCall('get_status', {}) || {};
+}
+
+function getRelevantContext() {
+  const result = mcpCall('whats_relevant', { unified: true });
+  return result || {};
+}
+
+// ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
   try {
@@ -65,26 +78,7 @@ function detectProject() {
   return 'personal';
 }
 
-function queryDocs(apiKey, query, limit = 2) {
-  // Reduced limit, truncate each to save context
-  const data = curl('GET', `${BASE_URL}/memory?entity=claude_docs&query=${encodeURIComponent(query)}&limit=${limit}`, apiKey);
-  return (data?.memories || []).map(m => m.content?.substring(0, 200) || '');
-}
-
-function getProjectContext(apiKey, project) {
-  // Reduced limit, truncate each to save context
-  const data = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=3`, apiKey);
-  return (data?.memories || []).map(m => m.content?.substring(0, 150) || '');
-}
-
-function getOpenLoops(apiKey, project) {
-  // Scope loops to this entity only (sub-entity sees only itself)
-  const data = curl('GET', `${BASE_URL}/loops?status=open&entity=${project}&limit=10`, apiKey);
-  return data?.loops || [];
-}
-
 function checkDocsChanged() {
-  // Check git status for docs changes - auto-detect common doc locations
   try {
     const paths = [];
     try { execSync('test -d docs', { encoding: 'utf8' }); paths.push('docs/'); } catch {}
@@ -99,115 +93,6 @@ function checkDocsChanged() {
   } catch { return { changed: false, files: [] }; }
 }
 
-function getThreeQuestions(apiKey) {
-  const data = curl('GET', `${BASE_URL}/memory?entity=doc_engine&query=three+questions&limit=1`, apiKey);
-  return data?.memories?.[0]?.content || null;
-}
-
-function getAnticipated(apiKey, project) {
-  // Get predicted memories based on current context
-  const data = curl('POST', `${BASE_URL}/predictions/anticipated`, apiKey, {
-    context_frame: { project, activity: 'coding' },
-    max_memories: 3
-  });
-  return data?.anticipated || data?.memories || [];
-}
-
-function buildPredictiveGreeting(loops, anticipated, project) {
-  const hour = new Date().getHours();
-  const timeGreet = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-
-  // Priority 1: Overdue loops
-  const overdue = loops.filter(l => l.dueDate && new Date(l.dueDate) < new Date());
-  if (overdue.length > 0) {
-    const first = overdue[0];
-    const desc = first.description || first.content || 'a commitment';
-    return `Good ${timeGreet}. You have ${overdue.length} overdue item(s). Ready to tackle "${desc}"?`;
-  }
-
-  // Priority 2: Due today
-  const today = new Date().toDateString();
-  const dueToday = loops.filter(l => l.dueDate && new Date(l.dueDate).toDateString() === today);
-  if (dueToday.length > 0) {
-    const first = dueToday[0];
-    const desc = first.description || first.content || 'a commitment';
-    return `Good ${timeGreet}. ${dueToday.length} item(s) due today. Start with "${desc}"?`;
-  }
-
-  // Priority 3: Anticipated memories (pattern-matched)
-  if (anticipated.length > 0) {
-    const first = anticipated[0];
-    const content = first.content?.slice(0, 80) || 'recent work';
-    return `Good ${timeGreet}. Based on patterns, ready to continue: "${content}"?`;
-  }
-
-  // Priority 4: Recent project context
-  if (project && project !== 'personal') {
-    return `Good ${timeGreet}. Ready to work on ${project.replace(/_/g, ' ')}?`;
-  }
-
-  // Fallback (still better than "how can I help")
-  return `Good ${timeGreet}. What shall we tackle?`;
-}
-
-function getEnvironmentContext() {
-  const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
-
-  // Location from system timezone (good enough without GPS)
-  const locationMap = {
-    'America/Los_Angeles': 'San Francisco Bay Area',
-    'America/Denver': 'Denver',
-    'America/Chicago': 'Chicago',
-    'America/New_York': 'New York',
-    'America/Phoenix': 'Phoenix',
-    'Pacific/Honolulu': 'Hawaii',
-  };
-  const location = locationMap[tz] || tz.replace(/_/g, ' ').split('/').pop();
-
-  // Weather from wttr.in (fast, no API key, 3s timeout)
-  let weather = null;
-  try {
-    const raw = execSync('curl -s --connect-timeout 3 "wttr.in/?format=%t+%C" 2>/dev/null', {
-      encoding: 'utf8', timeout: 5000
-    }).trim();
-    if (raw && !raw.includes('Unknown') && !raw.includes('<')) weather = raw;
-  } catch {}
-
-  return { time, date, tz, location, weather };
-}
-
-function getConnectorStatus(apiKey) {
-  // Check MemoRable API health
-  const health = curl('GET', `${BASE_URL}/health`, null);
-  const apiUp = !!health;
-
-  // Check git branch for integration context
-  let branch = '';
-  try {
-    branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-  } catch {}
-
-  // Check if Chloe integration doc exists (connector contract)
-  let connectorDoc = false;
-  try {
-    execSync('test -f docs/CHLOE_MEMORABLE_INTEGRATION.md', { encoding: 'utf8' });
-    connectorDoc = true;
-  } catch {}
-
-  // MCP tools availability (check if MCP server config exists)
-  let mcpConfigured = false;
-  try {
-    const home = process.env.HOME || '';
-    execSync(`test -f "${home}/.claude/claude_desktop_config.json" || test -f "${home}/.claude.json"`, { encoding: 'utf8' });
-    mcpConfigured = true;
-  } catch {}
-
-  return { apiUp, branch, connectorDoc, mcpConfigured, apiUrl: BASE_URL || '(not set)' };
-}
-
 function loadLessons() {
   try {
     const lessonsPath = require('path').join(__dirname, '..', 'lessons.json');
@@ -220,10 +105,7 @@ function buildLessonsSection() {
   const lessons = loadLessons();
   if (lessons.length === 0) return null;
 
-  // Get last 5 lessons
   const recent = lessons.slice(-5);
-
-  // Count recurring signals across all lessons
   const signalCounts = {};
   for (const l of lessons) {
     for (const s of l.signals) signalCounts[s] = (signalCounts[s] || 0) + 1;
@@ -232,7 +114,6 @@ function buildLessonsSection() {
   const lines = [];
   lines.push('## Lessons (from frustration — DO NOT REPEAT)');
 
-  // Top recurring patterns first
   const recurring = Object.entries(signalCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
@@ -256,7 +137,6 @@ function buildLessonsSection() {
     lines.push('');
   }
 
-  // Most recent lesson with context
   const last = recent[recent.length - 1];
   const ago = timeSince(new Date(last.timestamp));
   lines.push(`**Last frustration** (${ago}): "${last.message.substring(0, 120)}..."`);
@@ -266,7 +146,6 @@ function buildLessonsSection() {
 }
 
 function getVibe() {
-  // Rotate lo-fi playlists by day of year
   const playlists = [
     { name: 'Lofi Girl - beats to relax/study to', url: 'https://youtube.com/watch?v=jfKfPfyJRdk' },
     { name: 'Chillhop Music - jazz/lofi hip hop', url: 'https://youtube.com/watch?v=5yx6BWlEVcY' },
@@ -278,13 +157,11 @@ function getVibe() {
   ];
   const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
   const hour = new Date().getHours();
-  // Late night (before 6am) gets sleepy lofi
   if (hour < 6) return playlists[6];
   return playlists[dayOfYear % playlists.length];
 }
 
 function getEasyTask(project, loops, branch) {
-  // Priority 1: First open loop that's small
   const easyLoop = loops.find(l =>
     l.description?.length < 100 || l.content?.length < 100
   );
@@ -292,12 +169,10 @@ function getEasyTask(project, loops, branch) {
     return easyLoop.description || easyLoop.content || null;
   }
 
-  // Priority 2: Based on current branch name
   if (branch?.includes('chloe')) {
     return 'Verify memorable_client.py can connect and authenticate (Phase 1, Step 2)';
   }
 
-  // Priority 3: Based on git status — untracked tests need committing
   try {
     const untracked = execSync('git status --porcelain 2>/dev/null', { encoding: 'utf8' });
     const untrackedTests = untracked.split('\n').filter(l => l.startsWith('??') && l.includes('test'));
@@ -305,11 +180,6 @@ function getEasyTask(project, loops, branch) {
       return `Commit ${untrackedTests.length} untracked test files — they deserve a home`;
     }
   } catch {}
-
-  // Priority 4: Check if API is down — that's the first thing to fix
-  if (project === 'memorable_project') {
-    return 'Check EC2 health — API was 502 last session';
-  }
 
   return null;
 }
@@ -325,9 +195,49 @@ function timeSince(date) {
   return `${days}d ago`;
 }
 
+function getEnvironmentContext() {
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+
+  // IP geolocation — city-level, zero config
+  let location = null;
+  let weather = null;
+  try {
+    const geo = JSON.parse(execSync('curl -s --connect-timeout 3 ipinfo.io/json 2>/dev/null', {
+      encoding: 'utf8', timeout: 5000
+    }));
+    if (geo.city) {
+      location = geo.region ? `${geo.city}, ${geo.region}` : geo.city;
+    }
+  } catch {}
+
+  // Timezone fallback if IP geolocation fails
+  if (!location) {
+    const locationMap = {
+      'America/Los_Angeles': 'San Francisco Bay Area',
+      'America/Denver': 'Denver',
+      'America/Chicago': 'Chicago',
+      'America/New_York': 'New York',
+      'America/Phoenix': 'Phoenix',
+      'Pacific/Honolulu': 'Hawaii',
+    };
+    location = locationMap[tz] || tz.replace(/_/g, ' ').split('/').pop();
+  }
+
+  try {
+    const raw = execSync('curl -s --connect-timeout 3 "wttr.in/?format=%t+%C" 2>/dev/null', {
+      encoding: 'utf8', timeout: 5000
+    }).trim();
+    if (raw && !raw.includes('Unknown') && !raw.includes('<')) weather = raw;
+  } catch {}
+
+  return { time, date, tz, location, weather };
+}
+
 function getLastSessionRecap() {
   try {
-    // What was committed last session?
     const log = execSync('git log --since="3 days ago" --format="%h %s" -10 2>/dev/null', {
       encoding: 'utf8'
     }).trim();
@@ -350,7 +260,6 @@ function getLastSessionRecap() {
       lines.push(`Fixes: ${fixes.length} (${fixes.length >= 3 ? 'infra was fighting back' : 'minor'})`);
     }
 
-    // Honest assessment
     if (fixes.length >= 3) {
       lines.push('**Heads up:** Multiple fix commits in a row = something was stuck. Check if the root cause was resolved or just patched.');
     }
@@ -359,19 +268,40 @@ function getLastSessionRecap() {
   } catch { return null; }
 }
 
-function ensureProjectExists(apiKey, project) {
-  // Check if project has any memories
-  const existing = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=1`, apiKey);
-  if (existing?.memories?.length > 0) return false; // Already exists
+function buildPredictiveGreeting(loops, anticipated, project, opts = {}) {
+  const { name, location } = opts;
+  const nameGreet = name ? `Hi ${name}!` : 'Hey!';
+  const locationLine = location ? ` Coding from ${location} I see.` : '';
 
-  // Create initial project memory with parent relationship
-  curl('POST', `${BASE_URL}/memory`, apiKey, {
-    content: `Project ${project} initialized as sub-entity of ${MASTER_ENTITY}. Scoped context - sees only its own data.`,
-    entities: [project, MASTER_ENTITY],
-    metadata: { type: 'project_init', parent_entity: MASTER_ENTITY, entity_scope: project }
-  });
-  return true; // New project
+  const overdue = loops.filter(l => l.dueDate && new Date(l.dueDate) < new Date());
+  if (overdue.length > 0) {
+    const first = overdue[0];
+    const desc = first.description || first.content || 'a commitment';
+    return `${nameGreet}${locationLine} You have ${overdue.length} overdue item(s). Ready to tackle "${desc}"?`;
+  }
+
+  const today = new Date().toDateString();
+  const dueToday = loops.filter(l => l.dueDate && new Date(l.dueDate).toDateString() === today);
+  if (dueToday.length > 0) {
+    const first = dueToday[0];
+    const desc = first.description || first.content || 'a commitment';
+    return `${nameGreet}${locationLine} ${dueToday.length} item(s) due today. Start with "${desc}"?`;
+  }
+
+  if (anticipated.length > 0) {
+    const first = anticipated[0];
+    const content = first.content?.slice(0, 80) || 'recent work';
+    return `${nameGreet}${locationLine} Ready to continue: "${content}"?`;
+  }
+
+  if (project && project !== 'personal') {
+    return `${nameGreet}${locationLine} Ready to proceed with the plan for ${project.replace(/_/g, ' ')}?`;
+  }
+
+  return `${nameGreet}${locationLine} What shall we tackle?`;
 }
+
+// ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
   let input = '';
@@ -379,7 +309,7 @@ async function main() {
 
   const parts = [];
 
-  // Environment context (always available, even if API is down)
+  // Environment context (always available, even if cloud is down)
   const env = getEnvironmentContext();
   parts.push('## Session');
   let sessionLine = `${env.date} | ${env.time} | ${env.location}`;
@@ -387,149 +317,173 @@ async function main() {
   parts.push(sessionLine);
   parts.push('');
 
-  // Vibe (lo-fi playlist — Jarvis sets the mood)
+  // Vibe
   const vibe = getVibe();
   parts.push(`## Vibe: [${vibe.name}](${vibe.url})`);
   parts.push('');
 
-  // Last session recap (git-based honest appraisal)
+  // Last session recap (git-based)
   const recap = getLastSessionRecap();
   if (recap) {
     parts.push(recap);
     parts.push('');
   }
 
-  // Lessons from frustration (the anti-magnet)
+  // Lessons from frustration
   const lessons = buildLessonsSection();
   if (lessons) {
     parts.push(lessons);
   }
 
+  // Git context
+  let branch = '';
   try {
-    const apiKey = authenticate();
-    const connector = getConnectorStatus(apiKey);
+    branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+  } catch {}
 
-    // Connector status
-    parts.push('## Connector');
-    const apiStatus = connector.apiUp ? 'UP' : 'DOWN';
-    parts.push(`API: ${apiStatus} (${connector.apiUrl})`);
-    if (connector.branch) parts.push(`Branch: \`${connector.branch}\``);
-    if (connector.connectorDoc) parts.push('Chloe Integration: contract loaded');
-    parts.push(`MCP: ${apiKey ? '37 tools authenticated' : 'auth failed'}`);
+  let connectorDoc = false;
+  try {
+    execSync('test -f docs/CHLOE_MEMORABLE_INTEGRATION.md', { encoding: 'utf8' });
+    connectorDoc = true;
+  } catch {}
+
+  const project = detectProject();
+
+  // ─── Identity Resolution (cache + device fingerprint) ───
+  const identity = resolveFromCache();
+  const identifiedEntity = identity.entity;
+
+  // ─── MCP Cloud Connection (MCP init IS the health check) ───
+  const mcpConnected = mcpInit();
+
+  parts.push('## Connector');
+  parts.push(`MCP: ${mcpConnected ? 'UP (StreamableHTTP)' : 'DOWN'} (${require('./mcp-transport.cjs').MCP_URL})`);
+  if (branch) parts.push(`Branch: \`${branch}\``);
+  if (connectorDoc) parts.push('Chloe Integration: contract loaded');
+  parts.push(`Identity: ${identifiedEntity || 'unknown'} (${identity.source}, ${Math.round(identity.confidence * 100)}%)`);
+  parts.push('');
+
+  // Identity challenge context (if needed)
+  const challengeCtx = buildChallengeContext(identity);
+  if (challengeCtx) {
+    parts.push('## Identity');
+    parts.push(challengeCtx);
     parts.push('');
+  }
 
-    if (!apiKey) throw new Error('Auth failed');
-
-    const project = detectProject();
-    const isNewProject = ensureProjectExists(apiKey, project);
-
-    // Entity hierarchy header
-    parts.push(`## Entity: ${project}`);
-    parts.push(`Parent: ${MASTER_ENTITY} (master sees all, sub sees only itself)`);
-    if (isNewProject) {
-      parts.push('');
-      parts.push('**NEW PROJECT DETECTED**');
-      parts.push('**Ask user:** Would you like me to index this repo and start tracking in MemoRable?');
-    }
-    parts.push('');
-
-    // Check for doc changes
-    const docsStatus = checkDocsChanged();
-    if (docsStatus.changed) {
-      parts.push('## Docs Changed Since Last Index');
-      parts.push(`Changed: ${docsStatus.files.join(', ')}`);
-      parts.push('**Ask user:** Re-index docs?');
-      parts.push('');
-    }
-
-    // 0. Get data for predictive greeting (scoped to entity)
-    const loops = getOpenLoops(apiKey, project);
-    const anticipated = getAnticipated(apiKey, project);
-
-    // 1. PREDICTIVE GREETING (most important - sets the tone)
-    const greeting = buildPredictiveGreeting(loops, anticipated, project);
-    parts.push(`## ${greeting}`);
-    parts.push('');
-
-    // 1.5 EASY FIRST TASK (Jarvis suggests where to start)
-    const easyTask = getEasyTask(project, loops, connector.branch);
-    if (easyTask) {
-      parts.push(`## Start Here: ${easyTask}`);
-      parts.push('');
-    }
-
-    // 2. The Three Questions (always load)
-    const questions = getThreeQuestions(apiKey);
-    if (questions) {
-      parts.push('## The Three Questions');
-      parts.push(questions);
-      parts.push('');
-    }
-
-    // 3. Open Loops (scoped to this entity)
-    if (loops.length > 0) {
-      parts.push(`## Open Loops (${project})`);
-      loops.forEach(l => {
-        const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
-        const desc = l.description || l.content || '(no description)';
-        const party = l.otherParty ? ` (${l.otherParty})` : '';
-        const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
-        parts.push(`- [${who}]${party} ${desc}${due}`);
+  // ─── Write context to Redis (give the cloud eyes) ───
+  if (mcpConnected) {
+    try {
+      const deviceFingerprint = getDeviceFingerprint();
+      mcpCall('set_context', {
+        location: env.location || undefined,
+        activity: 'coding',
+        people: identifiedEntity ? [identifiedEntity] : undefined,
+        deviceId: deviceFingerprint.deviceId || `claude-code-${require('os').hostname()}`,
+        deviceType: 'desktop',
       });
-      parts.push('');
+    } catch (e) {
+      // Context write failed — non-fatal, continue
     }
+  }
 
-    // 4. Project-specific context
-    const projectCtx = getProjectContext(apiKey, project);
-    if (projectCtx.length > 0) {
-      parts.push(`## Project: ${project}`);
-      projectCtx.slice(0, 5).forEach(c => parts.push(`- ${c.substring(0, 200)}...`));
-      parts.push('');
-    }
+  if (mcpConnected && identifiedEntity) {
+    try {
+      // Fetch context via MCP tools — no auth needed, skin
+      const loops = getLoops();
+      const anticipated = getAnticipated(project);
 
-    // 5. Relevant docs (query based on project name)
-    const docs = queryDocs(apiKey, project.replace(/_/g, ' '), 3);
-    if (docs.length > 0) {
-      parts.push('## Relevant Docs');
-      docs.forEach(d => {
-        const lines = d.split('\n').slice(0, 4).join('\n');
-        parts.push(lines);
-        parts.push('---');
-      });
-      parts.push('');
-    }
-
-    // 6. Recall feedback reminder
-    parts.push('## REMEMBER');
-    parts.push('Use `mcp__memorable__recall_vote` to rate recalled memories:');
-    parts.push('- hot=exactly right, warm=close, cold=off, wrong=misleading, spark=triggered idea');
-    parts.push('');
-
-  } catch (e) {
-    // API down or auth failed — still show what we have
-    if (!parts.some(p => p.includes('## Connector'))) {
-      const connector = getConnectorStatus(null);
-      parts.push('## Connector');
-      parts.push(`API: DOWN (${connector.apiUrl})`);
-      if (connector.branch) parts.push(`Branch: \`${connector.branch}\``);
-      if (connector.connectorDoc) parts.push('Chloe Integration: contract loaded');
-      parts.push('MCP: offline — using local context only');
+      // Predictive greeting (personalized)
+      const relevant = getRelevantContext();
+      const greetLocation = relevant?.location || env.location;
+      const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
+      const greeting = buildPredictiveGreeting(loops, anticipated, project, { name: greetName, location: greetLocation });
+      parts.push(`## ${greeting}`);
       parts.push('');
 
-      // Still suggest a task even when API is down
-      const easyTask = getEasyTask(connector.branch === '' ? 'personal' : 'memorable_project', [], connector.branch);
+      // Easy first task
+      const easyTask = getEasyTask(project, loops, branch);
       if (easyTask) {
         parts.push(`## Start Here: ${easyTask}`);
         parts.push('');
       }
+
+      // Open Loops
+      if (loops.length > 0) {
+        parts.push(`## Open Loops`);
+        loops.forEach(l => {
+          const who = l.owner === 'self' ? 'You owe' : l.owner === 'them' ? 'Owed to you' : 'Mutual';
+          const desc = l.description || l.content || '(no description)';
+          const party = l.otherParty ? ` (${l.otherParty})` : '';
+          const due = l.dueDate ? ` - due ${new Date(l.dueDate).toLocaleDateString()}` : '';
+          parts.push(`- [${who}]${party} ${desc}${due}`);
+        });
+        parts.push('');
+      }
+
+      // Recent memories for this project
+      const memories = getRecall(project.replace(/_/g, ' '), 3);
+      if (memories.length > 0) {
+        parts.push(`## Recent Context`);
+        memories.forEach(m => {
+          const content = (m.content || m.text || '').substring(0, 150);
+          if (content) parts.push(`- ${content}`);
+        });
+        parts.push('');
+      }
+
+    } catch (e) {
+      parts.push(`## MCP tool error: ${e.message || 'unknown'}`);
+      parts.push('');
+    }
+  } else if (mcpConnected && !identifiedEntity) {
+    // MCP is up but we don't know who this is
+    // Challenge context already injected above — don't duplicate
+    if (!challengeCtx) {
+      parts.push('## Welcome to MemoRable');
+      parts.push('Identity not yet confirmed.');
+      parts.push('');
     }
   }
+
+  // Check for doc changes (always, even offline)
+  const docsStatus = checkDocsChanged();
+  if (docsStatus.changed) {
+    parts.push('## Docs Changed Since Last Index');
+    parts.push(`Changed: ${docsStatus.files.join(', ')}`);
+    parts.push('**Ask user:** Re-index docs?');
+    parts.push('');
+  }
+
+  // Fallback greeting if MCP was down
+  if (!mcpConnected) {
+    if (identifiedEntity) {
+      const greetLocation = env.location;
+      const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
+      const greeting = buildPredictiveGreeting([], [], project, { name: greetName, location: greetLocation });
+      parts.push(`## ${greeting}`);
+    } else {
+      parts.push('## MCP is down and identity unknown. Say hello to get started.');
+    }
+    parts.push('');
+
+    const easyTask = getEasyTask(project, [], branch);
+    if (easyTask) {
+      parts.push(`## Start Here: ${easyTask}`);
+      parts.push('');
+    }
+  }
+
+  // Recall feedback reminder
+  parts.push('## REMEMBER');
+  parts.push('Use `mcp__memorable__recall_vote` to rate recalled memories:');
+  parts.push('- hot=exactly right, warm=close, cold=off, wrong=misleading, spark=triggered idea');
+  parts.push('');
 
   if (parts.length > 0) {
     parts.unshift('# MemoRable Context\n');
     let output = parts.join('\n');
 
-    // HARD LIMIT: Truncate to MAX_CONTEXT_CHARS, keep most recent (end of output)
     if (output.length > MAX_CONTEXT_CHARS) {
       output = '# MemoRable Context (truncated)\n\n' +
                output.slice(-MAX_CONTEXT_CHARS + 50);

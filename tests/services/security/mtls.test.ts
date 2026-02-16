@@ -1,3 +1,4 @@
+// CLOUD ONLY — No local dev, no local Docker, no localhost. All infra runs in AWS. No exceptions.
 /**
  * mTLS Device Authentication Tests
  *
@@ -36,7 +37,7 @@ describe('mTLS Device Authentication', () => {
       expect(ca.serialNumber).toBe(1);
     }, 30000); // Allow time for openssl
 
-    test('loadCA returns CA structure', () => {
+    test('loadCA returns CA structure', async () => {
       const certPem = '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----';
       const keyPem = '-----BEGIN RSA PRIVATE KEY-----\ntest\n-----END RSA PRIVATE KEY-----';
 
@@ -192,7 +193,7 @@ describe('mTLS Device Authentication', () => {
   // Revocation Management
   // ==========================================================================
   describe('Revocation Management', () => {
-    test('revokeCertificate adds entry to list', () => {
+    test('revokeCertificate adds entry to list', async () => {
       const list: RevocationEntry[] = [];
 
       const newList = revokeCertificate('01', 'device-1', 'Lost device', list);
@@ -204,7 +205,7 @@ describe('mTLS Device Authentication', () => {
       expect(newList[0].revokedAt).toBeInstanceOf(Date);
     });
 
-    test('revokeCertificate preserves existing entries', () => {
+    test('revokeCertificate preserves existing entries', async () => {
       const list: RevocationEntry[] = [{
         serialNumber: '01',
         deviceId: 'old-device',
@@ -219,7 +220,7 @@ describe('mTLS Device Authentication', () => {
       expect(newList[1].serialNumber).toBe('02');
     });
 
-    test('isRevoked returns true for revoked serial', () => {
+    test('isRevoked returns true for revoked serial', async () => {
       const list: RevocationEntry[] = [{
         serialNumber: '01',
         deviceId: 'device-1',
@@ -231,7 +232,7 @@ describe('mTLS Device Authentication', () => {
       expect(isRevoked('02', list)).toBe(false);
     });
 
-    test('isRevoked returns false for empty list', () => {
+    test('isRevoked returns false for empty list', async () => {
       expect(isRevoked('01', [])).toBe(false);
     });
   });
