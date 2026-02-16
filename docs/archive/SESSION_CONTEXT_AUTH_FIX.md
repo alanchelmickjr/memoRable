@@ -1,5 +1,7 @@
 # Session Context: Auth Fix for MCP
 
+> **DEPRECATED (Feb 2026):** This doc references the old ALB stack. Current stack is EC2 + Elastic IP at `52.9.62.72:8080` (us-west-1, ~$11/mo). MCP StreamableHTTP only — no REST endpoints. The hardcoded ALB URL and knock/exchange flow referenced below are from the old architecture.
+
 **Date**: 2026-01-28
 **Branch**: `claude/focus-attention-session-RbRse`
 **Session**: https://claude.ai/code/session_01ERrsHytVJy49CtBX7N4NSi
@@ -22,7 +24,7 @@ Loops were causing session problems. Commented out:
 
 **Fix**: Added `DEFAULT_API_URL` constant (line 652):
 ```typescript
-const DEFAULT_API_URL = 'http://memorable-alb-1679440696.us-west-2.elb.amazonaws.com';
+const DEFAULT_API_URL = 'http://52.9.62.72:8080';
 ```
 
 Now `getApiClient()` always has a URL and will use REST mode with auto-auth.

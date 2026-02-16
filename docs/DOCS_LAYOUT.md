@@ -23,10 +23,11 @@
 | Document | Description |
 |----------|-------------|
 | [READINESS_ANALYSIS.md](./READINESS_ANALYSIS.md) | Current system state, what works, what's untested, blockers |
+| [SALIENCE_AUDIT_AND_CONTEXT_ARCHITECTURE.md](./SALIENCE_AUDIT_AND_CONTEXT_ARCHITECTURE.md) | Salience audit, entity vision, context→salience→consistency |
 | [NEXT_STEPS_SYNTHETIC_PIPELINE.md](./NEXT_STEPS_SYNTHETIC_PIPELINE.md) | Synthetic data plan for 21/63-day pattern validation |
 | [WIRING_STATUS.md](./WIRING_STATUS.md) | Component integration status (43 MCP tools) |
 | [DOCUMENTATION_GAPS.md](./DOCUMENTATION_GAPS.md) | Gap analysis: built vs documented |
-| [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) | Pre-launch assessment (293 tests passing) |
+| [ROADMAP.md](./ROADMAP.md) | Done/Now/Next/Future with hobbyist vs enterprise separation |
 
 ---
 
@@ -66,7 +67,6 @@
 | [SECURITY_ARCHITECTURE.md](./SECURITY_ARCHITECTURE.md) | Three-tier encryption (General, Personal, Vault) |
 | [AUTH_ARCHITECTURE.md](./AUTH_ARCHITECTURE.md) | Authentication mechanisms |
 | [PASSPHRASE_AUTH_SPEC.md](./PASSPHRASE_AUTH_SPEC.md) | Challenge-response auth protocol |
-| [REST_MODE_SECURITY.md](./REST_MODE_SECURITY.md) | REST API security |
 | [7_advanced_usage.md](./7_advanced_usage.md) | Security tiers, custom pipelines |
 
 ---
@@ -76,8 +76,6 @@
 | Document | Description |
 |----------|-------------|
 | [deployment-guide.md](./deployment-guide.md) | Docker Compose, environment config, monitoring |
-| [DEPLOYMENT_DIAGNOSTIC.md](./DEPLOYMENT_DIAGNOSTIC.md) | Troubleshooting and validation |
-| [SCALABILITY_ANALYSIS.md](./SCALABILITY_ANALYSIS.md) | Scale projections (1K-1M users), cost models |
 | [metrics-framework.md](./metrics-framework.md) | 3x7 temporal model, tuning levers |
 | [metrics-landscape.md](./metrics-landscape.md) | CloudWatch integration, alert tiers |
 
@@ -136,10 +134,26 @@
 
 ---
 
-## Archive (Historical - NNNA/Batch Era)
+## Archive
 
-> These documents describe the deprecated NNNA (Nocturnal batch processing) architecture.
-> Real-time processing replaced batch as of 2025. Kept for reference only.
+### ALB / Enterprise Tier (Adoption Phase)
+
+> Enterprise-scale architecture. Ready for when hobbyist adoption → hackathon → corp interest.
+> Cloud fleet deployment by context. Not dead — waiting for its moment.
+
+| Document | Description |
+|----------|-------------|
+| [archive/SCALABILITY_ANALYSIS_ALB_ERA.md](./archive/SCALABILITY_ANALYSIS_ALB_ERA.md) | Scale projections 1K-1M users, ALB/DocumentDB cost models |
+| [archive/DEPLOYMENT_DIAGNOSTIC.md](./archive/DEPLOYMENT_DIAGNOSTIC.md) | Old ALB/ECS/Fargate stack post-mortem |
+| [archive/MCP_AUTH_FIX.md](./archive/MCP_AUTH_FIX.md) | REST mode auth fallback (ALB-era) |
+| [archive/SESSION_CONTEXT_AUTH_FIX.md](./archive/SESSION_CONTEXT_AUTH_FIX.md) | Auth + loops disable (ALB-era) |
+| [archive/REST_MODE_SECURITY.md](./archive/REST_MODE_SECURITY.md) | HTTPS transit security (ALB-era) |
+| [archive/ROAD_TEST_PLAN.md](./archive/ROAD_TEST_PLAN.md) | Integration testing (ALB-era endpoints) |
+| [archive/LAUNCH_READINESS_JAN2026.md](./archive/LAUNCH_READINESS_JAN2026.md) | Jan 1 2026 snapshot (pre-migration) |
+
+### NNNA / Batch Era (Historical)
+
+> Nocturnal batch processing architecture, replaced by real-time processing (2025).
 
 | Document | Description |
 |----------|-------------|
@@ -160,12 +174,13 @@
 ## Key Principles
 
 1. **Real-Time Processing**: All salience scoring, pattern learning at ingest time (not batch)
-2. **Cloud-First**: AWS us-west-2 staging, us-west-1 production. Push to deploy.
+2. **Cloud-First**: EC2 + Elastic IP hobbyist (~$11/mo), ALB enterprise (future)
 3. **Security-First**: Three encryption tiers with zero-knowledge for Tier3
 4. **21/63-Day Pattern Windows**: Formation at 21 days, stability at 63 days (3x7 temporal model)
 5. **43 MCP Tools**: Full memory intelligence accessible from any Claude Code project
-6. **Self-Documenting**: The indexer indexes itself (living project)
+6. **Everything is an Entity**: Repos, humans, devices, projects — all entities with salience
+7. **Salience = Consistency**: Context is what you get, salience is what you need
 
 ---
 
-*Last updated: 2026-01-23*
+*Last updated: 2026-02-15*

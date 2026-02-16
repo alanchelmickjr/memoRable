@@ -1,5 +1,7 @@
 # MemoRable Scalability & Viability Analysis
 
+> **NOTE (Feb 2026):** DocumentDB references below are stale. Current stack uses MongoDB Atlas + EC2 Elastic IP (~$11/mo hobbyist tier). Cost analysis below reflects the old enterprise stack.
+
 **Date:** 2026-01-13
 **Purpose:** Comprehensive analysis for AWS enterprise scale deployment
 **Verdict:** Scalable with targeted optimizations

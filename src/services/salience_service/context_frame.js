@@ -488,8 +488,8 @@ async function getRecentRelevant(frame) {
  */
 function determineMatchReasons(memory, frame) {
     const reasons = [];
-    const text = (memory.memory.text || '').toLowerCase();
-    const people = memory.memory.extractedFeatures?.peopleMentioned || [];
+    const text = (memory.text || '').toLowerCase();
+    const people = memory.extractedFeatures?.peopleMentioned || memory.peopleMentioned || [];
     // Check people
     for (const personDim of frame.people) {
         if (people.some((p) => p.toLowerCase().includes(personDim.value.toLowerCase())) ||
