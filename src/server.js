@@ -27,6 +27,9 @@ import {
 // MCP Server - the core of MemoRable
 import { mountMcpEndpoint } from './services/mcp_server/index.ts';
 
+// Dashboard - web UI for intelligence, mission control, calendar
+import { createDashboardRouter } from './services/dashboard/index.ts';
+
 // Salience service - context frames, device context, session continuity
 import {
   setContext as salienceSetContext,
@@ -11234,6 +11237,13 @@ async function start() {
     } catch (dbError) {
       console.warn('[Server] MongoDB connection failed, using in-memory auth:', dbError.message);
       mongoConnected = false;
+    }
+
+    // Mount Dashboard - web UI wired to MongoDB Atlas
+    if (mongoConnected) {
+      const db = getDatabase();
+      app.use(createDashboardRouter(db, startTime));
+      console.log('[Server] Dashboard mounted (/, /dashboard, /dashboard/mission-control, /dashboard/calendar)');
     }
 
     // Mount MCP endpoint - THE CORE OF MEMORABLE
