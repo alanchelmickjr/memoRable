@@ -7382,11 +7382,28 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 
   app.post('/token', async (req: Request, res: Response) => {
     if (!CONFIG.oauth.enabled) return res.status(501).json({ error: 'OAuth not enabled' });
-    const { grant_type, code, client_id, client_secret, refresh_token, code_verifier } = req.body;
+    const { grant_type, code, refresh_token, code_verifier } = req.body;
+
+    // Extract client credentials from body OR Basic auth header (RFC 6749 §2.3)
+    let client_id = req.body.client_id;
+    let client_secret = req.body.client_secret;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Basic ')) {
+      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+      const [basicId, basicSecret] = decoded.split(':');
+      client_id = client_id || decodeURIComponent(basicId);
+      client_secret = client_secret || decodeURIComponent(basicSecret);
+    }
+
+    console.error(`[MCP] Token request: grant_type=${grant_type}, client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, has_secret=${!!client_secret}, has_code=${!!code}`);
+
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    if (!isStaticClient && !isDynamicValid) return res.status(401).json({ error: 'invalid_client' });
+    if (!isStaticClient && !isDynamicValid) {
+      console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}`);
+      return res.status(401).json({ error: 'invalid_client' });
+    }
     if (grant_type === 'authorization_code') {
       const authCode = await getAuthCode(code);
       if (!authCode || new Date(authCode.expiresAt) < new Date()) { await deleteAuthCode(code); return res.status(400).json({ error: 'invalid_grant' }); }
