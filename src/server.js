@@ -2399,7 +2399,7 @@ app.post('/auth/verify-stylometry', async (req, res) => {
 
     for (const fp of fingerprints) {
       if (fp.features) {
-        const score = compareStylometry(sampleFeatures, fp.features);
+        const score = compareStylometrySimple(sampleFeatures, fp.features);
         if (score > bestScore) {
           bestScore = score;
           bestMatch = fp.userId;
@@ -2529,8 +2529,8 @@ function extractStylometryFeatures(text) {
   };
 }
 
-// Compare stylometry features
-function compareStylometry(a, b) {
+// Compare stylometry features (simple version — delegates to full comparator above)
+function compareStylometrySimple(a, b) {
   const keys = Object.keys(a);
   let totalDiff = 0;
   let count = 0;
@@ -5631,15 +5631,15 @@ app.get('/dashboard/calendar/view', (_req, res) => {
 
         // Week grid
         const today = new Date().toISOString().split('T')[0];
-        document.getElementById('weekGrid').innerHTML = data.week.map(day => \`
-          <div class="day-card \${day.date === today ? 'today' : ''}">
-            <div class="day-name">\${day.dayName}</div>
-            <div class="day-date">\${day.date.split('-').slice(1).join('/')}</div>
-            <div class="day-count">\${day.count}</div>
-            <div class="day-salience">\${day.avgSalience} sal</div>
-            \${day.loops > 0 ? '<div style="color: var(--magenta); font-size: 0.8em; margin-top: 5px;">' + day.loops + ' loops</div>' : ''}
-          </div>
-        \`).join('');
+        document.getElementById('weekGrid').innerHTML = data.week.map(day =>
+          '<div class="day-card ' + (day.date === today ? 'today' : '') + '">' +
+            '<div class="day-name">' + day.dayName + '</div>' +
+            '<div class="day-date">' + day.date.split('-').slice(1).join('/') + '</div>' +
+            '<div class="day-count">' + day.count + '</div>' +
+            '<div class="day-salience">' + day.avgSalience + ' sal</div>' +
+            (day.loops > 0 ? '<div style="color: var(--magenta); font-size: 0.8em; margin-top: 5px;">' + day.loops + ' loops</div>' : '') +
+          '</div>'
+        ).join('');
 
         // Stats
         document.getElementById('totalMemories').textContent = data.totals.memories;
@@ -7297,7 +7297,7 @@ app.get('/user/billing', async (req, res) => {
     ? new Date(user.billing.currentPeriodEnd).toLocaleDateString()
     : 'N/A';
 
-  const html = \`
+  const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -7306,7 +7306,7 @@ app.get('/user/billing', async (req, res) => {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
-  <style>\${userSettingsStyles}</style>
+  <style>${userSettingsStyles}</style>
 </head>
 <body>
   <div class="header">
@@ -7324,16 +7324,16 @@ app.get('/user/billing', async (req, res) => {
     <div class="panel-title">Current Plan</div>
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--magenta); font-size: 24px;">\${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-value" style="color: var(--magenta); font-size: 24px;">${user.tier?.toUpperCase() || 'FREE'}</div>
         <div class="stat-label">Plan</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: \${subscriptionStatus === 'active' ? 'var(--green)' : subscriptionStatus === 'canceled' ? 'var(--red)' : 'var(--yellow)'};">\${subscriptionStatus.toUpperCase()}</div>
+        <div class="stat-value" style="color: ${subscriptionStatus === 'active' ? 'var(--green)' : subscriptionStatus === 'canceled' ? 'var(--red)' : 'var(--yellow)'};">${subscriptionStatus.toUpperCase()}</div>
         <div class="stat-label">Status</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value">\${currentPeriodEnd}</div>
-        <div class="stat-label">\${user.billing?.cancelAtPeriodEnd ? 'Cancels On' : 'Renews On'}</div>
+        <div class="stat-value">${currentPeriodEnd}</div>
+        <div class="stat-label">${user.billing?.cancelAtPeriodEnd ? 'Cancels On' : 'Renews On'}</div>
       </div>
     </div>
   </div>
@@ -7382,30 +7382,30 @@ app.get('/user/billing', async (req, res) => {
 
   <div class="panel">
     <div class="panel-title">Manage Subscription</div>
-    \${hasStripe ? \`
+    ${hasStripe ? `
       <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
         Manage your payment methods, view invoices, and update your subscription.
       </p>
       <a href="/api/billing/portal" class="btn btn-primary">Open Stripe Customer Portal</a>
-    \` : \`
+    ` : `
       <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
         Upgrade to Pro or Enterprise to unlock more features.
       </p>
       <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <a href="/api/billing/checkout?tier=pro" class="btn btn-primary" style="border-color: var(--cyan); background: var(--cyan); color: var(--bg-dark);">Upgrade to Pro - \$9/mo</a>
-        <a href="/api/billing/checkout?tier=enterprise" class="btn btn-primary" style="border-color: var(--magenta);">Upgrade to Enterprise - \$49/mo</a>
+        <a href="/api/billing/checkout?tier=pro" class="btn btn-primary" style="border-color: var(--cyan); background: var(--cyan); color: var(--bg-dark);">Upgrade to Pro - $9/mo</a>
+        <a href="/api/billing/checkout?tier=enterprise" class="btn btn-primary" style="border-color: var(--magenta);">Upgrade to Enterprise - $49/mo</a>
       </div>
-    \`}
+    `}
   </div>
 
   <div class="panel">
     <div class="panel-title">Billing History</div>
     <p style="color: var(--text-dim); font-size: 13px;">
-      \${hasStripe ? 'View your complete billing history in the Stripe Customer Portal.' : 'Billing history will appear here once you subscribe to a paid plan.'}
+      ${hasStripe ? 'View your complete billing history in the Stripe Customer Portal.' : 'Billing history will appear here once you subscribe to a paid plan.'}
     </p>
   </div>
 </body>
-</html>\`;
+</html>`;
 
   res.set('Content-Type', 'text/html');
   res.send(html);
@@ -7466,8 +7466,8 @@ app.get('/api/billing/checkout', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: STRIPE_PRICE_IDS[tier], quantity: 1 }],
       mode: 'subscription',
-      success_url: \`\${req.protocol}://\${req.get('host')}/user/billing?success=1\`,
-      cancel_url: \`\${req.protocol}://\${req.get('host')}/user/billing?canceled=1\`,
+      success_url: `${req.protocol}://${req.get('host')}/user/billing?success=1`,
+      cancel_url: `${req.protocol}://${req.get('host')}/user/billing?canceled=1`,
       metadata: { userId, tier },
     });
 
@@ -7500,7 +7500,7 @@ app.get('/api/billing/portal', async (req, res) => {
     const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: \`\${req.protocol}://\${req.get('host')}/user/billing\`,
+      return_url: `${req.protocol}://${req.get('host')}/user/billing`,
     });
 
     res.redirect(303, session.url);
