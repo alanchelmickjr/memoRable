@@ -1227,9 +1227,20 @@ async function initializeDb(): Promise<void> {
       authMechanism: 'SCRAM-SHA-1', // DocumentDB doesn't support SCRAM-SHA-256
       directConnection: true,
     } : {}),
+    serverSelectionTimeoutMS: 5000, // Don't hang forever if MongoDB is down
+    connectTimeoutMS: 5000,
   });
-  await mongoClient.connect();
-  db = mongoClient.db();
+
+  try {
+    await mongoClient.connect();
+    db = mongoClient.db();
+    console.error('[MCP] MongoDB connected');
+  } catch (mongoErr) {
+    console.error('[MCP] MongoDB connection failed — server will start but tools requiring DB will return errors');
+    console.error(`[MCP] MongoDB URI: ${CONFIG.mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+    mongoClient = null;
+    db = null as unknown as Db;
+  }
 
   // SECURITY FIX: Initialize Redis for secure token storage
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -1240,22 +1251,34 @@ async function initializeDb(): Promise<void> {
     redisClient = createClient({
       url: redisUrl,
       password: redisPassword,
-      socket: useTls ? {
-        tls: true,
-        rejectUnauthorized: false, // AWS ElastiCache uses self-signed certs
-      } : undefined,
+      socket: {
+        connectTimeout: 5000, // Don't hang forever if Redis is down
+        reconnectStrategy: false, // Don't retry — fail fast, start degraded
+        ...(useTls ? {
+          tls: true,
+          rejectUnauthorized: false, // AWS ElastiCache uses self-signed certs
+        } : {}),
+      },
     });
-    redisClient.on('error', (err) => console.error('[MCP] Redis error:', err));
+    redisClient.on('error', () => { /* Suppressed — handled by catch below */ });
     await redisClient.connect();
     console.error('[MCP] Redis connected for secure token storage');
   } catch (err) {
-    console.error('[MCP] Redis connection failed, OAuth tokens will not persist:', err);
+    console.error('[MCP] Redis connection failed, OAuth tokens will not persist');
     redisClient = null;
   }
 
-  await initializeSalienceService(db, { verbose: false });
-  initAnticipationService(db);
-  console.error('[MCP] Direct mode: Database initialized');
+  if (db) {
+    try {
+      await initializeSalienceService(db, { verbose: false });
+      initAnticipationService(db);
+      console.error('[MCP] Direct mode: Database initialized');
+    } catch (salienceErr) {
+      console.error('[MCP] Salience service initialization failed — continuing in degraded mode');
+    }
+  } else {
+    console.error('[MCP] Direct mode: No database — running in degraded mode (tools will return errors)');
+  }
 }
 
 /**
@@ -3009,7 +3032,7 @@ function createServer(): Server {
           let result;
           if (tier === 'Tier3_Vault') {
             // Tier3: Heuristic only - NO LLM processing ever
-            console.log(`[MCP] Tier3_Vault: Using heuristic extraction only for memory ${memoryId}`);
+            console.error(`[MCP] Tier3_Vault: Using heuristic extraction only for memory ${memoryId}`);
             result = await enrichMemoryWithSalienceHeuristic(input);
           } else if (tier === 'Tier2_Personal') {
             // Tier2: Local LLM only - for now, use heuristic if no local LLM configured
@@ -3017,7 +3040,7 @@ function createServer(): Server {
             if (useLLM && llmClient) {
               // Check if this is a local LLM (Ollama) or external
               // For now, fallback to heuristic for safety
-              console.log(`[MCP] Tier2_Personal: Using heuristic extraction (local LLM not yet configured)`);
+              console.error(`[MCP] Tier2_Personal: Using heuristic extraction (local LLM not yet configured)`);
               result = await enrichMemoryWithSalienceHeuristic(input);
             } else {
               result = await enrichMemoryWithSalienceHeuristic(input);
@@ -3080,7 +3103,7 @@ function createServer(): Server {
 
           try {
             await collections.memories().insertOne(memoryDoc as any);
-            console.log(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
+            console.error(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
           } catch (storageError) {
             console.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
             throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
@@ -3131,7 +3154,7 @@ function createServer(): Server {
             const storageTier: StorageTier = (result.salience?.score || 0) > 0.7 ? 'hot' : 'warm';
 
             await tierManager.store(predictiveDoc, storageTier);
-            console.log(`[MCP] Memory ${memoryId} stored in ${storageTier} tier via TierManager`);
+            console.error(`[MCP] Memory ${memoryId} stored in ${storageTier} tier via TierManager`);
           } catch (tierError) {
             // Don't fail the overall store if tier management fails
             console.warn('[MCP] TierManager storage failed (continuing):', tierError);
@@ -3167,9 +3190,9 @@ function createServer(): Server {
                 // Calculate multi-signal distress score
                 const distressScore = calculateDistressScore(signals);
 
-                console.log(`[MCP] Distress score for ${personId}: ${distressScore.score} (${distressScore.level})`);
+                console.error(`[MCP] Distress score for ${personId}: ${distressScore.score} (${distressScore.level})`);
                 if (distressScore.triggeringSignals.length > 0) {
-                  console.log(`[MCP] Triggering signals: ${distressScore.triggeringSignals.join(', ')}`);
+                  console.error(`[MCP] Triggering signals: ${distressScore.triggeringSignals.join(', ')}`);
                 }
 
                 // Store distress score in memory record for analysis
@@ -3209,7 +3232,7 @@ function createServer(): Server {
                     careCircle: pressureRecord.careCircle,
                   });
 
-                  console.log(`[MCP] Care circle notified for ${personId} - distress level: ${distressScore.level}`);
+                  console.error(`[MCP] Care circle notified for ${personId} - distress level: ${distressScore.level}`);
                 }
 
                 // CRITICAL: For critical distress, log recommendation
@@ -3290,7 +3313,7 @@ function createServer(): Server {
             }
 
             if (hooks.length > 0) {
-              console.log(`[MCP] Generated ${hooks.length} prediction hooks for memory ${memoryId}`);
+              console.error(`[MCP] Generated ${hooks.length} prediction hooks for memory ${memoryId}`);
             }
           } catch (hookError) {
             console.warn('[MCP] Hook generation failed:', hookError);
@@ -3380,7 +3403,7 @@ function createServer(): Server {
                   });
                 }
 
-                console.log(`[MCP] Pressure vector added for ${entityId}: intensity=${intensity.toFixed(2)}, valence=${valence.toFixed(2)}, category=${category}`);
+                console.error(`[MCP] Pressure vector added for ${entityId}: intensity=${intensity.toFixed(2)}, valence=${valence.toFixed(2)}, category=${category}`);
               }
             }
           } catch (pressureError) {
@@ -3605,7 +3628,7 @@ function createServer(): Server {
             filtered = filtered.filter((m: ScoredMemory) => appropriateIds.has(m.memoryId));
 
             if (beforeCount !== filtered.length) {
-              console.log(`[MCP] AppropriatenessFilter: ${beforeCount} → ${filtered.length} memories`);
+              console.error(`[MCP] AppropriatenessFilter: ${beforeCount} → ${filtered.length} memories`);
             }
           } catch (appropriatenessError) {
             console.warn('[MCP] AppropriatenessFilter failed (non-fatal), using unfiltered results:', appropriatenessError);
@@ -4507,7 +4530,7 @@ function createServer(): Server {
               const decryptedData = decryptTokenData(encryptedData);
               const parsed = JSON.parse(decryptedData);
               memoriesToImport = parsed.memories;
-              console.log(`[MCP] Decrypted import: ${memoriesToImport?.length || 0} memories`);
+              console.error(`[MCP] Decrypted import: ${memoriesToImport?.length || 0} memories`);
             } catch (decryptError) {
               throw new McpError(
                 ErrorCode.InvalidParams,
@@ -5514,7 +5537,7 @@ function createServer(): Server {
               { upsert: true }
             );
 
-            console.log(`[MCP] Started emotional session ${session_id} for entity ${entity_id || session_id}`);
+            console.error(`[MCP] Started emotional session ${session_id} for entity ${entity_id || session_id}`);
 
             return {
               content: [{
@@ -5574,7 +5597,7 @@ function createServer(): Server {
               }
             );
 
-            console.log(`[MCP] Stopped emotional session ${session_id}`);
+            console.error(`[MCP] Stopped emotional session ${session_id}`);
 
             return {
               content: [{
@@ -6853,7 +6876,7 @@ function createServer(): Server {
           const db = await initializeDb();
           const result = await db.collection(collection).deleteMany({});
 
-          console.log(`[DEV] Cleared ${collection}: ${result.deletedCount} documents`);
+          console.error(`[DEV] Cleared ${collection}: ${result.deletedCount} documents`);
 
           return {
             content: [{
@@ -7404,24 +7427,27 @@ function createExpressApp() {
 
 /**
  * Main entry point.
+ *
+ * CRITICAL: For stdio transport, connect the transport FIRST, then initialize
+ * the database in the background. If we block on DB connection before the
+ * transport is up, the MCP client's initialize message arrives while we're
+ * still waiting for MongoDB/Redis timeouts and gets lost.
  */
 async function main() {
-  // Initialize database/API connection FIRST
-  await initializeDb();
-
-  // Initialize LLM client (only needed in direct mode - REST mode uses backend LLM)
-  if (connectionMode !== 'rest') {
-    llmClient = createLLMClient();
-    if (llmClient) {
-      console.error('[MCP] LLM client initialized');
-    } else {
-      console.error('[MCP] No LLM API key found, using heuristic mode');
-    }
-  }
-
   console.error('[MCP] MemoRable Memory Server starting...');
 
   if (CONFIG.transportType === 'http') {
+    // HTTP transport — safe to await DB init before starting
+    await initializeDb();
+    if (connectionMode !== 'rest') {
+      llmClient = createLLMClient();
+      if (llmClient) {
+        console.error('[MCP] LLM client initialized');
+      } else {
+        console.error('[MCP] No LLM API key found, using heuristic mode');
+      }
+    }
+
     // HTTP transport for remote deployment (Claude.ai web integration)
     const { app, validateToken } = createExpressApp();
 
@@ -7517,10 +7543,28 @@ async function main() {
     });
   } else {
     // stdio transport for Claude Code / local development
+    // Connect transport FIRST so we can receive the initialize message
+    // while database connects in the background
     const server = createServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error('[MCP] Server connected via stdio');
+
+    // Initialize database AFTER transport is connected
+    // Tools that need DB will get errors until this completes
+    initializeDb().then(() => {
+      if (connectionMode !== 'rest') {
+        llmClient = createLLMClient();
+        if (llmClient) {
+          console.error('[MCP] LLM client initialized');
+        } else {
+          console.error('[MCP] No LLM API key found, using heuristic mode');
+        }
+      }
+      console.error('[MCP] Database initialization complete');
+    }).catch((err) => {
+      console.error('[MCP] Database initialization failed — running in degraded mode:', err);
+    });
   }
 }
 
