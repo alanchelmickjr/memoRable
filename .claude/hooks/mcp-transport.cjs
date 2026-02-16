@@ -20,12 +20,12 @@ const os = require('os');
 const path = require('path');
 
 // ─── MCP Server URL Resolution ──────────────────────────────────────────────
-// Priority: explicit MCP_URL > MEMORABLE_API_URL > MEMORABLE_MCP_URL > localhost
+// Priority: explicit MCP_URL > MEMORABLE_API_URL > MEMORABLE_MCP_URL > api.memorable.chat
 const MCP_URL = (
   process.env.MCP_URL ||
   process.env.MEMORABLE_API_URL ||
   process.env.MEMORABLE_MCP_URL ||
-  'http://localhost:8080'
+  'https://api.memorable.chat'
 ).replace(/\/+$/, '');
 
 const MCP_ENDPOINT = `${MCP_URL}/mcp`;
