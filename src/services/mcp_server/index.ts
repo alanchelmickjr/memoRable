@@ -7258,6 +7258,9 @@ ${briefing.sensitivities?.length ? briefing.sensitivities.join('\n') : 'None fla
 function createExpressApp() {
   const app = express();
 
+  // Trust nginx reverse proxy for correct protocol (https) in URLs
+  app.set('trust proxy', 1);
+
   // CORS configuration for Claude.ai
   app.use(cors({
     origin: CONFIG.allowedOrigins,
@@ -7268,6 +7271,41 @@ function createExpressApp() {
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+
+  // Landing page
+  app.get('/', (_req: Request, res: Response) => {
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemoRable — AI Memory System</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.container{max-width:800px;padding:2rem;text-align:center}
+h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(135deg,#00f0ff,#bf00ff,#ff006e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:0.5rem}
+.tagline{color:#888;font-size:1.1rem;margin-bottom:3rem}
+.links{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;margin-top:2rem}
+.links a{display:inline-block;padding:0.75rem 1.5rem;border:1px solid #333;border-radius:8px;color:#00f0ff;text-decoration:none;transition:all 0.3s}
+.links a:hover{border-color:#00f0ff;background:rgba(0,240,255,0.05);box-shadow:0 0 20px rgba(0,240,255,0.1)}
+.status{margin-top:3rem;padding:1rem;border:1px solid #1a1a2e;border-radius:8px;font-size:0.85rem;color:#666}
+.status .live{color:#00ff88}
+.version{color:#444;margin-top:1rem;font-size:0.75rem}
+</style></head><body>
+<div class="container">
+<h1>MemoRable</h1>
+<p class="tagline">AI that knows you like a friend, every time you talk to it.</p>
+<div class="links">
+<a href="${baseUrl}/health">Health</a>
+<a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth Discovery</a>
+<a href="${baseUrl}/mcp">MCP Endpoint</a>
+<a href="https://github.com/alanchelmickjr/memoRable">GitHub</a>
+<a href="https://memorable.chat">Home</a>
+</div>
+<div class="status"><span class="live">●</span> System Online — MCP v2.0.0 — OAuth Enabled</div>
+<div class="version">Perfect memory is about knowing what to forget.</div>
+</div></body></html>`);
+  });
 
   // Health check endpoint
   app.get('/health', (_req: Request, res: Response) => {
@@ -7344,11 +7382,28 @@ function createExpressApp() {
 
   app.post('/token', async (req: Request, res: Response) => {
     if (!CONFIG.oauth.enabled) return res.status(501).json({ error: 'OAuth not enabled' });
-    const { grant_type, code, client_id, client_secret, refresh_token, code_verifier } = req.body;
+    const { grant_type, code, refresh_token, code_verifier } = req.body;
+
+    // Extract client credentials from body OR Basic auth header (RFC 6749 §2.3)
+    let client_id = req.body.client_id;
+    let client_secret = req.body.client_secret;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Basic ')) {
+      const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
+      const [basicId, basicSecret] = decoded.split(':');
+      client_id = client_id || decodeURIComponent(basicId);
+      client_secret = client_secret || decodeURIComponent(basicSecret);
+    }
+
+    console.error(`[MCP] Token request: grant_type=${grant_type}, client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, has_secret=${!!client_secret}, has_code=${!!code}`);
+
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    if (!isStaticClient && !isDynamicValid) return res.status(401).json({ error: 'invalid_client' });
+    if (!isStaticClient && !isDynamicValid) {
+      console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}`);
+      return res.status(401).json({ error: 'invalid_client' });
+    }
     if (grant_type === 'authorization_code') {
       const authCode = await getAuthCode(code);
       if (!authCode || new Date(authCode.expiresAt) < new Date()) { await deleteAuthCode(code); return res.status(400).json({ error: 'invalid_grant' }); }
