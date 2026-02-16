@@ -26,7 +26,7 @@ const TIMEOUT = 8;
 
 // HARD LIMIT: Configurable per model via env var
 // Default 3000 to leave room for CLAUDE.md and system context
-const MAX_CONTEXT_CHARS = parseInt(process.env.MEMORABLE_MAX_CONTEXT || '3000', 10);
+const MAX_CONTEXT_CHARS = parseInt(process.env.MEMORABLE_MAX_CONTEXT || '4000', 10);
 
 function curl(method, url, apiKey, data) {
   try {
@@ -150,6 +150,215 @@ function buildPredictiveGreeting(loops, anticipated, project) {
   return `Good ${timeGreet}. What shall we tackle?`;
 }
 
+function getEnvironmentContext() {
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const date = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+
+  // Location from system timezone (good enough without GPS)
+  const locationMap = {
+    'America/Los_Angeles': 'San Francisco Bay Area',
+    'America/Denver': 'Denver',
+    'America/Chicago': 'Chicago',
+    'America/New_York': 'New York',
+    'America/Phoenix': 'Phoenix',
+    'Pacific/Honolulu': 'Hawaii',
+  };
+  const location = locationMap[tz] || tz.replace(/_/g, ' ').split('/').pop();
+
+  // Weather from wttr.in (fast, no API key, 3s timeout)
+  let weather = null;
+  try {
+    const raw = execSync('curl -s --connect-timeout 3 "wttr.in/?format=%t+%C" 2>/dev/null', {
+      encoding: 'utf8', timeout: 5000
+    }).trim();
+    if (raw && !raw.includes('Unknown') && !raw.includes('<')) weather = raw;
+  } catch {}
+
+  return { time, date, tz, location, weather };
+}
+
+function getConnectorStatus(apiKey) {
+  // Check MemoRable API health
+  const health = curl('GET', `${BASE_URL}/health`, null);
+  const apiUp = !!health;
+
+  // Check git branch for integration context
+  let branch = '';
+  try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+  } catch {}
+
+  // Check if Chloe integration doc exists (connector contract)
+  let connectorDoc = false;
+  try {
+    execSync('test -f docs/CHLOE_MEMORABLE_INTEGRATION.md', { encoding: 'utf8' });
+    connectorDoc = true;
+  } catch {}
+
+  // MCP tools availability (check if MCP server config exists)
+  let mcpConfigured = false;
+  try {
+    const home = process.env.HOME || '';
+    execSync(`test -f "${home}/.claude/claude_desktop_config.json" || test -f "${home}/.claude.json"`, { encoding: 'utf8' });
+    mcpConfigured = true;
+  } catch {}
+
+  return { apiUp, branch, connectorDoc, mcpConfigured, apiUrl: BASE_URL || '(not set)' };
+}
+
+function loadLessons() {
+  try {
+    const lessonsPath = require('path').join(__dirname, '..', 'lessons.json');
+    const data = JSON.parse(require('fs').readFileSync(lessonsPath, 'utf8'));
+    return data.lessons || [];
+  } catch { return []; }
+}
+
+function buildLessonsSection() {
+  const lessons = loadLessons();
+  if (lessons.length === 0) return null;
+
+  // Get last 5 lessons
+  const recent = lessons.slice(-5);
+
+  // Count recurring signals across all lessons
+  const signalCounts = {};
+  for (const l of lessons) {
+    for (const s of l.signals) signalCounts[s] = (signalCounts[s] || 0) + 1;
+  }
+
+  const lines = [];
+  lines.push('## Lessons (from frustration — DO NOT REPEAT)');
+
+  // Top recurring patterns first
+  const recurring = Object.entries(signalCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  if (recurring.length > 0) {
+    lines.push('**Recurring patterns:**');
+    for (const [signal, count] of recurring) {
+      const label = {
+        not_listening: 'Not listening to what was actually asked',
+        repeated_instruction: 'Had to be told the same thing twice',
+        repeating_mistake: 'Made the same mistake again',
+        unwanted_behavior: 'Did something unwanted',
+        misunderstood: 'Misunderstood the request',
+        broken_behavior: 'Acting broken / not functioning right',
+        ignored_docs: 'Didn\'t read the docs / CLAUDE.md',
+        unsolicited: 'Added unsolicited advice or extras',
+        pattern_blindness: 'Gravitational pull toward bad decisions',
+        high_tic_count: 'Pushed Alan past the tic threshold',
+      }[signal] || signal;
+      lines.push(`- ${label} (${count}x)`);
+    }
+    lines.push('');
+  }
+
+  // Most recent lesson with context
+  const last = recent[recent.length - 1];
+  const ago = timeSince(new Date(last.timestamp));
+  lines.push(`**Last frustration** (${ago}): "${last.message.substring(0, 120)}..."`);
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+function getVibe() {
+  // Rotate lo-fi playlists by day of year
+  const playlists = [
+    { name: 'Lofi Girl - beats to relax/study to', url: 'https://youtube.com/watch?v=jfKfPfyJRdk' },
+    { name: 'Chillhop Music - jazz/lofi hip hop', url: 'https://youtube.com/watch?v=5yx6BWlEVcY' },
+    { name: 'College Music - lofi hip hop', url: 'https://youtube.com/watch?v=lTRiuFIWV54' },
+    { name: 'The Jazz Hop Cafe', url: 'https://youtube.com/watch?v=JXBvAt1fRCg' },
+    { name: 'Lofi Girl - synthwave radio', url: 'https://youtube.com/watch?v=4xDzrJKXOOY' },
+    { name: 'Chillhop Music - fall vibes', url: 'https://youtube.com/watch?v=7NOSDKb0HlU' },
+    { name: 'Lofi Girl - sleepy lofi', url: 'https://youtube.com/watch?v=rUxyKA_-grg' },
+  ];
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const hour = new Date().getHours();
+  // Late night (before 6am) gets sleepy lofi
+  if (hour < 6) return playlists[6];
+  return playlists[dayOfYear % playlists.length];
+}
+
+function getEasyTask(project, loops, branch) {
+  // Priority 1: First open loop that's small
+  const easyLoop = loops.find(l =>
+    l.description?.length < 100 || l.content?.length < 100
+  );
+  if (easyLoop) {
+    return easyLoop.description || easyLoop.content || null;
+  }
+
+  // Priority 2: Based on current branch name
+  if (branch?.includes('chloe')) {
+    return 'Verify memorable_client.py can connect and authenticate (Phase 1, Step 2)';
+  }
+
+  // Priority 3: Based on git status — untracked tests need committing
+  try {
+    const untracked = execSync('git status --porcelain 2>/dev/null', { encoding: 'utf8' });
+    const untrackedTests = untracked.split('\n').filter(l => l.startsWith('??') && l.includes('test'));
+    if (untrackedTests.length > 3) {
+      return `Commit ${untrackedTests.length} untracked test files — they deserve a home`;
+    }
+  } catch {}
+
+  // Priority 4: Check if API is down — that's the first thing to fix
+  if (project === 'memorable_project') {
+    return 'Check EC2 health — API was 502 last session';
+  }
+
+  return null;
+}
+
+function timeSince(date) {
+  const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function getLastSessionRecap() {
+  try {
+    // What was committed last session?
+    const log = execSync('git log --since="3 days ago" --format="%h %s" -10 2>/dev/null', {
+      encoding: 'utf8'
+    }).trim();
+    if (!log) return null;
+
+    const commits = log.split('\n').map(l => {
+      const [hash, ...rest] = l.split(' ');
+      return { hash, msg: rest.join(' ') };
+    });
+
+    const fixes = commits.filter(c => c.msg.startsWith('fix:'));
+    const features = commits.filter(c => c.msg.startsWith('feat:'));
+    const docs = commits.filter(c => c.msg.startsWith('docs:'));
+
+    const lines = [];
+    lines.push('## Last Session');
+    if (docs.length > 0) lines.push(`Docs: ${docs.map(c => c.msg.replace('docs: ', '')).join(', ')}`);
+    if (features.length > 0) lines.push(`Features: ${features.map(c => c.msg.replace('feat: ', '')).join(', ')}`);
+    if (fixes.length > 0) {
+      lines.push(`Fixes: ${fixes.length} (${fixes.length >= 3 ? 'infra was fighting back' : 'minor'})`);
+    }
+
+    // Honest assessment
+    if (fixes.length >= 3) {
+      lines.push('**Heads up:** Multiple fix commits in a row = something was stuck. Check if the root cause was resolved or just patched.');
+    }
+
+    return lines.join('\n');
+  } catch { return null; }
+}
+
 function ensureProjectExists(apiKey, project) {
   // Check if project has any memories
   const existing = curl('GET', `${BASE_URL}/memory?entity=${project}&limit=1`, apiKey);
@@ -170,8 +379,45 @@ async function main() {
 
   const parts = [];
 
+  // Environment context (always available, even if API is down)
+  const env = getEnvironmentContext();
+  parts.push('## Session');
+  let sessionLine = `${env.date} | ${env.time} | ${env.location}`;
+  if (env.weather) sessionLine += ` | ${env.weather}`;
+  parts.push(sessionLine);
+  parts.push('');
+
+  // Vibe (lo-fi playlist — Jarvis sets the mood)
+  const vibe = getVibe();
+  parts.push(`## Vibe: [${vibe.name}](${vibe.url})`);
+  parts.push('');
+
+  // Last session recap (git-based honest appraisal)
+  const recap = getLastSessionRecap();
+  if (recap) {
+    parts.push(recap);
+    parts.push('');
+  }
+
+  // Lessons from frustration (the anti-magnet)
+  const lessons = buildLessonsSection();
+  if (lessons) {
+    parts.push(lessons);
+  }
+
   try {
     const apiKey = authenticate();
+    const connector = getConnectorStatus(apiKey);
+
+    // Connector status
+    parts.push('## Connector');
+    const apiStatus = connector.apiUp ? 'UP' : 'DOWN';
+    parts.push(`API: ${apiStatus} (${connector.apiUrl})`);
+    if (connector.branch) parts.push(`Branch: \`${connector.branch}\``);
+    if (connector.connectorDoc) parts.push('Chloe Integration: contract loaded');
+    parts.push(`MCP: ${apiKey ? '37 tools authenticated' : 'auth failed'}`);
+    parts.push('');
+
     if (!apiKey) throw new Error('Auth failed');
 
     const project = detectProject();
@@ -204,6 +450,13 @@ async function main() {
     const greeting = buildPredictiveGreeting(loops, anticipated, project);
     parts.push(`## ${greeting}`);
     parts.push('');
+
+    // 1.5 EASY FIRST TASK (Jarvis suggests where to start)
+    const easyTask = getEasyTask(project, loops, connector.branch);
+    if (easyTask) {
+      parts.push(`## Start Here: ${easyTask}`);
+      parts.push('');
+    }
 
     // 2. The Three Questions (always load)
     const questions = getThreeQuestions(apiKey);
@@ -253,7 +506,23 @@ async function main() {
     parts.push('');
 
   } catch (e) {
-    // Silent fail
+    // API down or auth failed — still show what we have
+    if (!parts.some(p => p.includes('## Connector'))) {
+      const connector = getConnectorStatus(null);
+      parts.push('## Connector');
+      parts.push(`API: DOWN (${connector.apiUrl})`);
+      if (connector.branch) parts.push(`Branch: \`${connector.branch}\``);
+      if (connector.connectorDoc) parts.push('Chloe Integration: contract loaded');
+      parts.push('MCP: offline — using local context only');
+      parts.push('');
+
+      // Still suggest a task even when API is down
+      const easyTask = getEasyTask(connector.branch === '' ? 'personal' : 'memorable_project', [], connector.branch);
+      if (easyTask) {
+        parts.push(`## Start Here: ${easyTask}`);
+        parts.push('');
+      }
+    }
   }
 
   if (parts.length > 0) {
