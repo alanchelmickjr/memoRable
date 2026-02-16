@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+**NOTHING IS LOCAL. All infrastructure, all memory, all data lives in the cloud. There is no local dev, no local Docker, no localhost. No exceptions.**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## ALAN'S CODING RULES - READ FIRST
