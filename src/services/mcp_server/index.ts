@@ -7269,6 +7269,50 @@ function createExpressApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // Landing page
+  app.get('/', (_req: Request, res: Response) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemoRable</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .container { text-align: center; max-width: 600px; padding: 2rem; }
+  h1 { font-size: 3rem; font-weight: 200; letter-spacing: 0.3em; color: #fff; margin-bottom: 0.5rem; }
+  .tagline { font-size: 1.1rem; color: #888; margin-bottom: 2rem; font-style: italic; }
+  .version { display: inline-block; background: #1a1a2e; border: 1px solid #333; border-radius: 6px; padding: 0.4rem 1rem; font-family: monospace; font-size: 0.9rem; color: #7c8aff; margin-bottom: 2rem; }
+  .status { display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.9rem; color: #4ade80; margin-bottom: 2rem; }
+  .dot { width: 8px; height: 8px; background: #4ade80; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .endpoints { text-align: left; background: #111; border: 1px solid #222; border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 2rem; font-family: monospace; font-size: 0.85rem; line-height: 2; }
+  .endpoints span { color: #555; }
+  .endpoints a { color: #7c8aff; text-decoration: none; }
+  .endpoints a:hover { text-decoration: underline; }
+  .footer { font-size: 0.8rem; color: #444; }
+  .footer a { color: #555; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>memoRable</h1>
+  <p class="tagline">AI that knows you like a friend, every time you talk to it.</p>
+  <div class="version">v1.0.0</div>
+  <div class="status"><span class="dot"></span> operational</div>
+  <div class="endpoints">
+    <span>GET</span>  <a href="/health">/health</a><br>
+    <span>POST</span> /mcp <span>&mdash; MCP StreamableHTTP</span><br>
+    <span>POST</span> /auth/knock <span>&mdash; challenge</span><br>
+    <span>POST</span> /auth/exchange <span>&mdash; authenticate</span>
+  </div>
+  <p class="footer">memorable.chat &middot; memorable.codes &middot; memorable.cool</p>
+</div>
+</body>
+</html>`);
+  });
+
   // Health check endpoint
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
