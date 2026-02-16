@@ -12,6 +12,7 @@
  * - Users control their data
  */
 import { collections } from './database';
+import { recordMemoryAccess } from './pattern_detector';
 /**
  * Forget a specific memory.
  *
@@ -441,6 +442,16 @@ export async function importMemories(userId, memories, options = {}) {
                 state: 'active',
                 importedFrom: memory.id,
             });
+            // Create access_history record for pattern detection (FFT needs these)
+            const accessTimestamp = memory.createdAt ? new Date(memory.createdAt) : new Date();
+            try {
+                await recordMemoryAccess(userId, newId, {
+                    people: memory.people,
+                    project: options.targetProject || memory.project,
+                }, accessTimestamp);
+            } catch (accessErr) {
+                console.warn(`[Import] Access history record failed for ${newId}:`, accessErr);
+            }
             // Import loops
             for (const loop of memory.loops || []) {
                 await collections.openLoops().insertOne({

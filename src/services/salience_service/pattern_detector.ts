@@ -517,14 +517,15 @@ export async function recordMemoryAccess(
     people?: string[];
     activity?: string;
     project?: string;
-  }
+  },
+  timestamp?: Date
 ): Promise<void> {
   const accessHistory = collections.accessHistory();
 
   await accessHistory.insertOne({
     userId,
     memoryId,
-    timestamp: new Date(),
+    timestamp: timestamp || new Date(),
     contextFrame,
   });
 }
