@@ -77,6 +77,9 @@ terraform/
 *.tfstate.*
 .terraform.lock.hcl
 
+# Claude Code hooks - session-specific data
+.claude/lessons.json
+
 # Any file with personal markers
 *secret*
 *private*
