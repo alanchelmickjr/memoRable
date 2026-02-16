@@ -13,6 +13,7 @@
  */
 
 import { collections } from './database';
+import { recordMemoryAccess } from './pattern_detector';
 import type { ExtractedFeatures, MemoryDocument } from './models';
 
 // Declare console for Node.js environment
@@ -713,6 +714,18 @@ export async function importMemories(
       } as any);
 
       importedIds.memories.push(newId);
+
+      // Create access_history record for pattern detection (FFT needs these)
+      const accessTimestamp = memory.createdAt ? new Date(memory.createdAt) : new Date();
+      try {
+        await recordMemoryAccess(userId, newId, {
+          people: memory.people,
+          project: options.targetProject || memory.project,
+        }, accessTimestamp);
+      } catch (accessErr) {
+        // Non-fatal: memory is imported, just access record failed
+        console.warn(`[Import] Access history record failed for ${newId}:`, accessErr);
+      }
 
       // Import loops
       for (const loop of memory.loops || []) {

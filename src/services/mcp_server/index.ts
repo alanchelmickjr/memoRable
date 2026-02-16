@@ -187,6 +187,11 @@ interface AuthorizationCode {
 
 // SECURITY FIX: Redis-based encrypted token store (not in-memory)
 let redisClient: RedisClientType | null = null;
+
+function getRedisClient(): RedisClientType | null {
+  return redisClient;
+}
+
 const TOKEN_ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'changeme_token_key';
 const TOKEN_PREFIX = 'oauth:token:';
 const AUTH_CODE_PREFIX = 'oauth:code:';
@@ -5438,7 +5443,7 @@ function createServer(): Server {
           const contextId = session_id || CONFIG.defaultUserId;
 
           // Try to get emotional context from Redis
-          const storedContext = await redis.hGetAll(`emotional_context:${contextId}`);
+          const storedContext = redis ? await redis.hGetAll(`emotional_context:${contextId}`) : {};
 
           if (storedContext?.state) {
             const state = JSON.parse(storedContext.state);
@@ -5698,8 +5703,10 @@ function createServer(): Server {
             userId: CONFIG.defaultUserId,
           };
 
-          // Store filter in Redis
-          await redis.hSet(`emotion_filters:${CONFIG.defaultUserId}`, filterId, JSON.stringify(filter));
+          // Store filter in Redis (if available)
+          if (redis) {
+            await redis.hSet(`emotion_filters:${CONFIG.defaultUserId}`, filterId, JSON.stringify(filter));
+          }
 
           // Also store in MongoDB for persistence
           const db = getDb();
@@ -5732,7 +5739,7 @@ function createServer(): Server {
           const db = getDb();
 
           // Get filters from Redis (active) and MongoDB (persistent)
-          const redisFilters = await redis.hGetAll(`emotion_filters:${CONFIG.defaultUserId}`);
+          const redisFilters = redis ? await redis.hGetAll(`emotion_filters:${CONFIG.defaultUserId}`) : {};
           const mongoFilters = await db.collection('emotion_filters')
             .find({ userId: CONFIG.defaultUserId })
             .toArray();
@@ -5893,8 +5900,8 @@ function createServer(): Server {
           );
 
           // Update Redis cache if exists
-          const cachedEmotions = await redis.hGet(`memory:${memory_id}`, 'emotions');
-          if (cachedEmotions) {
+          const cachedEmotions = redis ? await redis.hGet(`memory:${memory_id}`, 'emotions') : null;
+          if (cachedEmotions && redis) {
             await redis.hSet(`memory:${memory_id}`, 'emotions', JSON.stringify(newEmotions));
           }
 
