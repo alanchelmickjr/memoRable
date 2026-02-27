@@ -257,32 +257,36 @@ export function createLLMClient(config?: Partial<LLMProviderConfig>): LLMClient 
  * Auto-detect provider based on available credentials.
  */
 function detectProvider(config?: Partial<LLMProviderConfig>): LLMProvider {
-  // Explicit provider from env
-  const envProvider = process.env.LLM_PROVIDER?.toLowerCase() as LLMProvider;
-  if (envProvider && ['anthropic', 'openai', 'bedrock'].includes(envProvider)) {
-    return envProvider;
+  // Explicit provider from env (skip 'auto' — that means detect)
+  const envProvider = process.env.LLM_PROVIDER?.toLowerCase();
+  if (envProvider && envProvider !== 'auto' && ['anthropic', 'openai', 'bedrock'].includes(envProvider)) {
+    return envProvider as LLMProvider;
   }
 
-  // Check for Bedrock (running in AWS with IAM)
+  // Check for API keys with actual values (not empty strings)
+  const anthropicKey = config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey && anthropicKey.trim().length > 0) {
+    return 'anthropic';
+  }
+
+  const openaiKey = config?.openaiApiKey || process.env.OPENAI_API_KEY;
+  if (openaiKey && openaiKey.trim().length > 0) {
+    return 'openai';
+  }
+
+  // Check for Bedrock (running in AWS with IAM — no API key needed)
   if (
     process.env.USE_BEDROCK === 'true' ||
     process.env.AWS_EXECUTION_ENV || // Running in Lambda/ECS
+    process.env.AWS_DEFAULT_REGION || // EC2 with IAM role
+    process.env.AWS_REGION ||         // EC2 with IAM role
     config?.bedrockModelId
   ) {
     return 'bedrock';
   }
 
-  // Check for API keys
-  if (config?.anthropicApiKey || process.env.ANTHROPIC_API_KEY) {
-    return 'anthropic';
-  }
-
-  if (config?.openaiApiKey || process.env.OPENAI_API_KEY) {
-    return 'openai';
-  }
-
-  // Default to Anthropic (will fail if no key, but that's the right error)
-  return 'anthropic';
+  // Default to Bedrock — cloud first, IAM auth, no keys needed
+  return 'bedrock';
 }
 
 // ============================================================================
