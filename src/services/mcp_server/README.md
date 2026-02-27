@@ -1,63 +1,122 @@
 # MemoRable MCP Server
 
-Persistent, salient memory for AI agents. 51 tools via Model Context Protocol.
+Model Context Protocol server for the Memory Salience System. Enables Claude Code, VS Code extensions, and other MCP-compatible clients to access persistent, salient memory.
 
-AI that knows you like a friend, every time you talk to it — not because it remembers everything, but because it remembers what matters.
+## Quick Start
 
-## One-Click Install (Claude Code)
+### For Claude Code
 
-Clone the repo. It works.
+Add to your Claude Code MCP settings (`~/.claude/claude_desktop_config.json` or VS Code settings):
 
-```bash
-git clone https://github.com/alanchelmickjr/memoRable.git
-cd memoRable
-# .mcp.json is already configured — Claude Code picks it up automatically
+```json
+{
+  "mcpServers": {
+    "memorable": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/memoRable/src/services/mcp_server/index.ts"],
+      "env": {
+        "MONGODB_URI": "mongodb://localhost:27017/memorable",
+        "ANTHROPIC_API_KEY": "sk-ant-xxx"
+      }
+    }
+  }
+}
 ```
 
-That's it. The `.mcp.json` tells Claude Code to start the MCP server via `scripts/mcp-start.sh`. Dependencies install on first run.
+### For Docker
 
-### Cloud API (recommended)
-
-Set the API endpoint and the server connects to the cloud backend:
-
-```bash
-# In .env (auto-loaded by mcp-start.sh)
-API_BASE_URL=https://api.memorable.chat
+```json
+{
+  "mcpServers": {
+    "memorable": {
+      "command": "docker",
+      "args": ["exec", "-i", "memorable_mcp_server", "node", "dist/index.js"],
+      "env": {}
+    }
+  }
+}
 ```
 
-### Self-Hosted
+## Environment Variables
 
-Deploy your own stack on AWS (~$11/mo):
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MONGODB_URI` | Yes | MongoDB connection string |
+| `MCP_USER_ID` | No | User ID for multi-user setups (default: "default") |
+| `ANTHROPIC_API_KEY` | No* | For LLM-powered feature extraction |
+| `OPENAI_API_KEY` | No* | Alternative to Anthropic |
+| `LLM_PROVIDER` | No | "anthropic" or "openai" (default: anthropic) |
 
-```bash
-aws cloudformation deploy \
-  --template-file cloudformation/memorable-ec2-stack.yaml \
-  --stack-name memorable \
-  --capabilities CAPABILITY_NAMED_IAM
-```
+*At least one LLM API key recommended for full salience features.
 
-## Features
+## Available Tools
 
-- **51 MCP tools** with full annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint)
-- **Salience scoring** — emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%
-- **Open loop tracking** — commitments and follow-ups never forgotten
-- **Predictive memory** — 21-day pattern learning, memories surface before you ask
-- **Multi-device context** — seamless handoff between desktop, phone, AR glasses
-- **Security tiers** — Tier1 (general), Tier2 (personal, local LLM only), Tier3 (AES-256-GCM vault)
-- **Entity pressure tracking** — butterfly effect early warning for relationships
-- **Emotion fusion** — text, voice prosody, video, EVI multi-modal
-- **OAuth 2.0** — full auth flow for remote deployment
-
-## Working Examples
-
-### Example 1: Store and Recall Memories
-
-Store a memory, then retrieve it by semantic search:
+### `store_memory`
+Store a memory with automatic salience scoring.
 
 ```
-Human: Remember that Sarah prefers morning meetings and is allergic to shellfish.
+Use this to remember important information, conversations, decisions, or commitments.
+```
 
-Claude: [calls store_memory]
-  → text: "Sarah prefers morning meetings and is allergic to shellfish"
-  → entities: ["sarah"]
-  Result: Stored with salience 72 (social: high, consequential: medium — allergy is safety-critical)
+**Parameters:**
+- `text` (required): The memory content
+- `context`: Optional context (location, activity, mood)
+- `useLLM`: Use LLM for richer extraction (default: true)
+
+### `recall`
+Search and retrieve relevant memories.
+
+**Parameters:**
+- `query` (required): What to search for
+- `limit`: Max results (default: 10)
+- `person`: Filter by person mentioned
+- `minSalience`: Minimum salience 0-100
+
+### `get_briefing`
+Get a pre-conversation briefing about a person.
+
+**Parameters:**
+- `person` (required): Name of person
+- `quick`: Quick vs full briefing
+
+### `list_loops`
+List open commitments and follow-ups.
+
+**Parameters:**
+- `owner`: "self" (you owe), "them" (they owe), "mutual"
+- `person`: Filter by person
+- `includeOverdue`: Include overdue items
+
+### `close_loop`
+Mark a commitment as completed.
+
+**Parameters:**
+- `loopId` (required): ID of loop to close
+- `note`: Completion note
+
+### `get_status`
+Get system status and metrics.
+
+## Available Resources
+
+| URI | Description |
+|-----|-------------|
+| `memory://recent` | Recent high-salience memories |
+| `memory://loops` | Open commitments |
+| `memory://contacts` | Known contacts with relationship data |
+
+## Available Prompts
+
+### `daily_briefing`
+Get a summary of what needs attention today.
+
+### `person_context`
+Get full context about a person before a conversation.
+
+**Arguments:**
+- `person` (required): Name of the person
+
+## Example Usage in Claude
+
+```
+Human: What do I owe Sarah?
