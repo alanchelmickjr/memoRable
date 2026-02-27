@@ -151,10 +151,20 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS (Caddy → MCP)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP (ACME challenge + redirect)
+        - IpProtocol: tcp
           FromPort: 8080
           ToPort: 8080
           CidrIp: 0.0.0.0/0
-          Description: MCP StreamableHTTP endpoint
+          Description: MCP StreamableHTTP (direct, dev)
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
