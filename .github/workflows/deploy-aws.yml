@@ -21,6 +21,7 @@ on:
       - '.github/workflows/**'
       - 'Dockerfile'
       - 'package.json'
+      - 'package-lock.json'
 
 env:
   AWS_REGION: us-west-1
