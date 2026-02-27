@@ -7566,8 +7566,10 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
       return next();
     }
 
+    const wwwAuth = `Bearer resource_metadata="${CONFIG.oauth.issuer || 'https://api.memorable.chat'}/.well-known/oauth-protected-resource"`;
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.setHeader('WWW-Authenticate', wwwAuth);
       return res.status(401).json({ error: 'missing_token' });
     }
 
@@ -7577,6 +7579,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
       (req as any).user = decoded;
       next();
     } catch (error) {
+      res.setHeader('WWW-Authenticate', wwwAuth);
       return res.status(401).json({ error: 'invalid_token' });
     }
   };
@@ -7836,10 +7839,13 @@ export async function mountMcpEndpoint(
       return next();
     }
 
+    const wwwAuth = `Bearer resource_metadata="${CONFIG.oauth.issuer || 'https://api.memorable.chat'}/.well-known/oauth-protected-resource"`;
+
     // Fall back to OAuth if enabled
     if (CONFIG.oauth.enabled) {
       const authHeader = req.headers.authorization;
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.setHeader('WWW-Authenticate', wwwAuth);
         return res.status(401).json({ error: 'missing_token' });
       }
       const token = authHeader.slice(7);
@@ -7848,6 +7854,7 @@ export async function mountMcpEndpoint(
         (req as any).user = decoded;
         return next();
       } catch (error) {
+        res.setHeader('WWW-Authenticate', wwwAuth);
         return res.status(401).json({ error: 'invalid_token' });
       }
     }
@@ -7857,6 +7864,7 @@ export async function mountMcpEndpoint(
       return next();
     }
 
+    res.setHeader('WWW-Authenticate', wwwAuth);
     return res.status(401).json({ error: 'unauthorized' });
   };
 
