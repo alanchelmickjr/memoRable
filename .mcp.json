@@ -5,7 +5,10 @@
       "command": "bash",
       "args": ["scripts/mcp-start.sh"],
       "env": {
-        "ALLOW_HTTP_DEV": "true"
+        "ALLOW_HTTP_DEV": "true",
+        "NODE_ENV": "development",
+        "TRANSPORT_TYPE": "stdio",
+        "MCP_USER_ID": "default"
       }
     }
   }
