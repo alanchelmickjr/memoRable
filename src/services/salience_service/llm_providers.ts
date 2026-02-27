@@ -55,7 +55,8 @@ export class BedrockLLMClient implements LLMClient {
     modelId?: string;
   } = {}) {
     this.region = config.region || process.env.AWS_REGION || 'us-east-1';
-    this.modelId = config.modelId || 'anthropic.claude-3-haiku-20240307-v1:0';
+    // Bedrock requires inference profile IDs (us. prefix) for on-demand invocation
+    this.modelId = config.modelId || process.env.BEDROCK_MODEL_ID || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
   }
 
   async complete(prompt: string, options?: LLMOptions): Promise<string> {
@@ -102,15 +103,18 @@ export class BedrockLLMClient implements LLMClient {
    * Map friendly model names to Bedrock model IDs.
    */
   private mapModelId(model: string): string {
+    // Bedrock inference profile IDs (us. prefix required for on-demand)
     const modelMap: Record<string, string> = {
-      'claude-3-haiku': 'anthropic.claude-3-haiku-20240307-v1:0',
-      'claude-3-sonnet': 'anthropic.claude-3-sonnet-20240229-v1:0',
-      'claude-3-opus': 'anthropic.claude-3-opus-20240229-v1:0',
-      'claude-3.5-sonnet': 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-      'claude-3.5-haiku': 'anthropic.claude-3-5-haiku-20241022-v1:0',
-      // Haiku is best for feature extraction (fast + cheap)
-      'haiku': 'anthropic.claude-3-haiku-20240307-v1:0',
-      'sonnet': 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      'claude-haiku-4.5': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+      'claude-sonnet-4': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      'claude-sonnet-4.5': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'claude-sonnet-4.6': 'us.anthropic.claude-sonnet-4-6',
+      'claude-opus-4.5': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
+      'claude-opus-4.6': 'us.anthropic.claude-opus-4-6-v1',
+      // Friendly aliases — haiku for feature extraction (fast + cheap)
+      'haiku': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+      'sonnet': 'us.anthropic.claude-sonnet-4-6',
+      'opus': 'us.anthropic.claude-opus-4-6-v1',
     };
 
     return modelMap[model] || model;
