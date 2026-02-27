@@ -55,7 +55,7 @@ export class BedrockLLMClient implements LLMClient {
     modelId?: string;
   } = {}) {
     this.region = config.region || process.env.AWS_REGION || 'us-east-1';
-    this.modelId = config.modelId || process.env.BEDROCK_MODEL_ID || 'anthropic.claude-haiku-4-5-20251001-v1:0';
+    this.modelId = config.modelId || process.env.BEDROCK_MODEL_ID || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
   }
 
   async complete(prompt: string, options?: LLMOptions): Promise<string> {
@@ -104,16 +104,16 @@ export class BedrockLLMClient implements LLMClient {
   private mapModelId(model: string): string {
     const modelMap: Record<string, string> = {
       // Claude 4.x (current generation — available in us-west-1)
-      'claude-haiku-4.5': 'anthropic.claude-haiku-4-5-20251001-v1:0',
-      'claude-sonnet-4': 'anthropic.claude-sonnet-4-20250514-v1:0',
-      'claude-sonnet-4.5': 'anthropic.claude-sonnet-4-5-20250929-v1:0',
-      'claude-sonnet-4.6': 'anthropic.claude-sonnet-4-6',
-      'claude-opus-4.5': 'anthropic.claude-opus-4-5-20251101-v1:0',
-      'claude-opus-4.6': 'anthropic.claude-opus-4-6-v1',
+      'claude-haiku-4.5': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+      'claude-sonnet-4': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      'claude-sonnet-4.5': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+      'claude-sonnet-4.6': 'us.anthropic.claude-sonnet-4-6',
+      'claude-opus-4.5': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
+      'claude-opus-4.6': 'us.anthropic.claude-opus-4-6-v1',
       // Friendly aliases — haiku for feature extraction (fast + cheap)
-      'haiku': 'anthropic.claude-haiku-4-5-20251001-v1:0',
-      'sonnet': 'anthropic.claude-sonnet-4-6',
-      'opus': 'anthropic.claude-opus-4-6-v1',
+      'haiku': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+      'sonnet': 'us.anthropic.claude-sonnet-4-6',
+      'opus': 'us.anthropic.claude-opus-4-6-v1',
     };
 
     return modelMap[model] || model;
