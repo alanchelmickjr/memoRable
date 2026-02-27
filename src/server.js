@@ -334,8 +334,9 @@ async function initPassphraseAuth() {
 
 const authMiddleware = async (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
-  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health') || req.path.startsWith('/.well-known'))) {
-    return next();
+  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health') || req.path.startsWith('/.well-known'))
+      || req.path === '/mcp') {
+    return next();  // MCP endpoint handles its own OAuth auth
   }
 
   // Check for API key in headers (X-API-Key is canonical)
