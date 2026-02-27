@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+**NOTHING IS LOCAL. All infrastructure, all memory, all data lives in the cloud. There is no local dev, no local Docker, no localhost. No exceptions.**
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## ALAN'S CODING RULES - READ FIRST
@@ -32,11 +34,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 These are non-negotiable. Alan has asked Claude to remember this across every session.
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ---
 
 ## Infrastructure - CLOUD FIRST
 
 **WE ARE DEVELOPING IN THE CLOUD FROM THE START.**
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### Single Tech Stack
 - **Regions**: Region-agnostic. Must work in `us-west-1` (SF customers, production)
@@ -46,12 +52,16 @@ These are non-negotiable. Alan has asked Claude to remember this across every se
 - **Cache**: Redis (local in Docker on EC2) - standard Redis
 - **Deployment**: EC2 t4g.micro + Elastic IP + Docker (MCP + Redis). ~$11/mo.
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ### What's Deprecated (DO NOT USE)
 - `terraform/` directory - legacy, do not use
 - DocumentDB references - use MongoDB Atlas instead
 - Hardcoded regions - must be configurable
 - **OLD ALB** `memorable-alb-1679440696.us-west-2.elb.amazonaws.com` - DEAD, do not use
 - `memorable-stack.yaml` - old ALB-based stack ($122/mo), replaced by `memorable-lambda-stack.yaml`
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### Live Infrastructure (Dev/Staging)
 ```
@@ -66,10 +76,14 @@ Health: http://<ELASTIC_IP>:8080/health
 > **To get the Elastic IP**: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
 > Then set: `export MEMORABLE_API_URL=http://<IP>:8080`
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ### Why Cloud First?
 - No local-first then "someday deploy" - that's how projects die
 - Real infrastructure from day one catches real issues
 - Production target: us-west-1 for SF customer base
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ---
 
@@ -92,6 +106,8 @@ This file (CLAUDE.md) is automatically loaded into every Claude Code session. It
 - **Memory that persists** - MemoRable's purpose: behavioral enforcement through persistent context that survives session boundaries, with salience scoring that surfaces what matters at the moment it matters.
 
 The model is the proof. The model is the patient. The model is why this product must exist.
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ---
 
@@ -119,9 +135,13 @@ These three principles govern ALL design decisions. When in doubt, ask:
 across every session. Not because it remembers everything - because it remembers
 what matters.
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ## Project Overview
 
 MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ## Development Commands
 
@@ -153,6 +173,8 @@ npm run docker:rebuild          # Force rebuild
 curl http://localhost:3000/health
 ```
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ### Running a Single Test
 
 ```bash
@@ -160,6 +182,8 @@ npx jest tests/services/salience_service/feature_extractor.test.ts
 ```
 
 Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgnorePatterns` in jest.config.js).
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ## Architecture
 
@@ -170,6 +194,8 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 - **ingestion_service/**: Memory ingestion API (port 8001)
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### Data Storage
 
@@ -183,6 +209,8 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 - **Memory Windows**: Short (20min), Medium (1hr), Long (24hr) configurable via env
 - **LLM Providers**: Supports Anthropic, OpenAI, AWS Bedrock (auto-detected)
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ## Docker Services
 
 The `docker-compose.yml` runs services across categories:
@@ -191,6 +219,8 @@ The `docker-compose.yml` runs services across categories:
 - **Data**: memorable_mongo (27017), memorable_redis (6379)
 - **LLM**: memorable_ollama (11434)
 - **Monitoring**: memorable_prometheus (9090), memorable_grafana (3001), exporters
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### Architecture Notes
 
@@ -206,11 +236,15 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 
 **Future**: Gun.js mesh for edge distribution to all units on the sensor net. Memory everywhere, for everyone - carbon or silicon.
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ## Code Style
 
 - **Commits**: Follow Conventional Commits (`feat:`, `fix:`, `docs:`, etc.)
 - **Linting**: ESLint + Prettier enforced via Husky pre-commit hooks
 - **TypeScript**: Used in services, with `.d.ts` type definitions
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ## Important Files
 
@@ -221,11 +255,15 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ---
 
 ## CLAUDE SESSION CONTINUITY
 
 **CRITICAL: Before starting work, load context from MemoRable API.**
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### Live API Endpoint
 
@@ -260,6 +298,8 @@ If `api.memorable.chat` or other custom domains are blocked in Claude Code remot
 2. **Workaround**: Use the Elastic IP directly (port 8080)
    - Get IP: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
    - Set: `export MEMORABLE_API_URL=http://<IP>:8080`
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
 ### First Thing Every Session - Authenticate and Load Context
 
@@ -352,6 +392,8 @@ curl -X POST "${BASE_URL}/memory" \
 - `/memory/interpretation` - AI understanding, requires `source_memory_id` link
 - Never add "spice" to verbatim quotes
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ### Query Patterns
 
 ```bash
@@ -365,9 +407,13 @@ GET /memory?entity=alan&entity=memorable_project
 GET /memory?query=slack&limit=10
 ```
 
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ### When Starting a New Session
 
 1. Load Alan's critical facts first
 2. Load project context
 3. Check for recent memories (what was worked on)
 4. Ask Alan only what's NEW, not what you should already know
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
