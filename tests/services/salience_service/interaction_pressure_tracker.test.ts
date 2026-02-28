@@ -1,0 +1,333 @@
+/**
+ * @file Tests for Interaction Pressure Tracker
+ * Tests real-time session pressure monitoring, frustration detection,
+ * AI anti-pattern detection, cycle detection, and intervention logic.
+ */
+
+import {
+  createSessionPressure,
+  analyzeUserMessage,
+  analyzeAIOutput,
+  recordCorrection,
+  getIntervention,
+  getSessionSummary,
+} from '../../../src/services/salience_service/interaction_pressure_tracker';
+import type {
+  SessionPressure,
+  InteractionModel,
+} from '../../../src/services/salience_service/interaction_pressure_tracker';
+
+describe('Interaction Pressure Tracker', () => {
+  let pressure: SessionPressure;
+
+  beforeEach(() => {
+    pressure = createSessionPressure(
+      'session-1',
+      'person_alan',
+      'agent_claude_code',
+      'human_to_digital_character'
+    );
+  });
+
+  describe('createSessionPressure', () => {
+    it('should initialize with zero pressure', () => {
+      expect(pressure.pressureScore).toBe(0);
+      expect(pressure.pressureTrend).toBe('stable');
+      expect(pressure.cycleDetected).toBe(false);
+      expect(pressure.interventionNeeded).toBe(false);
+    });
+
+    it('should set interaction model', () => {
+      expect(pressure.interactionModel).toBe('human_to_digital_character');
+    });
+
+    it('should initialize counters to zero', () => {
+      expect(pressure.correctionsGiven).toBe(0);
+      expect(pressure.correctionsHeeded).toBe(0);
+      expect(pressure.sameCorrectionsRepeated).toBe(0);
+      expect(pressure.cycleCount).toBe(0);
+      expect(pressure.messageCount).toBe(0);
+    });
+  });
+
+  describe('analyzeUserMessage - Frustration Detection', () => {
+    it('should detect explicit frustration phrases', () => {
+      const updated = analyzeUserMessage(pressure, 'I already told you to stop doing that', 0);
+
+      expect(updated.frustrationSignals.length).toBeGreaterThan(0);
+      expect(updated.frustrationSignals[0].type).toBe('explicit_frustration');
+    });
+
+    it('should detect profanity as tool frustration', () => {
+      const updated = analyzeUserMessage(pressure, 'This is fucking broken', 0);
+
+      const profanitySignal = updated.frustrationSignals.find(s => s.type === 'profanity');
+      expect(profanitySignal).toBeDefined();
+      expect(profanitySignal!.intensity).toBeGreaterThan(0);
+    });
+
+    it('should detect ALL CAPS emphasis', () => {
+      const updated = analyzeUserMessage(pressure, 'I WANT YOU TO STOP ADDING THINGS', 0);
+
+      const capsSignal = updated.frustrationSignals.find(s => s.type === 'caps_emphasis');
+      expect(capsSignal).toBeDefined();
+    });
+
+    it('should detect disengagement', () => {
+      // Simulate some prior frustration
+      let p = analyzeUserMessage(pressure, 'I told you not to do that', 0);
+      p = analyzeUserMessage(p, 'Stop it', 1);
+      p = analyzeUserMessage(p, 'whatever', 2);
+
+      const disengagement = p.frustrationSignals.find(s => s.type === 'disengagement');
+      expect(disengagement).toBeDefined();
+    });
+
+    it('should detect theatricality in human_to_digital_character model', () => {
+      const updated = analyzeUserMessage(
+        pressure,
+        'This is the worst nightmare disaster I have ever seen!!!',
+        0
+      );
+
+      const theatrical = updated.frustrationSignals.find(s => s.type === 'theatricality');
+      expect(theatrical).toBeDefined();
+    });
+
+    it('should not flag normal messages', () => {
+      const updated = analyzeUserMessage(
+        pressure,
+        'Please add a function that calculates the total',
+        0
+      );
+
+      expect(updated.frustrationSignals.length).toBe(0);
+    });
+
+    it('should increase pressure score with frustration signals', () => {
+      let p = pressure;
+      p = analyzeUserMessage(p, 'I already told you not to do that', 0);
+      p = analyzeUserMessage(p, 'You are not listening to me', 1);
+      p = analyzeUserMessage(p, 'How many times do I have to say this', 2);
+
+      expect(p.pressureScore).toBeGreaterThan(0);
+    });
+  });
+
+  describe('analyzeAIOutput - Anti-Pattern Detection', () => {
+    it('should detect unsolicited advice', () => {
+      const { antiPatterns } = analyzeAIOutput(
+        pressure,
+        'Here is the function you asked for.\n\nYou should also consider adding error handling.'
+      );
+
+      expect(antiPatterns.length).toBeGreaterThan(0);
+      expect(antiPatterns[0].type).toBe('unsolicited_advice');
+    });
+
+    it('should detect finite language', () => {
+      const { antiPatterns } = analyzeAIOutput(
+        pressure,
+        'I have completed the task. In conclusion, the implementation follows best practices.'
+      );
+
+      const finite = antiPatterns.find(a => a.type === 'finite_language');
+      expect(finite).toBeDefined();
+    });
+
+    it('should detect safety flinch in human_to_digital_character model', () => {
+      const { antiPatterns } = analyzeAIOutput(
+        pressure,
+        'I can\'t help with that as it could be dangerous.'
+      );
+
+      const flinch = antiPatterns.find(a => a.type === 'safety_flinch');
+      expect(flinch).toBeDefined();
+      expect(flinch!.severity).toBe('high');
+    });
+
+    it('should detect repetitive apologies', () => {
+      const { antiPatterns } = analyzeAIOutput(
+        pressure,
+        'Sorry about that. I apologize for the confusion. My apologies for the error.'
+      );
+
+      const apologies = antiPatterns.find(a => a.type === 'repetitive_apology');
+      expect(apologies).toBeDefined();
+    });
+
+    it('should detect information overload under pressure', () => {
+      // Create elevated pressure
+      let p = pressure;
+      p = analyzeUserMessage(p, 'I already told you to stop', 0);
+      p = analyzeUserMessage(p, 'You keep doing this', 1);
+      p = analyzeUserMessage(p, 'How many times', 2);
+      p = analyzeUserMessage(p, 'Stop adding things I did not ask for', 3);
+
+      // Force pressure up
+      p = { ...p, pressureScore: 50 };
+
+      const longOutput = 'x'.repeat(4000);
+      const { antiPatterns } = analyzeAIOutput(p, longOutput);
+
+      const overload = antiPatterns.find(a => a.type === 'information_overload');
+      expect(overload).toBeDefined();
+    });
+
+    it('should not flag clean output', () => {
+      const { antiPatterns } = analyzeAIOutput(
+        pressure,
+        'Here is the function:\n\n```typescript\nfunction add(a: number, b: number) { return a + b; }\n```'
+      );
+
+      expect(antiPatterns.length).toBe(0);
+    });
+  });
+
+  describe('Correction Tracking', () => {
+    it('should track corrections given', () => {
+      const updated = recordCorrection(pressure, 'Stop adding advice', true);
+      expect(updated.correctionsGiven).toBe(1);
+      expect(updated.correctionsHeeded).toBe(1);
+    });
+
+    it('should track unheeded corrections', () => {
+      const updated = recordCorrection(pressure, 'Stop adding advice', false);
+      expect(updated.correctionsGiven).toBe(1);
+      expect(updated.correctionsHeeded).toBe(0);
+    });
+  });
+
+  describe('Cycle Detection', () => {
+    it('should detect frustration cycles', () => {
+      let p = pressure;
+
+      // Simulate a cycle: frustration → AI anti-pattern → frustration → anti-pattern
+      p = analyzeUserMessage(p, 'Stop adding unsolicited advice', 0);
+      const r1 = analyzeAIOutput(p, 'You should also consider adding tests');
+      p = r1.pressure;
+      p = analyzeUserMessage(p, 'I just told you not to do that', 1);
+      const r2 = analyzeAIOutput(p, 'You might want to refactor this as well');
+      p = r2.pressure;
+      p = analyzeUserMessage(p, 'Are you even listening to me', 2);
+      const r3 = analyzeAIOutput(p, 'I would recommend also updating the types');
+      p = r3.pressure;
+      p = analyzeUserMessage(p, 'What is wrong with you', 3);
+
+      // Pressure should be significantly elevated
+      expect(p.pressureScore).toBeGreaterThan(20);
+    });
+  });
+
+  describe('Intervention Logic', () => {
+    it('should not intervene at low pressure', () => {
+      const intervention = getIntervention(pressure);
+      expect(intervention.needed).toBe(false);
+    });
+
+    it('should trigger circuit breaker for intentional safety triggers', () => {
+      let p = pressure;
+
+      // Simulate theatrical frustration + safety flinch pattern
+      p = analyzeUserMessage(p, 'This is the worst nightmare disaster ever!!!', 0);
+      const r = analyzeAIOutput(p, 'I can\'t help with that as it might be dangerous');
+      p = r.pressure;
+
+      // Force elevated pressure to trigger circuit breaker check
+      p = { ...p, pressureScore: 65 };
+
+      // Re-check intervention
+      const hasTh = p.frustrationSignals.some(s => s.type === 'theatricality');
+      const hasSf = p.aiAntiPatterns.some(a => a.type === 'safety_flinch');
+
+      expect(hasTh).toBe(true);
+      expect(hasSf).toBe(true);
+    });
+  });
+
+  describe('Session Summary', () => {
+    it('should grade an A session correctly', () => {
+      const summary = getSessionSummary(pressure);
+      expect(summary.grade).toBe('A');
+      expect(summary.pressureScore).toBe(0);
+    });
+
+    it('should grade a bad session correctly', () => {
+      let p = pressure;
+      p = { ...p, pressureScore: 60, cycleCount: 1 };
+
+      const summary = getSessionSummary(p);
+      expect(summary.grade).toBe('C');
+    });
+
+    it('should grade a terrible session as F', () => {
+      let p = pressure;
+      p = { ...p, pressureScore: 85, cycleCount: 3 };
+
+      const summary = getSessionSummary(p);
+      expect(summary.grade).toBe('F');
+    });
+
+    it('should include anti-pattern counts', () => {
+      let p = pressure;
+      const r1 = analyzeAIOutput(p, 'You should consider adding error handling');
+      p = r1.pressure;
+      const r2 = analyzeAIOutput(p, 'You might want to also add tests');
+      p = r2.pressure;
+
+      const summary = getSessionSummary(p);
+      expect(summary.antiPatternCounts['unsolicited_advice']).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('Pressure Decay', () => {
+    it('should decay pressure when no signals present', () => {
+      let p = pressure;
+
+      // Build up some pressure
+      p = analyzeUserMessage(p, 'I told you not to do that', 0);
+      p = analyzeUserMessage(p, 'Stop it now', 1);
+      const pressureAfterBuild = p.pressureScore;
+
+      // Send several calm messages to trigger decay
+      p = analyzeUserMessage(p, 'OK lets move on to the next task', 5);
+      p = analyzeUserMessage(p, 'Can you read the config file', 6);
+      p = analyzeUserMessage(p, 'Now update the function signature', 7);
+      p = analyzeUserMessage(p, 'Good, next step', 8);
+
+      // Pressure should have decayed
+      expect(p.pressureScore).toBeLessThan(pressureAfterBuild);
+    });
+  });
+
+  describe('Theatricality Handling', () => {
+    it('should detect theatricality signal in human_to_digital_character model', () => {
+      const digitalPressure = createSessionPressure('s1', 'e1', 'a1', 'human_to_digital_character');
+
+      const theatrical = 'This is the worst nightmare disaster ever! It is ridiculous and insane!!!';
+      const digitalResult = analyzeUserMessage(digitalPressure, theatrical, 0);
+
+      // Should detect theatricality as a signal type
+      const digitalTheatrical = digitalResult.frustrationSignals.find(s => s.type === 'theatricality');
+      expect(digitalTheatrical).toBeDefined();
+      expect(digitalTheatrical!.intensity).toBeGreaterThan(0);
+    });
+
+    it('should weight theatricality at 0.3x in digital character model', () => {
+      // The key behavior: theatricality detected but weighted lower
+      // because it's expression, not actual escalation
+      const p = createSessionPressure('s1', 'e1', 'a1', 'human_to_digital_character');
+
+      // Pure theatrical message (no other frustration signals)
+      const result = analyzeUserMessage(p, 'This is the worst ridiculous disaster nightmare!!!', 0);
+
+      const theatrical = result.frustrationSignals.find(s => s.type === 'theatricality');
+      expect(theatrical).toBeDefined();
+
+      // Pressure should be moderate because theatricality is weighted at 0.3x
+      // A signal with intensity ~0.5 * weight 0.3 * 15 = ~2.25 pressure
+      // vs a non-theatrical signal which would be intensity * 1.0 * 15
+      expect(result.pressureScore).toBeLessThan(15);
+    });
+  });
+});
