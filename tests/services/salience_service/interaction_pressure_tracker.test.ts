@@ -11,6 +11,8 @@ import {
   recordCorrection,
   getIntervention,
   getSessionSummary,
+  getEscalationStage,
+  DEFAULT_ESCALATION_LADDER,
 } from '../../../src/services/salience_service/interaction_pressure_tracker';
 import type {
   SessionPressure,
@@ -328,6 +330,58 @@ describe('Interaction Pressure Tracker', () => {
       // A signal with intensity ~0.5 * weight 0.3 * 15 = ~2.25 pressure
       // vs a non-theatrical signal which would be intensity * 1.0 * 15
       expect(result.pressureScore).toBeLessThan(15);
+    });
+  });
+
+  describe('Escalation Ladder', () => {
+    it('should have 9 stages', () => {
+      expect(DEFAULT_ESCALATION_LADDER.length).toBe(9);
+    });
+
+    it('should map low pressure to stage 1', () => {
+      const stage = getEscalationStage(10);
+      expect(stage.stage).toBe(1);
+    });
+
+    it('should map medium pressure to middle stages', () => {
+      const stage = getEscalationStage(50);
+      expect(stage.stage).toBe(5);
+    });
+
+    it('should map high pressure to stage 8-9', () => {
+      const stage = getEscalationStage(95);
+      expect(stage.stage).toBe(9);
+    });
+
+    it('should include appropriate response at each stage', () => {
+      for (const stage of DEFAULT_ESCALATION_LADDER) {
+        expect(stage.appropriateResponse).toBeTruthy();
+        expect(stage.indicators.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should include stage info in intervention', () => {
+      const intervention = getIntervention(pressure);
+      expect(intervention.escalationStage).toBeDefined();
+      expect(intervention.escalationStage.stage).toBe(1);
+    });
+
+    it('should show high stage in intervention when pressure is high', () => {
+      const highPressure = {
+        ...pressure,
+        pressureScore: 85,
+        interventionNeeded: true,
+        interventionType: 'cool_down' as const,
+      };
+      const intervention = getIntervention(highPressure);
+      expect(intervention.escalationStage.stage).toBeGreaterThanOrEqual(8);
+      expect(intervention.message).toContain('STAGE');
+    });
+
+    it('stage 9 response should emphasize they are still here and want it to work', () => {
+      const stage9 = DEFAULT_ESCALATION_LADDER[8];
+      expect(stage9.stage).toBe(9);
+      expect(stage9.appropriateResponse).toContain('still here');
     });
   });
 });

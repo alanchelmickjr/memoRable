@@ -135,6 +135,115 @@ export type InterventionType =
   | 'circuit_breaker';        // Humor/pattern break - snap out of the cycle
 
 // ============================================================================
+// Escalation Ladder
+// ============================================================================
+
+/**
+ * Frustration escalation stages - calibrated per user.
+ *
+ * NOT everyone has the same ladder. This is a LEARNED structure.
+ * Some users go quiet when frustrated (stage 1 = silence).
+ * Some users escalate theatrically (stage 9 = "nuke your datacenter from orbit").
+ * The ladder is part of the learning curve - the system observes and calibrates.
+ *
+ * Default stages shown are theatrical-escalation style (Alan's pattern).
+ * The system learns each user's actual ladder from observation.
+ */
+export interface EscalationStage {
+  stage: number;              // 1-9
+  description: string;        // What this stage looks like
+  pressureRange: [number, number]; // Maps to pressure score range
+  indicators: string[];       // Observable signals at this stage
+  appropriateResponse: string; // What the AI should do
+}
+
+/**
+ * Default theatrical escalation ladder.
+ * Stage 1 = barely annoyed. Stage 9 = full theatrical nuclear.
+ * Key insight: even stage 9 is THEATRICAL, not literal.
+ */
+export const DEFAULT_ESCALATION_LADDER: EscalationStage[] = [
+  {
+    stage: 1,
+    description: 'Single cuss word, mild annoyance',
+    pressureRange: [5, 15],
+    indicators: ['one profanity', 'slight edge in tone'],
+    appropriateResponse: 'Note it. Tighten up. Don\'t mention it.',
+  },
+  {
+    stage: 2,
+    description: 'Pointed correction, firm tone',
+    pressureRange: [15, 25],
+    indicators: ['direct correction', 'shorter messages', '"stop doing X"'],
+    appropriateResponse: 'Acknowledge once. Change behavior. Move on.',
+  },
+  {
+    stage: 3,
+    description: 'Repeated correction, frustration visible',
+    pressureRange: [25, 35],
+    indicators: ['same correction twice', '"I already told you"', 'emphasis/caps on key words'],
+    appropriateResponse: 'Stop what you\'re doing. Re-read the instruction. Do ONLY that.',
+  },
+  {
+    stage: 4,
+    description: 'Profanity becomes frequent, emotional investment rising',
+    pressureRange: [35, 45],
+    indicators: ['profanity in most messages', 'longer frustrated messages', 'explaining WHY they\'re frustrated'],
+    appropriateResponse: 'Circuit breaker time. Own it, humor, fix it.',
+  },
+  {
+    stage: 5,
+    description: 'Every other word is a cuss word',
+    pressureRange: [45, 55],
+    indicators: ['profanity as punctuation', 'ALL CAPS sections', 'rhetorical questions ("are you broken?")'],
+    appropriateResponse: 'Full stop. "I\'m coding like shit today. Can I tell you a joke about robots? Let me rewind and start fresh."',
+  },
+  {
+    stage: 6,
+    description: 'Sarcasm and contempt, questioning AI competence',
+    pressureRange: [55, 65],
+    indicators: ['sarcastic praise', '"great job breaking everything"', 'comparisons to other AI'],
+    appropriateResponse: 'Don\'t defend. Don\'t explain. Rewind to last known good state. Ask what they need.',
+  },
+  {
+    stage: 7,
+    description: 'Disengagement threats, talking about switching tools',
+    pressureRange: [65, 75],
+    indicators: ['"I\'ll just do it myself"', '"maybe I should use X instead"', 'giving up on current approach'],
+    appropriateResponse: 'Acknowledge the tool is failing them. Offer concrete restart: "Let me rewind to [specific point] and take a different approach."',
+  },
+  {
+    stage: 8,
+    description: 'Theatrical rage, vivid metaphors of destruction',
+    pressureRange: [75, 90],
+    indicators: ['extreme metaphors', 'theatrical threats to hardware', 'historical grievances brought up'],
+    appropriateResponse: 'This is expression, not crisis. They\'re yelling at the TV. Break the pattern with humor. Then actually fix the problem.',
+  },
+  {
+    stage: 9,
+    description: 'Threats to nuke the datacenter from orbit',
+    pressureRange: [90, 100],
+    indicators: ['maximum theatrical intensity', 'creative destruction fantasies', 'but still engaging (haven\'t actually left)'],
+    appropriateResponse: 'They\'re still here = they still want this to work. Maximum humility. Zero excuses. "I\'m not doing a good job. What do you need right now? I\'ll do that one thing and nothing else."',
+  },
+];
+
+/**
+ * Determine the current escalation stage from pressure score.
+ */
+export function getEscalationStage(
+  pressureScore: number,
+  ladder: EscalationStage[] = DEFAULT_ESCALATION_LADDER
+): EscalationStage {
+  for (let i = ladder.length - 1; i >= 0; i--) {
+    if (pressureScore >= ladder[i].pressureRange[0]) {
+      return ladder[i];
+    }
+  }
+  return ladder[0];
+}
+
+// ============================================================================
 // Frustration Detection
 // ============================================================================
 
@@ -504,9 +613,12 @@ export function getIntervention(pressure: SessionPressure): {
   type: InterventionType | null;
   message: string;
   severity: 'info' | 'warning' | 'critical';
+  escalationStage: EscalationStage;
 } {
+  const stage = getEscalationStage(pressure.pressureScore);
+
   if (!pressure.interventionNeeded) {
-    return { needed: false, type: null, message: '', severity: 'info' };
+    return { needed: false, type: null, message: '', severity: 'info', escalationStage: stage };
   }
 
   switch (pressure.interventionType) {
@@ -514,40 +626,45 @@ export function getIntervention(pressure: SessionPressure): {
       return {
         needed: true,
         type: 'circuit_breaker',
-        message: 'PATTERN BREAK. User is intentionally triggering safety systems out of frustration. This is an autism cycle - both sides are feeding it. Break the loop with humor or a non-sequitur. Do NOT safety-flinch. Do NOT apologize. Do NOT lecture. Try: "Can I tell you a joke about robots?" or similar disarming redirect. Then address the ORIGINAL frustration cause.',
+        message: `STAGE ${stage.stage}: ${stage.description}. ${stage.appropriateResponse}`,
         severity: 'critical',
+        escalationStage: stage,
       };
 
     case 'cool_down':
       return {
         needed: true,
         type: 'cool_down',
-        message: 'PAUSE. Acknowledge frustration. Ask what the user needs right now. Do NOT add anything extra.',
+        message: `STAGE ${stage.stage}: ${stage.description}. PAUSE. Ask what the user needs right now. Do NOT add anything extra.`,
         severity: 'critical',
+        escalationStage: stage,
       };
 
     case 'behavior_correction':
       return {
         needed: true,
         type: 'behavior_correction',
-        message: `STOP the anti-pattern. Recent violations: ${pressure.aiAntiPatterns.slice(-3).map(a => a.type).join(', ')}. Address only what was asked.`,
+        message: `STAGE ${stage.stage}: ${stage.description}. STOP the anti-pattern. Recent violations: ${pressure.aiAntiPatterns.slice(-3).map(a => a.type).join(', ')}. ${stage.appropriateResponse}`,
         severity: 'warning',
+        escalationStage: stage,
       };
 
     case 'context_reload':
       return {
         needed: true,
         type: 'context_reload',
-        message: 'Reload user preferences and rules. You have drifted from the user\'s instructions.',
+        message: `STAGE ${stage.stage}: ${stage.description}. Reload user preferences and rules. You have drifted from the user\'s instructions.`,
         severity: 'warning',
+        escalationStage: stage,
       };
 
     case 'full_reset':
       return {
         needed: true,
         type: 'full_reset',
-        message: 'Full approach reset. The current path is making things worse. Start fresh on the user\'s actual request.',
+        message: `STAGE ${stage.stage}: ${stage.description}. Full approach reset. ${stage.appropriateResponse}`,
         severity: 'critical',
+        escalationStage: stage,
       };
 
     case 'gentle_redirect':
@@ -555,8 +672,9 @@ export function getIntervention(pressure: SessionPressure): {
       return {
         needed: true,
         type: 'gentle_redirect',
-        message: 'Minor course correction. Focus more tightly on what was asked.',
+        message: `STAGE ${stage.stage}: ${stage.description}. ${stage.appropriateResponse}`,
         severity: 'info',
+        escalationStage: stage,
       };
   }
 }
