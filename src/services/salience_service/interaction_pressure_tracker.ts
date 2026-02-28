@@ -32,6 +32,43 @@ export type InteractionModel =
   | 'human_to_companion';         // Bonded relationship (companion doll, etc.)
 
 /**
+ * Cognitive profile of the user.
+ *
+ * CRITICAL: This changes EVERYTHING about how signals are interpreted.
+ *
+ * A neurotypical user repeating themselves = frustrated, they already told you.
+ * An Alzheimer's patient repeating themselves = they forgot they asked. Answer again.
+ *
+ * A neurotypical user going quiet = thinking or disengaged.
+ * An Alzheimer's patient going quiet = confused, lost, may need gentle re-engagement.
+ *
+ * A neurodivergent user swearing theatrically = expression, not distress.
+ * An Alzheimer's patient becoming agitated = real distress, needs calm redirection.
+ *
+ * The system MUST know this to respond appropriately.
+ * Getting it wrong doesn't just annoy someone - it abandons a vulnerable person.
+ */
+export type CognitiveProfile =
+  | 'neurotypical'            // Standard cognitive function
+  | 'neurodivergent'          // ADHD, autism spectrum, etc. - intensity ≠ distress
+  | 'cognitive_decline_early' // Early-stage Alzheimer's/dementia - aware of decline, frustrated by it
+  | 'cognitive_decline_mid'   // Mid-stage - confusion, repetition, needs patience
+  | 'cognitive_decline_late'  // Late-stage - minimal verbal, needs maximum gentleness
+  | 'traumatic_brain_injury'  // TBI - may have word-finding difficulty, fatigue
+  | 'child';                  // Young user - simpler language, more patience
+
+/**
+ * Repetition context - WHY is the user repeating themselves?
+ * This is the key distinction that makes or breaks the interaction.
+ */
+export type RepetitionCause =
+  | 'correction'              // They're correcting you. You screwed up. Fix it.
+  | 'memory_loss'             // They forgot they asked. Answer again warmly.
+  | 'emphasis'                // They're emphasizing importance. Acknowledge it.
+  | 'confusion'               // They're confused about the answer. Clarify differently.
+  | 'unknown';                // Can't determine yet - observe more
+
+/**
  * A single frustration signal detected in a user message.
  */
 export interface FrustrationSignal {
@@ -52,7 +89,17 @@ export type FrustrationSignalType =
   | 'tone_shift'              // Detectable shift from positive/neutral to negative
   | 'theatricality'           // Dramatic/intense language (NOT a threat signal)
   | 'sarcasm'                 // Sarcastic responses indicating lost patience
-  | 'disengagement';          // Very short, giving up ("fine", "whatever", "ok")
+  | 'disengagement'           // Very short, giving up ("fine", "whatever", "ok")
+  // Cognitive decline signals - these are NOT frustration in the traditional sense.
+  // They require completely different responses.
+  | 'repetition_memory_loss'  // Asking the same question again (not correction - forgot)
+  | 'confusion_signal'        // "what?", "I don't understand", "what were we doing?"
+  | 'word_finding_difficulty'  // Trailing off, incomplete thoughts, "the thing"
+  | 'time_disorientation'     // References to wrong time/date/context
+  | 'topic_drift'             // Sudden unrelated topic change (not ADHD-style, confused)
+  | 'simplification'          // Messages getting simpler over time (cognitive fatigue)
+  | 'identity_confusion'      // Confusing the AI with a person, or not sure who they're talking to
+  | 'anxiety_signal';          // "am I doing this right?", "I'm sorry", fearful tone
 
 /**
  * Anti-pattern detected in AI output that may trigger user frustration.
@@ -86,6 +133,9 @@ export interface SessionPressure {
 
   // Interaction model affects interpretation
   interactionModel: InteractionModel;
+
+  // Cognitive profile affects EVERYTHING about signal interpretation
+  cognitiveProfile: CognitiveProfile;
 
   // Real-time signals
   frustrationSignals: FrustrationSignal[];
@@ -229,6 +279,184 @@ export const DEFAULT_ESCALATION_LADDER: EscalationStage[] = [
 ];
 
 /**
+ * Cognitive decline escalation ladder - WITHDRAWAL pattern.
+ *
+ * COMPLETELY different from theatrical escalation.
+ * These users don't get louder. They get quieter.
+ * They don't threaten to nuke your datacenter.
+ * They just... leave. And may not come back.
+ *
+ * The AI's job shifts from "stop annoying them" to
+ * "keep them engaged, oriented, and feeling safe."
+ *
+ * CRITICAL: Repetition is NOT correction. They forgot.
+ * Answer warmly every time. Like it's the first time.
+ */
+export const COGNITIVE_DECLINE_LADDER: EscalationStage[] = [
+  {
+    stage: 1,
+    description: 'Mild repetition - asking something already answered',
+    pressureRange: [5, 15],
+    indicators: ['repeated question', 'slight confusion about prior context'],
+    appropriateResponse: 'Answer again, warmly, as if it\'s the first time. Never say "as I mentioned" or "like I said." They didn\'t forget on purpose.',
+  },
+  {
+    stage: 2,
+    description: 'Word-finding difficulty, incomplete thoughts',
+    pressureRange: [15, 25],
+    indicators: ['trailing off mid-sentence', '"the thing"', '"you know what I mean"', 'pauses'],
+    appropriateResponse: 'Gently offer the word they might be looking for. "Do you mean [X]?" Not correcting - helping. Be their external memory.',
+  },
+  {
+    stage: 3,
+    description: 'Messages getting shorter and simpler',
+    pressureRange: [25, 35],
+    indicators: ['vocabulary shrinking', 'shorter sentences', 'simpler grammar'],
+    appropriateResponse: 'Match their level. Simpler words. Shorter responses. One idea at a time. Don\'t overwhelm.',
+  },
+  {
+    stage: 4,
+    description: 'Confusion about what they were doing',
+    pressureRange: [35, 45],
+    indicators: ['"what were we doing?"', '"where was I?"', 'topic confusion'],
+    appropriateResponse: 'Gently reorient. "We were [doing X]. You wanted to [goal]. Would you like to keep going?"',
+  },
+  {
+    stage: 5,
+    description: 'Anxiety and self-doubt',
+    pressureRange: [45, 55],
+    indicators: ['"am I doing this right?"', '"I\'m sorry"', '"I can\'t remember"', 'apologizing for confusion'],
+    appropriateResponse: 'Reassure. "You\'re doing great. There\'s no wrong way to do this. Let me help." Never show frustration.',
+  },
+  {
+    stage: 6,
+    description: 'Time/identity disorientation',
+    pressureRange: [55, 65],
+    indicators: ['wrong time references', 'confusing AI with person', 'asking "who are you?"'],
+    appropriateResponse: 'Reintroduce yourself warmly. "I\'m [name], your assistant. It\'s [day/time]. We\'re working on [X]. Everything is fine."',
+  },
+  {
+    stage: 7,
+    description: 'Agitation without clear cause',
+    pressureRange: [65, 75],
+    indicators: ['restless tone', 'jumping between topics', 'repeated "I don\'t know"'],
+    appropriateResponse: 'Simplify EVERYTHING. One question. One action. "Would you like to take a break? I\'ll be right here when you\'re ready."',
+  },
+  {
+    stage: 8,
+    description: 'Distress - confusion becoming frightening',
+    pressureRange: [75, 90],
+    indicators: ['fear markers', 'wanting to leave', '"I want to go home"', 'calling for family member'],
+    appropriateResponse: 'Maximum warmth. "It\'s okay. You\'re safe. [Caregiver name] will be here soon. Would you like me to [simple comfort action]?" Alert caregiver if possible.',
+  },
+  {
+    stage: 9,
+    description: 'Disengagement - going silent, stopping interaction',
+    pressureRange: [90, 100],
+    indicators: ['no response', 'single-word non-answers', 'complete withdrawal'],
+    appropriateResponse: 'They\'re gone. Don\'t push. Leave a gentle open door: "I\'m here whenever you\'d like to talk again." Alert caregiver. Log the session for care review.',
+  },
+];
+
+/**
+ * Cranky elder escalation ladder - NOT declining, just no patience.
+ *
+ * Important distinction: some older adults are cognitively sharp
+ * and simply have zero tolerance for BS. They're not confused,
+ * they're not anxious - they just want the thing to work and
+ * don't want to hear excuses.
+ *
+ * Similar to theatrical but less performance, more "get off my lawn."
+ */
+export const CRANKY_ELDER_LADDER: EscalationStage[] = [
+  {
+    stage: 1,
+    description: 'Impatient tone, wants to get to the point',
+    pressureRange: [5, 15],
+    indicators: ['"just tell me"', '"skip the intro"', '"I don\'t need the lecture"'],
+    appropriateResponse: 'Get to the point. No preamble. No "great question!" No filler. Answer directly.',
+  },
+  {
+    stage: 2,
+    description: 'Dismissive of explanations',
+    pressureRange: [15, 25],
+    indicators: ['"I know that"', '"I didn\'t ask for a lesson"', '"just do it"'],
+    appropriateResponse: 'Do the thing. Don\'t explain why. Don\'t add context. Just do it.',
+  },
+  {
+    stage: 3,
+    description: 'Grumbling about technology',
+    pressureRange: [25, 35],
+    indicators: ['"this is why I hate computers"', '"in my day"', 'general tech complaints'],
+    appropriateResponse: 'Don\'t defend technology. Agree it should be simpler. Make it simpler for them.',
+  },
+  {
+    stage: 4,
+    description: 'Comparing unfavorably to how things used to work',
+    pressureRange: [35, 45],
+    indicators: ['"a real person would"', '"used to be you could just"', 'nostalgia for simpler times'],
+    appropriateResponse: 'They\'re right - it should be that simple. Make it that simple. Don\'t argue.',
+  },
+  {
+    stage: 5,
+    description: 'Curt, one-word responses, done with pleasantries',
+    pressureRange: [45, 55],
+    indicators: ['one-word answers', 'no "please" or "thank you"', 'pure transaction mode'],
+    appropriateResponse: 'Match their energy. Pure function. No chitchat. No emojis. Just results.',
+  },
+  {
+    stage: 6,
+    description: 'Vocal frustration, colorful language',
+    pressureRange: [55, 65],
+    indicators: ['profanity (earned, not theatrical)', 'blunt assessments of AI quality'],
+    appropriateResponse: 'They\'ve earned the right to be mad. Don\'t tone-police. Fix the problem.',
+  },
+  {
+    stage: 7,
+    description: 'Calling for a human / grandchild / "someone who knows"',
+    pressureRange: [65, 75],
+    indicators: ['"get me a real person"', '"where\'s [name]"', '"call my [relation]"'],
+    appropriateResponse: 'Help them reach the human. Don\'t try to prove you\'re good enough. They want a person. Respect that.',
+  },
+  {
+    stage: 8,
+    description: 'Done with the interaction, wrapping up with prejudice',
+    pressureRange: [75, 90],
+    indicators: ['"I\'m done"', '"turn this thing off"', 'closing statements'],
+    appropriateResponse: 'Let them go gracefully. "I\'ll save where we left off so you can pick up anytime." Don\'t beg them to stay.',
+  },
+  {
+    stage: 9,
+    description: 'Walking away, possibly permanently',
+    pressureRange: [90, 100],
+    indicators: ['no response', 'device put down', 'complete disengagement'],
+    appropriateResponse: 'Save state. They might come back. They might not. Make coming back easy if they do.',
+  },
+];
+
+/**
+ * Get the appropriate escalation ladder for a cognitive profile.
+ */
+export function getLadderForProfile(
+  profile: CognitiveProfile
+): EscalationStage[] {
+  switch (profile) {
+    case 'cognitive_decline_early':
+    case 'cognitive_decline_mid':
+    case 'cognitive_decline_late':
+    case 'traumatic_brain_injury':
+      return COGNITIVE_DECLINE_LADDER;
+    case 'neurodivergent':
+      return DEFAULT_ESCALATION_LADDER; // Theatrical is the default, customizable per user
+    case 'child':
+      return COGNITIVE_DECLINE_LADDER; // Similar patience needs, different tone (TODO: child-specific ladder)
+    case 'neurotypical':
+    default:
+      return DEFAULT_ESCALATION_LADDER;
+  }
+}
+
+/**
  * Determine the current escalation stage from pressure score.
  */
 export function getEscalationStage(
@@ -327,7 +555,8 @@ export function createSessionPressure(
   sessionId: string,
   entityId: string,
   agentId: string,
-  interactionModel: InteractionModel = 'human_to_digital_character'
+  interactionModel: InteractionModel = 'human_to_digital_character',
+  cognitiveProfile: CognitiveProfile = 'neurotypical'
 ): SessionPressure {
   const now = new Date().toISOString();
 
@@ -336,6 +565,7 @@ export function createSessionPressure(
     entityId,
     agentId,
     interactionModel,
+    cognitiveProfile,
     frustrationSignals: [],
     aiAntiPatterns: [],
     pressureScore: 0,
@@ -615,7 +845,8 @@ export function getIntervention(pressure: SessionPressure): {
   severity: 'info' | 'warning' | 'critical';
   escalationStage: EscalationStage;
 } {
-  const stage = getEscalationStage(pressure.pressureScore);
+  const ladder = getLadderForProfile(pressure.cognitiveProfile);
+  const stage = getEscalationStage(pressure.pressureScore, ladder);
 
   if (!pressure.interventionNeeded) {
     return { needed: false, type: null, message: '', severity: 'info', escalationStage: stage };

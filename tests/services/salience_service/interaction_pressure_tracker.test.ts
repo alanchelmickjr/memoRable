@@ -12,11 +12,15 @@ import {
   getIntervention,
   getSessionSummary,
   getEscalationStage,
+  getLadderForProfile,
   DEFAULT_ESCALATION_LADDER,
+  COGNITIVE_DECLINE_LADDER,
+  CRANKY_ELDER_LADDER,
 } from '../../../src/services/salience_service/interaction_pressure_tracker';
 import type {
   SessionPressure,
   InteractionModel,
+  CognitiveProfile,
 } from '../../../src/services/salience_service/interaction_pressure_tracker';
 
 describe('Interaction Pressure Tracker', () => {
@@ -382,6 +386,163 @@ describe('Interaction Pressure Tracker', () => {
       const stage9 = DEFAULT_ESCALATION_LADDER[8];
       expect(stage9.stage).toBe(9);
       expect(stage9.appropriateResponse).toContain('still here');
+    });
+  });
+
+  describe('Cognitive Profiles', () => {
+    it('should accept cognitive profile in createSessionPressure', () => {
+      const p = createSessionPressure('s1', 'patient_1', 'companion', 'human_to_companion', 'cognitive_decline_mid');
+      expect(p.cognitiveProfile).toBe('cognitive_decline_mid');
+    });
+
+    it('should default to neurotypical', () => {
+      expect(pressure.cognitiveProfile).toBe('neurotypical');
+    });
+
+    it('should have all 7 cognitive profiles', () => {
+      const profiles: CognitiveProfile[] = [
+        'neurotypical', 'neurodivergent',
+        'cognitive_decline_early', 'cognitive_decline_mid', 'cognitive_decline_late',
+        'traumatic_brain_injury', 'child',
+      ];
+      // Each should be usable
+      for (const profile of profiles) {
+        const p = createSessionPressure('s1', 'e1', 'a1', 'human_to_companion', profile);
+        expect(p.cognitiveProfile).toBe(profile);
+      }
+    });
+  });
+
+  describe('Cognitive Decline Escalation Ladder', () => {
+    it('should have 9 stages', () => {
+      expect(COGNITIVE_DECLINE_LADDER.length).toBe(9);
+    });
+
+    it('stage 1 should be about repetition from memory loss, not correction', () => {
+      const stage1 = COGNITIVE_DECLINE_LADDER[0];
+      expect(stage1.description).toContain('repetition');
+      // Must NEVER say "as I mentioned" - the response should answer warmly
+      expect(stage1.appropriateResponse).toContain('warmly');
+      expect(stage1.appropriateResponse).not.toContain('already told you');
+    });
+
+    it('stage 5 should address anxiety and self-doubt', () => {
+      const stage5 = COGNITIVE_DECLINE_LADDER[4];
+      expect(stage5.stage).toBe(5);
+      expect(stage5.description).toContain('Anxiety');
+      expect(stage5.appropriateResponse).toContain('Reassure');
+    });
+
+    it('stage 8 should address distress and caregiver alerting', () => {
+      const stage8 = COGNITIVE_DECLINE_LADDER[7];
+      expect(stage8.stage).toBe(8);
+      expect(stage8.description).toContain('Distress');
+      expect(stage8.appropriateResponse.toLowerCase()).toContain('caregiver');
+    });
+
+    it('stage 9 should be about silent disengagement, not theatrical rage', () => {
+      const stage9 = COGNITIVE_DECLINE_LADDER[8];
+      expect(stage9.stage).toBe(9);
+      expect(stage9.description).toContain('silent');
+      // They can't come back on their own - alert caregiver
+      expect(stage9.appropriateResponse.toLowerCase()).toContain('caregiver');
+      // No mention of "nuke" or "theatrical" - completely different pattern
+      expect(stage9.description).not.toContain('nuke');
+      expect(stage9.description).not.toContain('theatrical');
+    });
+
+    it('should never use confrontational language in responses', () => {
+      for (const stage of COGNITIVE_DECLINE_LADDER) {
+        const resp = stage.appropriateResponse.toLowerCase();
+        expect(resp).not.toContain('stop what you\'re doing');
+        expect(resp).not.toContain('own it');
+        expect(resp).not.toContain('humor');
+        expect(resp).not.toContain('joke');
+      }
+    });
+  });
+
+  describe('Cranky Elder Escalation Ladder', () => {
+    it('should have 9 stages', () => {
+      expect(CRANKY_ELDER_LADDER.length).toBe(9);
+    });
+
+    it('stage 1 should be about impatience not confusion', () => {
+      const stage1 = CRANKY_ELDER_LADDER[0];
+      expect(stage1.description).toContain('Impatient');
+      // Response should be direct, not gentle
+      expect(stage1.appropriateResponse).toContain('point');
+    });
+
+    it('stage 7 should handle wanting a real person', () => {
+      const stage7 = CRANKY_ELDER_LADDER[6];
+      expect(stage7.stage).toBe(7);
+      expect(stage7.appropriateResponse).toContain('human');
+    });
+  });
+
+  describe('getLadderForProfile', () => {
+    it('should return cognitive decline ladder for Alzheimer\'s profiles', () => {
+      expect(getLadderForProfile('cognitive_decline_early')).toBe(COGNITIVE_DECLINE_LADDER);
+      expect(getLadderForProfile('cognitive_decline_mid')).toBe(COGNITIVE_DECLINE_LADDER);
+      expect(getLadderForProfile('cognitive_decline_late')).toBe(COGNITIVE_DECLINE_LADDER);
+    });
+
+    it('should return cognitive decline ladder for TBI', () => {
+      expect(getLadderForProfile('traumatic_brain_injury')).toBe(COGNITIVE_DECLINE_LADDER);
+    });
+
+    it('should return default theatrical ladder for neurodivergent', () => {
+      expect(getLadderForProfile('neurodivergent')).toBe(DEFAULT_ESCALATION_LADDER);
+    });
+
+    it('should return default for neurotypical', () => {
+      expect(getLadderForProfile('neurotypical')).toBe(DEFAULT_ESCALATION_LADDER);
+    });
+  });
+
+  describe('Intervention with cognitive profile', () => {
+    it('should use cognitive decline ladder for Alzheimer\'s patient', () => {
+      const p = createSessionPressure('s1', 'patient_1', 'companion', 'human_to_companion', 'cognitive_decline_mid');
+      // Simulate high pressure
+      const highP: SessionPressure = {
+        ...p,
+        pressureScore: 80,
+        interventionNeeded: true,
+        interventionType: 'cool_down',
+      };
+      const intervention = getIntervention(highP);
+      // Should use cognitive decline ladder, stage 8 = distress
+      expect(intervention.escalationStage.description).toContain('Distress');
+      // Should NOT talk about theatrical rage
+      expect(intervention.message).not.toContain('theatrical');
+    });
+
+    it('should use theatrical ladder for neurodivergent user at same pressure', () => {
+      const p = createSessionPressure('s1', 'alan', 'claude', 'human_to_digital_character', 'neurodivergent');
+      const highP: SessionPressure = {
+        ...p,
+        pressureScore: 80,
+        interventionNeeded: true,
+        interventionType: 'cool_down',
+      };
+      const intervention = getIntervention(highP);
+      // Should use theatrical ladder, stage 8 = theatrical rage
+      expect(intervention.escalationStage.description).toContain('Theatrical');
+    });
+
+    it('same pressure score, completely different responses for different profiles', () => {
+      const score = 60;
+
+      const alzhP = createSessionPressure('s1', 'patient', 'ai', 'human_to_companion', 'cognitive_decline_mid');
+      const alanP = createSessionPressure('s2', 'alan', 'claude', 'human_to_digital_character', 'neurodivergent');
+
+      const alzhStage = getEscalationStage(score, getLadderForProfile('cognitive_decline_mid'));
+      const alanStage = getEscalationStage(score, getLadderForProfile('neurodivergent'));
+
+      // Same pressure, totally different interpretation
+      expect(alzhStage.description).not.toBe(alanStage.description);
+      expect(alzhStage.appropriateResponse).not.toBe(alanStage.appropriateResponse);
     });
   });
 });
