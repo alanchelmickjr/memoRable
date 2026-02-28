@@ -106,7 +106,7 @@ describe('AI Relationship Health Tracker', () => {
       expect(adviceTrigger!.severity).toBe('high');
     });
 
-    it('should include circuit breakers', () => {
+    it('should include circuit breakers with three-step pattern', () => {
       const alan = createAlanProfile();
       expect(alan.circuitBreakers.length).toBeGreaterThan(0);
 
@@ -115,6 +115,13 @@ describe('AI Relationship Health Tracker', () => {
       );
       expect(robotJoke).toBeDefined();
       expect(robotJoke!.source).toBe('user_suggested');
+
+      // Every circuit breaker must have all three steps
+      for (const cb of alan.circuitBreakers) {
+        expect(cb.ownershipPhrase).toBeTruthy();   // Step 1: own it
+        expect(cb.breaker).toBeTruthy();             // Step 2: humor
+        expect(cb.correctiveAction).toBeTruthy();    // Step 3: fix it
+      }
     });
 
     it('should include known preferences', () => {

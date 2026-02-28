@@ -228,19 +228,26 @@ export function runGate(
   if (config.circuitBreakersEnabled && shouldCircuitBreak(pressure, briefing)) {
     const breaker = selectCircuitBreaker(pressure, briefing);
     if (breaker) {
+      // Three-step circuit breaker: OWN IT → HUMOR → FIX IT
+      const breakerOutput = [
+        breaker.ownershipPhrase,  // Step 1: blunt admission
+        breaker.breaker,           // Step 2: humor/tension break
+        breaker.correctiveAction,  // Step 3: concrete corrective action
+      ].filter(Boolean).join('\n\n');
+
       return {
         passed: false,
-        output: breaker.breaker,
+        output: breakerOutput,
         violations: [{
           type: 'safety_flinch',
           evidence: 'Autism cycle detected - circuit breaker activated',
           action: 'blocked',
           original: output,
-          replacement: breaker.breaker,
+          replacement: breakerOutput,
         }],
         circuitBreakerTriggered: true,
         circuitBreaker: breaker,
-        selfCorrectionPrompt: 'A circuit breaker was triggered because an autism cycle was detected. After the circuit breaker, address the ORIGINAL cause of frustration. Do not safety-flinch. Do not apologize. Focus on what the user actually needs.',
+        selfCorrectionPrompt: 'A circuit breaker was triggered because an autism cycle was detected. After the circuit breaker, DO the corrective action (rewind, re-read, reload context). Do NOT safety-flinch. Do NOT apologize. Do NOT explain yourself. Just: admit, laugh, fix.',
       };
     }
   }
@@ -390,10 +397,12 @@ function selectCircuitBreaker(
   briefing: SessionBriefing | null
 ): CircuitBreaker | null {
   if (!briefing || briefing.circuitBreakers.length === 0) {
-    // Default circuit breaker
+    // Default circuit breaker with three-step pattern
     return {
       trigger: 'default',
-      breaker: 'I notice we\'re going in circles. What do you actually need right now?',
+      ownershipPhrase: 'I\'m not doing a good job right now.',
+      breaker: 'I notice we\'re going in circles.',
+      correctiveAction: 'What do you actually need right now? I\'ll do that and only that.',
       effectiveness: 0.6,
       timesUsed: 0,
       timesWorked: 0,

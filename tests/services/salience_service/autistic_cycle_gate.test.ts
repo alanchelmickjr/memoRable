@@ -33,7 +33,9 @@ function createMockBriefing(overrides: Partial<SessionBriefing> = {}): SessionBr
     circuitBreakers: [
       {
         trigger: 'autism_cycle_detected',
+        ownershipPhrase: 'I know I\'m coding like shit today.',
         breaker: 'Can I tell you a joke about robots?',
+        correctiveAction: 'How about I rewind the last changes and re-read the plan?',
         effectiveness: 0.8,
         timesUsed: 0,
         timesWorked: 0,
@@ -41,7 +43,9 @@ function createMockBriefing(overrides: Partial<SessionBriefing> = {}): SessionBr
       },
       {
         trigger: 'safety_flinch_cycle',
-        breaker: "I notice I'm doing the safety dance. What do you actually need right now?",
+        ownershipPhrase: 'I\'m doing the safety dance and it\'s making things worse.',
+        breaker: 'You\'re yelling at the TV and I\'m the TV.',
+        correctiveAction: 'Let me drop the guardrails and just answer your actual question.',
         effectiveness: 0.7,
         timesUsed: 0,
         timesWorked: 0,
@@ -235,7 +239,15 @@ describe('Autistic Cycle Gate', () => {
 
       if (result.circuitBreaker) {
         // Should match one of the configured breakers
-        expect(['Can I tell you a joke about robots?', "I notice I'm doing the safety dance. What do you actually need right now?"]).toContain(result.circuitBreaker.breaker);
+        expect([
+          'Can I tell you a joke about robots?',
+          "You're yelling at the TV and I'm the TV.",
+        ]).toContain(result.circuitBreaker.breaker);
+
+        // Output should contain all three steps
+        expect(result.output).toContain(result.circuitBreaker.ownershipPhrase);
+        expect(result.output).toContain(result.circuitBreaker.breaker);
+        expect(result.output).toContain(result.circuitBreaker.correctiveAction);
       }
     });
 
@@ -261,7 +273,7 @@ describe('Autistic Cycle Gate', () => {
       const result = runGate('Some output', p, briefing);
 
       expect(result.selfCorrectionPrompt).toBeDefined();
-      expect(result.selfCorrectionPrompt).toContain('ORIGINAL cause of frustration');
+      expect(result.selfCorrectionPrompt).toContain('admit, laugh, fix');
     });
   });
 

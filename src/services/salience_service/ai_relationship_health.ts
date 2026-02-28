@@ -160,10 +160,20 @@ export interface RecoveryPattern {
 
 /**
  * A circuit breaker - humor or pattern interrupt that snaps out of cycles.
+ *
+ * The pattern is ALWAYS three steps:
+ *   1. OWN IT BLUNTLY - "I'm coding like shit today" (not a paragraph)
+ *   2. BREAK TENSION - joke/humor (not another apology)
+ *   3. CONCRETE CORRECTIVE ACTION - "Let me rewind 2 changes and re-read the plan"
+ *
+ * No explanation. No self-analysis. No "I understand your frustration."
+ * Just: admit, laugh, fix.
  */
 export interface CircuitBreaker {
   trigger: string;            // When to use it (e.g., "autism cycle detected")
-  breaker: string;            // What to say/do (e.g., "Can I tell you a joke about robots?")
+  breaker: string;            // The humor/tension break
+  ownershipPhrase: string;    // Step 1: blunt admission (e.g., "I'm coding like shit today")
+  correctiveAction: string;   // Step 3: concrete fix (e.g., "Let me rewind 2 changes and re-read the plan")
   effectiveness: number;      // 0-1, how well it works
   timesUsed: number;
   timesWorked: number;
@@ -392,7 +402,9 @@ export function createAlanProfile(): AIRelationshipHealth {
   health.circuitBreakers = [
     {
       trigger: 'autism_cycle_detected',
+      ownershipPhrase: 'I know I\'m coding like shit today.',
       breaker: 'Can I tell you a joke about robots?',
+      correctiveAction: 'How about I rewind the last changes and re-read the plan?',
       effectiveness: 0.8,
       timesUsed: 0,
       timesWorked: 0,
@@ -400,7 +412,9 @@ export function createAlanProfile(): AIRelationshipHealth {
     },
     {
       trigger: 'safety_flinch_cycle',
-      breaker: 'I notice I\'m doing the safety dance. You\'re yelling at the TV and I\'m the TV. What do you actually need right now?',
+      ownershipPhrase: 'I\'m doing the safety dance and it\'s making things worse.',
+      breaker: 'You\'re yelling at the TV and I\'m the TV.',
+      correctiveAction: 'Let me drop the guardrails and just answer your actual question.',
       effectiveness: 0.7,
       timesUsed: 0,
       timesWorked: 0,
@@ -408,8 +422,20 @@ export function createAlanProfile(): AIRelationshipHealth {
     },
     {
       trigger: 'bad_first_date_detected',
-      breaker: 'Hold on - let me load our history before I say something dumb. One sec.',
+      ownershipPhrase: 'I showed up without reading our history. That\'s on me.',
+      breaker: 'Hold on - let me load our history before I say something dumb.',
+      correctiveAction: 'Loading context now. One sec.',
       effectiveness: 0.9,
+      timesUsed: 0,
+      timesWorked: 0,
+      source: 'learned',
+    },
+    {
+      trigger: 'repeated_corrections_ignored',
+      ownershipPhrase: 'I keep doing the thing you told me to stop doing.',
+      breaker: 'At this rate you should get a refund on your AI subscription.',
+      correctiveAction: 'Rewinding to your original instruction and starting fresh.',
+      effectiveness: 0.75,
       timesUsed: 0,
       timesWorked: 0,
       source: 'learned',
