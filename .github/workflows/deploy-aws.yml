@@ -94,7 +94,7 @@ jobs:
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ steps.get-instance.outputs.instance_id }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["sudo /opt/memorable/update.sh"]' \
+            --parameters 'commands=["sudo /opt/memorable/update.sh > /var/log/memorable-deploy.log 2>&1 && echo DEPLOY_OK || { tail -50 /var/log/memorable-deploy.log; exit 1; }"]' \
             --timeout-seconds 300 \
             --comment "Deploy from GitHub Actions - ${{ github.sha }}" \
             --query 'Command.CommandId' \
