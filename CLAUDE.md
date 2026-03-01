@@ -185,6 +185,32 @@ Note: Some tests are temporarily skipped due to ESM/TS issues (see `testPathIgno
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
+## Git Workflow — Branches as Scope Control
+
+Alan works solo. Branches are NOT collaboration scaffolding — they are **scope gates for iterative product design**.
+
+### The Superpower
+- **Each branch = one bounded scope** — a fix, a feature, an experiment. Nothing leaks.
+- **Main = the product** — always deployable, always clean. Merging to main triggers CI/CD.
+- **Branch list = WIP inventory** — if the list is long, scope is leaking. Keep it tight.
+- **One click to fold, one click to kill** — PRs merge atomically. Dead experiments delete clean.
+
+### Rules
+1. **NEVER push to main** — main is the build trigger. Always work on `claude/*` branches.
+2. **One concern per branch** — don't mix OAuth fixes with Bedrock fixes. Atomic PRs.
+3. **Clean up after merge** — delete merged branches immediately. Stale branches are scope debt.
+4. **Name branches by intent** — `claude/fix-mcp-oauth-public-clients`, not `claude/misc-fixes-3`.
+5. **Keep only**: `main`, legacy backup, and actively cooking branches. Everything else folds or dies.
+
+### Before Starting Work
+```bash
+git fetch --all --prune           # See the real state
+git checkout main && git pull     # Start from truth
+git checkout -b claude/<intent>   # Bounded scope
+```
+
+> **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
+
 ## Architecture
 
 ### Core Services (in `src/services/`)
