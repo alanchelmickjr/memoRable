@@ -1244,6 +1244,15 @@ async function initializeDb(): Promise<void> {
     await mongoClient.connect();
     db = mongoClient.db();
     logger.info('[MCP] MongoDB connected');
+
+    // Initialize shared database module (used by EventDaemon, etc.)
+    try {
+      const { setupDatabase } = await import('../../config/database.js');
+      await setupDatabase();
+      logger.info('[MCP] Shared database module initialized');
+    } catch (sharedDbErr) {
+      logger.warn('[MCP] Shared database module init failed:', sharedDbErr instanceof Error ? sharedDbErr.message : sharedDbErr);
+    }
   } catch (mongoErr) {
     logger.error('[MCP] MongoDB connection failed — server will start but tools requiring DB will return errors');
     logger.info(`[MCP] MongoDB URI: ${CONFIG.mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
@@ -1272,6 +1281,15 @@ async function initializeDb(): Promise<void> {
     redisClient.on('error', () => { /* Suppressed — handled by catch below */ });
     await redisClient.connect();
     logger.info('[MCP] Redis connected for secure token storage');
+
+    // Initialize shared Redis module (used by emotional sessions, tier manager, etc.)
+    try {
+      const { setupRedis } = await import('../../config/redis.js');
+      await setupRedis();
+      logger.info('[MCP] Shared Redis module initialized');
+    } catch (sharedRedisErr) {
+      logger.warn('[MCP] Shared Redis module init failed:', sharedRedisErr instanceof Error ? sharedRedisErr.message : sharedRedisErr);
+    }
   } catch (err) {
     logger.error('[MCP] Redis connection failed, OAuth tokens will not persist');
     redisClient = null;

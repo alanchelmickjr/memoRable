@@ -287,7 +287,14 @@ class EventDaemon extends EventEmitter {
     logger.debug(`[EventDaemon] Processing event: ${event.type}`);
 
     // Get entity context
-    const db = getDatabase();
+    let db;
+    try {
+      db = getDatabase();
+    } catch {
+      logger.warn('[EventDaemon] Database not ready, requeueing event');
+      this.eventQueue.unshift(event);
+      return null;
+    }
     const entity = await db.collection('entities').findOne({ entityId: event.entityId });
     const pressure = await getEntityPressure(event.entityId);
 
