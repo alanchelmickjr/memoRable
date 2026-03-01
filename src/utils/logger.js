@@ -29,70 +29,101 @@ export async function setupLogger() {
   if (isWinstonSetup) {
     return logger;
   }
-  
+
   await createLogsDirectory();
 
-  // Add colors to Winston
   winston.addColors(logColors);
 
-  const format = winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  const useJson = process.env.LOG_FORMAT === 'json';
+
+  const consoleFormat = useJson
+    ? winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      )
+    : winston.format.combine(
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        winston.format.errors({ stack: true }),
+        winston.format.colorize({ all: true }),
+        winston.format.printf(({ level, message, timestamp, stack, ...meta }) => {
+          const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+          if (stack) return `${timestamp} ${level}: ${message}${metaStr}\n${stack}`;
+          return `${timestamp} ${level}: ${message}${metaStr}`;
+        })
+      );
+
+  const fileFormat = winston.format.combine(
+    winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.colorize({ all: true }),
-    winston.format.printf(({ level, message, timestamp, stack }) => {
-      if (stack) {
-        return `${timestamp} ${level}: ${message}\n${stack}`;
-      }
-      return `${timestamp} ${level}: ${message}`;
-    })
+    winston.format.uncolorize(),
+    winston.format.json()
   );
 
   logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     levels: logLevels,
-    format,
+    defaultMeta: { service: process.env.SERVICE_NAME || 'mcp-server' },
     transports: [
       // Console transport - ALL levels to stderr (stdout reserved for MCP JSON-RPC)
       new winston.transports.Console({
         stderrLevels: ['error', 'warn', 'info', 'debug'],
+        format: consoleFormat,
       }),
-      
+
       // File transport for errors
       new winston.transports.File({
         filename: 'logs/error.log',
         level: 'error',
-        format: winston.format.uncolorize(),
+        format: fileFormat,
       }),
-      
+
       // File transport for all logs
       new winston.transports.File({
         filename: 'logs/combined.log',
-        format: winston.format.uncolorize(),
+        format: fileFormat,
       }),
     ],
     exceptionHandlers: [
       new winston.transports.File({
         filename: 'logs/exceptions.log',
-        format: winston.format.uncolorize(),
+        format: fileFormat,
       }),
     ],
     rejectionHandlers: [
       new winston.transports.File({
         filename: 'logs/rejections.log',
-        format: winston.format.uncolorize(),
+        format: fileFormat,
       }),
     ],
   });
 
-  // Create a stream for Morgan HTTP logging
+  // Morgan stream for HTTP request logging
   logger.stream = {
     write: (message) => {
-      logger.info(message.trim());
+      logger.info(message.trim(), { component: 'http' });
     },
   };
 
   isWinstonSetup = true;
   return logger;
+}
+
+/**
+ * Change log level at runtime — tickle or calm the nervous system.
+ * @param {string} level - 'error' | 'warn' | 'info' | 'debug'
+ */
+export function setLogLevel(level) {
+  if (!logLevels.hasOwnProperty(level)) return false;
+  logger.level = level;
+  if (logger.transports) {
+    logger.transports.forEach(t => { t.level = level; });
+  }
+  return true;
+}
+
+export function getLogLevel() {
+  return logger.level || process.env.LOG_LEVEL || 'info';
 }
 
 export async function createLogsDirectory() {

@@ -44,6 +44,10 @@ import cors from 'cors';
 import jwt from 'jsonwebtoken';
 import { randomUUID, createCipheriv, createDecipheriv, scryptSync, randomBytes, createHash } from 'crypto';
 import { createClient, RedisClientType } from 'redis';
+import morgan from 'morgan';
+
+// Logging — the nervous system
+import { logger, setupLogger, setLogLevel, getLogLevel } from '../../utils/logger.js';
 
 // Import API client for remote mode (HTTP instead of direct MongoDB)
 import { ApiClient, getApiClient, useRemoteApi } from './api_client.js';
@@ -223,7 +227,7 @@ function decryptTokenData(encryptedData: string): string {
 // Secure token store functions
 async function storeToken(tokenId: string, token: OAuthToken): Promise<void> {
   if (!redisClient) {
-    console.warn('[MCP] Redis not connected, token storage unavailable');
+    logger.warn('[MCP] Redis not connected, token storage unavailable');
     return;
   }
   const encrypted = encryptTokenData(JSON.stringify(token));
@@ -389,7 +393,7 @@ async function enrichPromptContext(userId: string): Promise<PromptEnrichment> {
     };
 
   } catch (error) {
-    console.error('[MCP] Enrichment error (non-fatal):', error);
+    logger.warn('[MCP] Enrichment error (non-fatal):', error);
     // Continue with partial enrichment - don't fail the request
   }
 
@@ -427,7 +431,7 @@ async function recordToolObservation(
       topicsDiscussed
     );
   } catch (error) {
-    console.error('[MCP] Observation recording error (non-fatal):', error);
+    logger.warn('[MCP] Observation recording error (non-fatal):', error);
   }
 }
 
@@ -1167,7 +1171,7 @@ function createLLMClient(): LLMClient | null {
     return createLLMProvider();
   } catch (error) {
     // No valid provider configured
-    console.error('[MCP] LLM provider initialization failed:', error);
+    logger.error('[MCP] LLM provider initialization failed:', error);
     return null;
   }
 }
@@ -1203,22 +1207,22 @@ async function initializeDb(): Promise<void> {
     // Auth will retry lazily on first tool use via ApiClient.request().
     apiClient.healthCheck().then(healthy => {
       if (!healthy) {
-        console.error('[MCP] WARNING: API health check failed - endpoint may be unreachable');
-        console.error('[MCP] Auth will be attempted on first tool use');
+        logger.warn('[MCP] API health check failed - endpoint may be unreachable');
+        logger.info('[MCP] Auth will be attempted on first tool use');
       } else {
         // Health OK — pre-auth in background (no await, non-blocking)
         apiClient!.authenticate().then(() => {
-          console.error('[MCP] REST mode: Authenticated successfully');
+          logger.info('[MCP] REST mode: Authenticated successfully');
         }).catch((authErr: Error) => {
-          console.error('[MCP] WARNING: Pre-auth failed (will retry on first tool use):', authErr.message);
+          logger.warn('[MCP] Pre-auth failed (will retry on first tool use):', authErr.message);
         });
       }
     }).catch(() => {
-      console.error('[MCP] WARNING: Health check failed - auth deferred to first tool use');
+      logger.warn('[MCP] Health check failed - auth deferred to first tool use');
     });
 
-    console.error(`[MCP] REST mode: Using HTTP API at ${process.env.API_BASE_URL || process.env.MEMORABLE_API_URL}`);
-    console.error('[MCP] Skipping direct MongoDB/Redis connections');
+    logger.info(`[MCP] REST mode: Using HTTP API at ${process.env.API_BASE_URL || process.env.MEMORABLE_API_URL}`);
+    logger.info('[MCP] Skipping direct MongoDB/Redis connections');
     return;
   }
 
@@ -1239,10 +1243,10 @@ async function initializeDb(): Promise<void> {
   try {
     await mongoClient.connect();
     db = mongoClient.db();
-    console.error('[MCP] MongoDB connected');
+    logger.info('[MCP] MongoDB connected');
   } catch (mongoErr) {
-    console.error('[MCP] MongoDB connection failed — server will start but tools requiring DB will return errors');
-    console.error(`[MCP] MongoDB URI: ${CONFIG.mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+    logger.error('[MCP] MongoDB connection failed — server will start but tools requiring DB will return errors');
+    logger.info(`[MCP] MongoDB URI: ${CONFIG.mongoUri.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
     mongoClient = null;
     db = null as unknown as Db;
   }
@@ -1267,9 +1271,9 @@ async function initializeDb(): Promise<void> {
     });
     redisClient.on('error', () => { /* Suppressed — handled by catch below */ });
     await redisClient.connect();
-    console.error('[MCP] Redis connected for secure token storage');
+    logger.info('[MCP] Redis connected for secure token storage');
   } catch (err) {
-    console.error('[MCP] Redis connection failed, OAuth tokens will not persist');
+    logger.error('[MCP] Redis connection failed, OAuth tokens will not persist');
     redisClient = null;
   }
 
@@ -1277,12 +1281,12 @@ async function initializeDb(): Promise<void> {
     try {
       await initializeSalienceService(db, { verbose: false });
       initAnticipationService(db);
-      console.error('[MCP] Direct mode: Database initialized');
+      logger.info('[MCP] Direct mode: Database initialized');
     } catch (salienceErr) {
-      console.error('[MCP] Salience service initialization failed — continuing in degraded mode');
+      logger.error('[MCP] Salience service initialization failed — continuing in degraded mode');
     }
   } else {
-    console.error('[MCP] Direct mode: No database — running in degraded mode (tools will return errors)');
+    logger.info('[MCP] Direct mode: No database — running in degraded mode (tools will return errors)');
   }
 }
 
@@ -3037,7 +3041,7 @@ function createServer(): Server {
           let result;
           if (tier === 'Tier3_Vault') {
             // Tier3: Heuristic only - NO LLM processing ever
-            console.error(`[MCP] Tier3_Vault: Using heuristic extraction only for memory ${memoryId}`);
+            logger.info(`[MCP] Tier3_Vault: Using heuristic extraction only for memory ${memoryId}`);
             result = await enrichMemoryWithSalienceHeuristic(input);
           } else if (tier === 'Tier2_Personal') {
             // Tier2: Local LLM only - for now, use heuristic if no local LLM configured
@@ -3045,7 +3049,7 @@ function createServer(): Server {
             if (useLLM && llmClient) {
               // Check if this is a local LLM (Ollama) or external
               // For now, fallback to heuristic for safety
-              console.error(`[MCP] Tier2_Personal: Using heuristic extraction (local LLM not yet configured)`);
+              logger.info(`[MCP] Tier2_Personal: Using heuristic extraction (local LLM not yet configured)`);
               result = await enrichMemoryWithSalienceHeuristic(input);
             } else {
               result = await enrichMemoryWithSalienceHeuristic(input);
@@ -3108,9 +3112,9 @@ function createServer(): Server {
 
           try {
             await collections.memories().insertOne(memoryDoc as any);
-            console.error(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
+            logger.info(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
           } catch (storageError) {
-            console.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
+            logger.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
             throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
           }
 
@@ -3159,10 +3163,10 @@ function createServer(): Server {
             const storageTier: StorageTier = (result.salience?.score || 0) > 0.7 ? 'hot' : 'warm';
 
             await tierManager.store(predictiveDoc, storageTier);
-            console.error(`[MCP] Memory ${memoryId} stored in ${storageTier} tier via TierManager`);
+            logger.info(`[MCP] Memory ${memoryId} stored in ${storageTier} tier via TierManager`);
           } catch (tierError) {
             // Don't fail the overall store if tier management fails
-            console.warn('[MCP] TierManager storage failed (continuing):', tierError);
+            logger.warn('[MCP] TierManager storage failed (continuing):', tierError);
           }
 
           // =================================================================
@@ -3195,9 +3199,9 @@ function createServer(): Server {
                 // Calculate multi-signal distress score
                 const distressScore = calculateDistressScore(signals);
 
-                console.error(`[MCP] Distress score for ${personId}: ${distressScore.score} (${distressScore.level})`);
+                logger.info(`[MCP] Distress score for ${personId}: ${distressScore.score} (${distressScore.level})`);
                 if (distressScore.triggeringSignals.length > 0) {
-                  console.error(`[MCP] Triggering signals: ${distressScore.triggeringSignals.join(', ')}`);
+                  logger.info(`[MCP] Triggering signals: ${distressScore.triggeringSignals.join(', ')}`);
                 }
 
                 // Store distress score in memory record for analysis
@@ -3237,18 +3241,18 @@ function createServer(): Server {
                     careCircle: pressureRecord.careCircle,
                   });
 
-                  console.error(`[MCP] Care circle notified for ${personId} - distress level: ${distressScore.level}`);
+                  logger.info(`[MCP] Care circle notified for ${personId} - distress level: ${distressScore.level}`);
                 }
 
                 // CRITICAL: For critical distress, log recommendation
                 if (distressScore.level === 'critical') {
-                  console.error(`[MCP] CRITICAL DISTRESS for ${personId}: ${distressScore.recommendation}`);
+                  logger.info(`[MCP] CRITICAL DISTRESS for ${personId}: ${distressScore.recommendation}`);
                 }
               }
             }
           } catch (emotionError) {
             // Don't fail memory storage if emotion analysis fails
-            console.warn('[MCP] Emotion analysis/notification failed:', emotionError);
+            logger.warn('[MCP] Emotion analysis/notification failed:', emotionError);
           }
 
           // =================================================================
@@ -3318,10 +3322,10 @@ function createServer(): Server {
             }
 
             if (hooks.length > 0) {
-              console.error(`[MCP] Generated ${hooks.length} prediction hooks for memory ${memoryId}`);
+              logger.info(`[MCP] Generated ${hooks.length} prediction hooks for memory ${memoryId}`);
             }
           } catch (hookError) {
-            console.warn('[MCP] Hook generation failed:', hookError);
+            logger.warn('[MCP] Hook generation failed:', hookError);
           }
 
           // =================================================================
@@ -3408,11 +3412,11 @@ function createServer(): Server {
                   });
                 }
 
-                console.error(`[MCP] Pressure vector added for ${entityId}: intensity=${intensity.toFixed(2)}, valence=${valence.toFixed(2)}, category=${category}`);
+                logger.info(`[MCP] Pressure vector added for ${entityId}: intensity=${intensity.toFixed(2)}, valence=${valence.toFixed(2)}, category=${category}`);
               }
             }
           } catch (pressureError) {
-            console.warn('[MCP] Pressure vector update failed:', pressureError);
+            logger.warn('[MCP] Pressure vector update failed:', pressureError);
           }
 
           return {
@@ -3543,7 +3547,7 @@ function createServer(): Server {
               filtered = filtered.slice(0, limit);
             }
           } catch (gateError) {
-            console.warn('[MCP] Context gate failed (non-fatal), using unfiltered results:', gateError);
+            logger.warn('[MCP] Context gate failed (non-fatal), using unfiltered results:', gateError);
             filtered = filtered.slice(0, limit);
           }
 
@@ -3633,10 +3637,10 @@ function createServer(): Server {
             filtered = filtered.filter((m: ScoredMemory) => appropriateIds.has(m.memoryId));
 
             if (beforeCount !== filtered.length) {
-              console.error(`[MCP] AppropriatenessFilter: ${beforeCount} → ${filtered.length} memories`);
+              logger.info(`[MCP] AppropriatenessFilter: ${beforeCount} → ${filtered.length} memories`);
             }
           } catch (appropriatenessError) {
-            console.warn('[MCP] AppropriatenessFilter failed (non-fatal), using unfiltered results:', appropriatenessError);
+            logger.warn('[MCP] AppropriatenessFilter failed (non-fatal), using unfiltered results:', appropriatenessError);
           }
 
           // SECURITY: Decrypt encrypted memories on retrieval
@@ -3646,7 +3650,7 @@ function createServer(): Server {
               try {
                 displayText = decryptMemoryContent(displayText);
               } catch (decryptError) {
-                console.error(`[MCP] Failed to decrypt memory ${m.memoryId}:`, decryptError);
+                logger.info(`[MCP] Failed to decrypt memory ${m.memoryId}:`, decryptError);
                 displayText = '[ENCRYPTED - Decryption failed]';
               }
             }
@@ -3672,7 +3676,7 @@ function createServer(): Server {
               });
             }
           } catch (patternError) {
-            console.warn('[MCP] Pattern recording failed (non-fatal):', patternError);
+            logger.warn('[MCP] Pattern recording failed (non-fatal):', patternError);
           }
 
           // =================================================================
@@ -3689,7 +3693,7 @@ function createServer(): Server {
               await tierManager.get(CONFIG.defaultUserId, memory.id);
             }
           } catch (tierError) {
-            console.warn('[MCP] TierManager access tracking failed (non-fatal):', tierError);
+            logger.warn('[MCP] TierManager access tracking failed (non-fatal):', tierError);
           }
 
           return {
@@ -4535,7 +4539,7 @@ function createServer(): Server {
               const decryptedData = decryptTokenData(encryptedData);
               const parsed = JSON.parse(decryptedData);
               memoriesToImport = parsed.memories;
-              console.error(`[MCP] Decrypted import: ${memoriesToImport?.length || 0} memories`);
+              logger.info(`[MCP] Decrypted import: ${memoriesToImport?.length || 0} memories`);
             } catch (decryptError) {
               throw new McpError(
                 ErrorCode.InvalidParams,
@@ -5542,7 +5546,7 @@ function createServer(): Server {
               { upsert: true }
             );
 
-            console.error(`[MCP] Started emotional session ${session_id} for entity ${entity_id || session_id}`);
+            logger.info(`[MCP] Started emotional session ${session_id} for entity ${entity_id || session_id}`);
 
             return {
               content: [{
@@ -5562,7 +5566,7 @@ function createServer(): Server {
               }],
             };
           } catch (error) {
-            console.error('[MCP] Failed to start emotional session:', error);
+            logger.info('[MCP] Failed to start emotional session:', error);
             throw new McpError(
               ErrorCode.InternalError,
               `Failed to start emotional session: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -5602,7 +5606,7 @@ function createServer(): Server {
               }
             );
 
-            console.error(`[MCP] Stopped emotional session ${session_id}`);
+            logger.info(`[MCP] Stopped emotional session ${session_id}`);
 
             return {
               content: [{
@@ -5615,7 +5619,7 @@ function createServer(): Server {
               }],
             };
           } catch (error) {
-            console.error('[MCP] Failed to stop emotional session:', error);
+            logger.info('[MCP] Failed to stop emotional session:', error);
             throw new McpError(
               ErrorCode.InternalError,
               `Failed to stop emotional session: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -6917,7 +6921,7 @@ function createServer(): Server {
         execContext.memoriesAccessed,
         execContext.topicsDiscussed,
         execContext.peopleInvolved
-      ).catch(e => console.error('[MCP] Post-hook error:', e));
+      ).catch(e => logger.info('[MCP] Post-hook error:', e));
 
       // RESPONSE ENRICHMENT: Wrap result with context
       return wrapWithEnrichment(toolResult, enrichment, name);
@@ -6930,7 +6934,7 @@ function createServer(): Server {
         execContext.memoriesAccessed,
         execContext.topicsDiscussed,
         execContext.peopleInvolved
-      ).catch(e => console.error('[MCP] Post-hook error:', e));
+      ).catch(e => logger.info('[MCP] Post-hook error:', e));
 
       if (error instanceof McpError) throw error;
       throw new McpError(
@@ -7273,6 +7277,25 @@ function createExpressApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // HTTP request logging — the nervous system's breath
+  app.use(morgan(':method :url :status :response-time ms', {
+    stream: logger.stream as any,
+    skip: (_req: Request, res: Response) => res.statusCode < 400 && (logger as any).level === 'error',
+  }));
+
+  // Runtime log level control — tickle or calm the nerves
+  app.post('/admin/log-level', (req: Request, res: Response) => {
+    const { level } = req.body;
+    if (setLogLevel(level)) {
+      logger.info(`[MCP] Log level changed to: ${level}`);
+      return res.json({ level, previous: getLogLevel() });
+    }
+    return res.status(400).json({ error: 'Invalid level. Use: error, warn, info, debug' });
+  });
+  app.get('/admin/log-level', (_req: Request, res: Response) => {
+    res.json({ level: getLogLevel() });
+  });
+
   // Landing page
   app.get('/', (_req: Request, res: Response) => {
     const baseUrl = `${_req.protocol}://${_req.get('host')}`;
@@ -7355,7 +7378,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
     const clientId = randomUUID();
     const clientSecret = randomUUID();
     registeredClientsStandalone.set(clientId, { clientId, clientSecret, redirectUris: redirect_uris, clientName: client_name || 'MCP Client', createdAt: new Date() });
-    console.error(`[MCP] Dynamic client registered: ${clientId} (${client_name || 'unnamed'})`);
+    logger.info(`[MCP] Dynamic client registered: ${clientId} (${client_name || 'unnamed'})`);
     return res.status(201).json({
       client_id: clientId, client_secret: clientSecret, client_name: client_name || 'MCP Client',
       redirect_uris, grant_types: grant_types || ['authorization_code', 'refresh_token'],
@@ -7397,14 +7420,14 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
       client_secret = client_secret || decodeURIComponent(basicSecret);
     }
 
-    console.error(`[MCP] Token request: grant_type=${grant_type}, client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, has_secret=${!!client_secret}, has_code=${!!code}`);
+    logger.info(`[MCP] Token request: grant_type=${grant_type}, client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, has_secret=${!!client_secret}, has_code=${!!code}`);
 
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
     const isPublicClient = !client_secret && code_verifier;
     if (!isStaticClient && !isDynamicValid && !isPublicClient) {
-      console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}, public=${!!isPublicClient}`);
+      logger.warn(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}, public=${!!isPublicClient}`);
       return res.status(401).json({ error: 'invalid_client' });
     }
     if (grant_type === 'authorization_code') {
@@ -7599,7 +7622,8 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
  * still waiting for MongoDB/Redis timeouts and gets lost.
  */
 async function main() {
-  console.error('[MCP] MemoRable Memory Server starting...');
+  await setupLogger();
+  logger.info('[MCP] MemoRable Memory Server starting...');
 
   if (CONFIG.transportType === 'http') {
     // HTTP transport — safe to await DB init before starting
@@ -7607,9 +7631,9 @@ async function main() {
     if (connectionMode !== 'rest') {
       llmClient = createLLMClient();
       if (llmClient) {
-        console.error('[MCP] LLM client initialized');
+        logger.info('[MCP] LLM client initialized');
       } else {
-        console.error('[MCP] No LLM API key found, using heuristic mode');
+        logger.info('[MCP] No LLM API key found, using heuristic mode');
       }
     }
 
@@ -7632,7 +7656,7 @@ async function main() {
             session.transport.close?.();
             sessions.delete(id);
             sessionLastSeen.delete(id);
-            console.error(`[MCP] Cleaned up stale session ${id}`);
+            logger.info(`[MCP] Cleaned up stale session ${id}`);
           }
         }
       }
@@ -7650,7 +7674,7 @@ async function main() {
             await session.transport.close();
             sessions.delete(sessionId);
             sessionLastSeen.delete(sessionId);
-            console.error(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
+            logger.info(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
             res.status(200).json({ ok: true });
           } else {
             res.status(404).json({ error: 'Session not found' });
@@ -7679,7 +7703,7 @@ async function main() {
           if (newSessionId) {
             sessions.set(newSessionId, { transport: newTransport, server: newServer });
             sessionLastSeen.set(newSessionId, Date.now());
-            console.error(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
+            logger.info(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
           }
         } else {
           // Session ID provided but not found (expired/invalid)
@@ -7689,7 +7713,7 @@ async function main() {
           });
         }
       } catch (error) {
-        console.error('[MCP] HTTP transport error:', error);
+        logger.error('[MCP] HTTP transport error:', error);
         if (!res.headersSent) {
           res.status(500).json({ error: 'Internal server error' });
         }
@@ -7698,12 +7722,12 @@ async function main() {
 
     // Start HTTP server
     app.listen(CONFIG.httpPort, () => {
-      console.error(`[MCP] Server listening on http://0.0.0.0:${CONFIG.httpPort}`);
-      console.error(`[MCP] MCP endpoint: http://0.0.0.0:${CONFIG.httpPort}/mcp`);
+      logger.info(`[MCP] Server listening on http://0.0.0.0:${CONFIG.httpPort}`);
+      logger.info(`[MCP] MCP endpoint: http://0.0.0.0:${CONFIG.httpPort}/mcp`);
       if (CONFIG.oauth.enabled) {
-        console.error(`[MCP] OAuth enabled - authorize at /oauth/authorize`);
+        logger.info(`[MCP] OAuth enabled - authorize at /oauth/authorize`);
       } else {
-        console.error(`[MCP] OAuth disabled - set OAUTH_ENABLED=true for production`);
+        logger.info(`[MCP] OAuth disabled - set OAUTH_ENABLED=true for production`);
       }
     });
   } else {
@@ -7713,7 +7737,7 @@ async function main() {
     const server = createServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('[MCP] Server connected via stdio');
+    logger.info('[MCP] Server connected via stdio');
 
     // Initialize database AFTER transport is connected
     // Tools that need DB will get errors until this completes
@@ -7721,21 +7745,21 @@ async function main() {
       if (connectionMode !== 'rest') {
         llmClient = createLLMClient();
         if (llmClient) {
-          console.error('[MCP] LLM client initialized');
+          logger.info('[MCP] LLM client initialized');
         } else {
-          console.error('[MCP] No LLM API key found, using heuristic mode');
+          logger.info('[MCP] No LLM API key found, using heuristic mode');
         }
       }
-      console.error('[MCP] Database initialization complete');
+      logger.info('[MCP] Database initialization complete');
     }).catch((err) => {
-      console.error('[MCP] Database initialization failed — running in degraded mode:', err);
+      logger.error('[MCP] Database initialization failed — running in degraded mode:', err);
     });
   }
 }
 
 // Handle shutdown
 process.on('SIGINT', async () => {
-  console.error('[MCP] Shutting down...');
+  logger.info('[MCP] Shutting down...');
   if (mongoClient) {
     await mongoClient.close();
   }
@@ -7757,13 +7781,14 @@ export async function mountMcpEndpoint(
     apiKey?: string;
   } = {}
 ): Promise<void> {
-  console.error('[MCP] Mounting MCP endpoint on existing Express app...');
+  await setupLogger();
+  logger.info('[MCP] Mounting MCP endpoint on existing Express app...');
 
   // Use provided mongo client or connect
   if (options.mongoClient) {
     mongoClient = options.mongoClient;
     db = mongoClient.db();
-    console.error('[MCP] Using provided MongoDB connection');
+    logger.info('[MCP] Using provided MongoDB connection');
   } else if (!mongoClient) {
     // Only connect if we don't already have a connection
     // Check if using DocumentDB (requires specific options)
@@ -7777,39 +7802,39 @@ export async function mountMcpEndpoint(
     });
     await mongoClient.connect();
     db = mongoClient.db();
-    console.error('[MCP] Connected to MongoDB');
+    logger.info('[MCP] Connected to MongoDB');
   }
 
   // Initialize services and set connection mode
   const remoteMode = useRemoteApi();
-  console.error(`[MCP] useRemoteApi() = ${remoteMode}, API_BASE_URL=${process.env.API_BASE_URL || 'not set'}, MEMORABLE_API_URL=${process.env.MEMORABLE_API_URL || 'not set'}`);
+  logger.info(`[MCP] useRemoteApi() = ${remoteMode}, API_BASE_URL=${process.env.API_BASE_URL || 'not set'}, MEMORABLE_API_URL=${process.env.MEMORABLE_API_URL || 'not set'}`);
 
   if (!remoteMode) {
     connectionMode = 'direct';
-    console.error('[MCP] Direct mode: initializing salience service...');
+    logger.info('[MCP] Direct mode: initializing salience service...');
 
     const salienceResult = await initializeSalienceService(db);
     if (!salienceResult.success) {
-      console.error('[MCP] WARNING: Salience service initialization failed:', salienceResult.error);
+      logger.warn('[MCP] Salience service initialization failed:', salienceResult.error);
     } else {
-      console.error('[MCP] Salience service initialized successfully');
+      logger.info('[MCP] Salience service initialized successfully');
     }
 
     initAnticipationService(db);
-    console.error('[MCP] Anticipation service initialized');
+    logger.info('[MCP] Anticipation service initialized');
   } else {
     connectionMode = 'rest';
     apiClient = getApiClient();
-    console.error('[MCP] REST mode configured');
+    logger.info('[MCP] REST mode configured');
   }
 
   // Initialize LLM client
   if (!llmClient) {
     llmClient = createLLMClient();
     if (llmClient) {
-      console.error('[MCP] LLM client initialized');
+      logger.info('[MCP] LLM client initialized');
     } else {
-      console.error('[MCP] No LLM API key found, using heuristic mode');
+      logger.info('[MCP] No LLM API key found, using heuristic mode');
     }
   }
 
@@ -7828,7 +7853,7 @@ export async function mountMcpEndpoint(
           session.transport.close?.();
           sessions.delete(id);
           sessionLastSeen.delete(id);
-          console.error(`[MCP] Cleaned up stale session ${id}`);
+          logger.info(`[MCP] Cleaned up stale session ${id}`);
         }
       }
     }
@@ -7899,7 +7924,7 @@ export async function mountMcpEndpoint(
     });
 
     // Also accept as valid OAuth client for the existing token flow
-    console.error(`[MCP] Dynamic client registered: ${clientId} (${client_name || 'unnamed'})`);
+    logger.info(`[MCP] Dynamic client registered: ${clientId} (${client_name || 'unnamed'})`);
 
     return res.status(201).json({
       client_id: clientId,
@@ -7979,7 +8004,7 @@ export async function mountMcpEndpoint(
     }
 
     await storeAuthCode(code, authCode);
-    console.error(`[MCP] Auth code issued for client ${client_id}, redirect to ${redirect_uri}`);
+    logger.info(`[MCP] Auth code issued for client ${client_id}, redirect to ${redirect_uri}`);
 
     // Redirect back with code
     const redirectUrl = new URL(redirect_uri as string);
@@ -8087,7 +8112,7 @@ export async function mountMcpEndpoint(
           await session.transport.close();
           sessions.delete(sessionId);
           sessionLastSeen.delete(sessionId);
-          console.error(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
+          logger.info(`[MCP] Session ${sessionId} closed by client (active: ${sessions.size})`);
           res.status(200).json({ ok: true });
         } else {
           res.status(404).json({ error: 'Session not found' });
@@ -8112,7 +8137,7 @@ export async function mountMcpEndpoint(
         if (newSessionId) {
           sessions.set(newSessionId, { transport: newTransport, server: newServer });
           sessionLastSeen.set(newSessionId, Date.now());
-          console.error(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
+          logger.info(`[MCP] New session created: ${newSessionId} (active: ${sessions.size})`);
         }
       } else {
         res.status(404).json({
@@ -8121,21 +8146,21 @@ export async function mountMcpEndpoint(
         });
       }
     } catch (error) {
-      console.error('[MCP] HTTP transport error:', error);
+      logger.error('[MCP] HTTP transport error:', error);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Internal server error' });
       }
     }
   });
 
-  console.error('[MCP] MCP endpoint mounted at /mcp (per-session isolation)');
+  logger.info('[MCP] MCP endpoint mounted at /mcp (per-session isolation)');
 }
 
 // Only run main() when executed directly (not when imported)
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 if (isMainModule) {
   main().catch((error) => {
-    console.error('[MCP] Fatal error:', error);
+    logger.error('[MCP] Fatal error:', error);
     process.exit(1);
   });
 }
