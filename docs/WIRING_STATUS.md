@@ -1,7 +1,7 @@
 # MemoRable Wiring Status
 
 **Generated:** 2026-01-21
-**Last Updated:** 2026-01-21 (TierManager + AppropriatenessFilter + import_memories wiring)
+**Last Updated:** 2026-03-01 (HTTPS live, MCP OAuth solved, nervous system logging, 51 tools)
 **Purpose:** Track what's implemented, wired, vs placeholder
 
 ---
@@ -152,11 +152,22 @@ ingest_event()
 |-----------|------|----------------|
 | (All major components now wired) | - | - |
 
+### RECENTLY WIRED (Mar 2026)
+
+| Component | File | Status |
+|-----------|------|--------|
+| **HTTPS/TLS** | nginx + Let's Encrypt on EC2 | ✅ DONE (cert expires 2026-05-17) |
+| **MCP OAuth (PKCE)** | mcp_server/index.ts | ✅ DONE (PRs #58-#63) |
+| **Nervous System Logging** | utils/logger.js + mcp_server | ✅ DONE (PR #61-#62) |
+| **Bedrock LLM Provider** | llm_providers.ts | ✅ DONE (PR #52, #57) |
+| **StreamableHTTP Transport** | mcp_server/index.ts | ✅ DONE (PR #50) |
+| **Runtime Log Level Toggle** | /admin/log-level endpoint | ✅ DONE |
+| **Morgan HTTP Request Logging** | mcp_server/index.ts | ✅ DONE |
+
 ### PLACEHOLDER / NOT STARTED
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| HTTPS/TLS | ❌ | Needs ACM cert |
 | Production Passphrase | ❌ | Using dev passphrase |
 | CloudWatch Alarms | ❌ | Not configured |
 | TypeScript SDK | ❌ | Not started |
@@ -164,10 +175,11 @@ ingest_event()
 | Caregiver Dashboard | ❌ | Frontend needed |
 | Face Recognition | ❌ | Phase 3 |
 | Hume.ai + Twilio Voice | ❌ | Custom voice for Opus |
+| Cross-Device Event Bus | ❌ | Proposed — see CROSS_DEVICE_EVENTS.md |
 
 ---
 
-## MCP Tools Summary (43 Tools)
+## MCP Tools Summary (51 Tools)
 
 ### Core Memory (9)
 - store_memory, recall, forget, restore, reassociate, export_memories, **import_memories**, search_memories, resolve_open_loop
@@ -357,10 +369,10 @@ Tools in REST mode need: server.js endpoint → ApiClient method → tool handle
 - Hot/Warm/Cold memory caching
 - Performance optimization
 
-### 4. HTTPS/TLS
-- ACM certificate
-- ALB configuration
+### 4. Cross-Device Memory Event Bus
+- When iPhone stores a memory, Claude Code should know
+- See `docs/CROSS_DEVICE_EVENTS.md` for proposal
 
 ---
 
-*Last Updated: 2026-01-21*
+*Last Updated: 2026-03-01*

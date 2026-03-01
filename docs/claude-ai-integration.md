@@ -1,290 +1,225 @@
-# Claude.ai Web Integration Guide
+# Claude.ai MCP Integration Guide
 
-This guide explains how to integrate MemoRable with Claude.ai for web-based memory access.
+**Last Updated:** 2026-03-01
+**Status:** WORKING (51 tools connected via Claude.ai)
 
 ## Overview
 
-MemoRable can be used with Claude.ai in two ways:
+MemoRable integrates with Claude.ai as a remote MCP connector. Claude.ai connects to
+`https://api.memorable.chat/mcp` using OAuth 2.1 with PKCE. Once connected, Claude.ai
+gets access to 51 memory tools — store, recall, predict, anticipate, emotional context,
+and more.
 
-1. **Custom Connector** - Deploy your own MemoRable server and add it as a custom MCP connector
-2. **Official Directory** - Use the pre-approved MemoRable connector from the Anthropic MCP Directory
+## Live Endpoint
 
-## Prerequisites
-
-- Claude.ai Pro, Max, Team, or Enterprise account
-- A deployed MemoRable server with:
-  - HTTPS with valid certificate
-  - OAuth 2.0 enabled
-  - Streamable HTTP transport
-
-## Option 1: Custom Connector Setup
-
-### Step 1: Deploy MemoRable Server
-
-Deploy MemoRable as a remote MCP server using Docker:
-
-```bash
-# Clone the repository
-git clone https://github.com/alanchelmickjr/memoRable.git
-cd memoRable
-
-# Generate OAuth credentials
-./scripts/setup-oauth.sh
-
-# Start with Docker Compose
-docker-compose -f docker-compose.remote.yml up -d
+```
+MCP URL: https://api.memorable.chat/mcp
+Health:  https://api.memorable.chat/health
 ```
 
-### Step 2: Configure Environment
+- HTTPS via nginx + Let's Encrypt (cert auto-renews, expires 2026-05-17)
+- EC2 in us-west-1 behind Elastic IP
+- CloudFormation stack: `memorable`
 
-Create a `.env.remote` file:
-
-```env
-# Required OAuth Configuration
-OAUTH_ENABLED=true
-OAUTH_CLIENT_ID=your-client-id
-OAUTH_CLIENT_SECRET=your-client-secret
-JWT_SECRET=your-jwt-secret
-
-# Transport
-TRANSPORT_TYPE=http
-MCP_HTTP_PORT=8080
-
-# CORS (Claude.ai origins)
-ALLOWED_ORIGINS=https://claude.ai,https://claude.com
-
-# Database
-MONGODB_URI=mongodb://localhost:27017/memorable
-
-# LLM Provider (optional - for enhanced feature extraction)
-ANTHROPIC_API_KEY=sk-ant-xxx
-```
-
-### Step 3: Set Up HTTPS
-
-MemoRable requires HTTPS for Claude.ai integration. Options:
-
-**Option A: Using a reverse proxy (recommended)**
-
-```nginx
-# nginx.conf
-server {
-    listen 443 ssl;
-    server_name memorable.yourdomain.com;
-
-    ssl_certificate /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-**Option B: Using AWS with ALB**
-
-Deploy using the CloudFormation template which includes an Application Load Balancer with ACM certificate.
-
-### Step 4: Add to Claude.ai
+## Setup (Add to Claude.ai)
 
 1. Go to [Claude.ai](https://claude.ai)
-2. Navigate to **Settings** → **Connectors**
-3. Click **Add custom connector**
-4. Enter your server details:
-   - **Name**: MemoRable
-   - **URL**: `https://memorable.yourdomain.com/mcp`
-   - **OAuth**: Enable and configure with your credentials
-5. Click **Authorize** to complete OAuth flow
+2. Navigate to **Settings** > **Integrations** (or **Connectors**)
+3. Click **Add Integration** / **Add custom connector**
+4. Enter: `https://api.memorable.chat/mcp`
+5. Claude.ai auto-discovers OAuth endpoints and initiates auth flow
+6. Approve access when prompted
+7. Done — 51 tools available in every conversation
 
-### Step 5: Verify Integration
+## How Claude.ai OAuth Actually Works
 
-In a new Claude.ai conversation, try:
-
-```
-What MCP tools do you have access to?
-```
-
-You should see MemoRable's 20 tools listed.
-
-## Option 2: Official Directory Listing
-
-Once MemoRable is approved in the Anthropic MCP Connectors Directory:
-
-1. Go to [Claude.ai](https://claude.ai)
-2. Navigate to **Settings** → **Connectors**
-3. Browse the **Directory**
-4. Find **MemoRable** and click **Add**
-5. Authorize access to your MemoRable instance
-
-## OAuth Flow Details
-
-MemoRable implements OAuth 2.0 Authorization Code flow:
+Claude.ai is a **public client** per the MCP spec (2025-03-26). It uses PKCE for
+security instead of a client_secret. Here's what actually happens on the wire:
 
 ```
-┌─────────────┐                                    ┌─────────────┐
-│  Claude.ai  │                                    │  MemoRable  │
-└──────┬──────┘                                    └──────┬──────┘
-       │                                                  │
-       │ 1. GET /oauth/authorize                          │
-       │     ?client_id=xxx                               │
-       │     &redirect_uri=https://claude.ai/oauth/callback
-       │     &response_type=code                          │
-       │     &scope=read%20write                          │
-       │─────────────────────────────────────────────────▶│
-       │                                                  │
-       │ 2. Redirect to redirect_uri                      │
-       │    ?code=xxx                                     │
-       │◀─────────────────────────────────────────────────│
-       │                                                  │
-       │ 3. POST /oauth/token                             │
-       │    grant_type=authorization_code                 │
-       │    code=xxx                                      │
-       │    client_id=xxx                                 │
-       │    client_secret=xxx                             │
-       │─────────────────────────────────────────────────▶│
-       │                                                  │
-       │ 4. { access_token, refresh_token }               │
-       │◀─────────────────────────────────────────────────│
-       │                                                  │
-       │ 5. POST /mcp (with Bearer token)                 │
-       │─────────────────────────────────────────────────▶│
-       │                                                  │
+┌─────────────┐                                    ┌─────────────────┐
+│  Claude.ai  │                                    │  api.memorable  │
+└──────┬──────┘                                    └────────┬────────┘
+       │                                                    │
+       │ 1. GET /.well-known/oauth-authorization-server     │
+       │────────────────────────────────────────────────────▶│
+       │    ◀── discovery metadata (endpoints, PKCE, etc.)  │
+       │                                                    │
+       │ 2. POST /register (dynamic client registration)    │
+       │    client_id may be email (e.g. alan@utilitron.io)  │
+       │    OR Claude.ai may skip this entirely              │
+       │────────────────────────────────────────────────────▶│
+       │    ◀── { client_id, ... }                          │
+       │                                                    │
+       │ 3. GET /authorize                                  │
+       │    ?client_id=alan@utilitron.io                    │
+       │    &redirect_uri=https://claude.ai/oauth/callback  │
+       │    &response_type=code                             │
+       │    &code_challenge=SHA256(verifier)                │
+       │    &code_challenge_method=S256                     │
+       │────────────────────────────────────────────────────▶│
+       │    ◀── redirect with ?code=xxx                     │
+       │                                                    │
+       │ 4. POST /token                                     │
+       │    grant_type=authorization_code                   │
+       │    code=xxx                                        │
+       │    client_id=alan@utilitron.io                     │
+       │    code_verifier=original_verifier                 │
+       │    (+ client_secret — Claude.ai sends BOTH)        │
+       │────────────────────────────────────────────────────▶│
+       │    ◀── { access_token, refresh_token }             │
+       │                                                    │
+       │ 5. POST /mcp                                       │
+       │    Authorization: Bearer <access_token>            │
+       │    Content-Type: application/json                  │
+       │    { "jsonrpc": "2.0", ... }                       │
+       │────────────────────────────────────────────────────▶│
+       │    ◀── MCP JSON-RPC response                       │
 ```
 
-## Endpoints
+### Key Discoveries (learned the hard way, PRs #58-#63)
+
+1. **Claude.ai uses email as client_id** — not a UUID from /register
+2. **Claude.ai may skip /register entirely** — authorize must accept unregistered clients when PKCE is present
+3. **Claude.ai sends BOTH client_secret AND code_verifier** — token validation must check `code_verifier` presence, not `!client_secret`
+4. **The MCP URL must be `/mcp`** — Claude.ai POSTs to whatever URL you give it. If you enter `api.memorable.chat` (no path), it POSTs to `/` and gets 404
+5. **CORS must include `Mcp-Session-Id`** — MCP protocol uses this header for session management
+6. **Discovery must advertise `"none"` auth method** — `token_endpoint_auth_methods_supported: ['none', 'client_secret_post']`
+
+## OAuth Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/.well-known/oauth-authorization-server` | GET | OAuth discovery (REQUIRED by MCP spec) |
+| `/register` | POST | Dynamic client registration (RFC 7591) |
+| `/authorize` | GET | OAuth authorization (accepts PKCE public clients) |
+| `/token` | POST | Token exchange (PKCE validates identity) |
+| `/revoke` | POST | Token revocation |
+| `/mcp` | POST | MCP StreamableHTTP JSON-RPC endpoint |
 | `/health` | GET | Health check |
-| `/oauth/authorize` | GET | OAuth authorization |
-| `/oauth/token` | POST | Token exchange |
-| `/oauth/revoke` | POST | Token revocation |
-| `/mcp` | POST | MCP JSON-RPC endpoint |
 
-## Testing Your Integration
+## Transport Security
 
-### Test Health Endpoint
+- **In-flight:** All JSON-RPC traffic encrypted via TLS 1.2/1.3 (nginx + Let's Encrypt)
+- **OAuth tokens:** JWT signed with server secret, transmitted only over HTTPS
+- **CORS:** Locked to `https://claude.ai`, `https://claude.com`, and related origins
+- **At rest:** MongoDB Atlas encrypts by default; Tier 2/3 memories get AES-256-GCM
 
-```bash
-curl https://memorable.yourdomain.com/health
+## Tools Available (51)
+
+### Core Memory (9)
+store_memory, recall, recall_vote, forget, restore, reassociate, export_memories,
+import_memories, search_memories
+
+### Context Management (4)
+set_context, whats_relevant, clear_context, list_devices
+
+### Briefings & Loops (4)
+get_briefing, list_loops, close_loop, resolve_open_loop
+
+### Predictions & Patterns (6)
+anticipate, day_outlook, pattern_stats, get_predictions, record_prediction_feedback,
+get_anticipated_context
+
+### Emotions & Prosody (10)
+analyze_emotion, get_emotional_context, set_emotion_filter, get_emotion_filters,
+get_memories_by_emotion, correct_emotion, clarify_intent, start_emotional_session,
+stop_emotional_session, list_emotional_sessions
+
+### Relationships & Pressure (5)
+get_relationship, get_entity_pressure, set_care_circle, get_tier_stats, get_pattern_stats
+
+### Behavioral Identity (3)
+identify_user, behavioral_metrics, behavioral_feedback
+
+### Event Daemon (4)
+ingest_event, schedule_check, get_daemon_status, set_entity_vulnerability
+
+### Additional Tools (6)
+handoff_device, get_session_continuity, memory_feedback, get_salience_weights,
+set_salience_weights, debug_salience
+
+## Testing the Integration
+
+### Quick Check (from any Claude.ai conversation)
+```
+What MCP tools do you have access to from MemoRable?
 ```
 
-Expected response:
-```json
-{
-  "status": "healthy",
-  "version": "2.0.0",
-  "transport": "http",
-  "oauth": true
-}
-```
-
-### Test OAuth Flow
-
+### Test OAuth Flow Manually
 ```bash
-# 1. Get authorization code (opens browser)
-open "https://memorable.yourdomain.com/oauth/authorize?client_id=YOUR_CLIENT_ID&redirect_uri=https://claude.ai/oauth/callback&response_type=code&scope=read%20write"
+BASE="https://api.memorable.chat"
 
-# 2. Exchange code for token
-curl -X POST https://memorable.yourdomain.com/oauth/token \
+# 1. Discovery
+curl -s "$BASE/.well-known/oauth-authorization-server" | python3 -m json.tool
+
+# 2. Register a test client
+REG=$(curl -s -X POST "$BASE/register" \
   -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "authorization_code",
-    "code": "YOUR_AUTH_CODE",
-    "client_id": "YOUR_CLIENT_ID",
-    "client_secret": "YOUR_CLIENT_SECRET"
-  }'
-```
+  -d '{"redirect_uris":["https://example.com/callback"],"client_name":"test","token_endpoint_auth_method":"none"}')
+echo "$REG"
 
-### Test MCP Endpoint
+# 3. Get client_id from registration
+CID=$(echo "$REG" | python3 -c "import sys,json; print(json.load(sys.stdin)['client_id'])")
 
-```bash
-curl -X POST https://memorable.yourdomain.com/mcp \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+# 4. Generate PKCE pair
+CV=$(openssl rand -base64 32 | tr -d '=+/' | head -c 43)
+CC=$(echo -n "$CV" | openssl dgst -sha256 -binary | base64 | tr -d '=' | tr '+/' '-_')
+
+# 5. Authorize (follow redirect to get code)
+echo "Visit: $BASE/authorize?client_id=$CID&redirect_uri=https://example.com/callback&response_type=code&code_challenge=$CC&code_challenge_method=S256"
+
+# 6. Exchange code for token (replace CODE with actual code from redirect)
+curl -s -X POST "$BASE/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code&code=CODE&client_id=$CID&redirect_uri=https://example.com/callback&code_verifier=$CV"
+
+# 7. Test MCP endpoint
+curl -s -X POST "$BASE/mcp" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
-```
-
-## Example Prompts for Claude.ai
-
-Once connected, try these prompts in Claude.ai:
-
-### Context-Aware Meeting Prep
-```
-I'm about to meet with Sarah Chen. What should I know?
-```
-
-### Memory Storage with Auto-Extraction
-```
-Remember that Mike promised to send the Q4 report by Friday.
-```
-
-### Predictive Day Outlook
-```
-What's my day outlook?
-```
-
-### Recall Past Conversations
-```
-What did I discuss with the engineering team last week?
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
 ## Troubleshooting
 
-### "Invalid OAuth credentials"
+### "invalid_client" at /authorize
+- Claude.ai may use an unregistered client_id (email). This is expected — PKCE proves identity.
+- Check that `code_challenge` is present in the request.
 
-Verify your `.env.remote` has correct values:
+### "invalid_client" at /token
+- Claude.ai sends BOTH `client_secret` AND `code_verifier`. Server must accept when `code_verifier` is present regardless of `client_secret`.
+- Check server logs: `POST /token` should show `has_verifier=true`.
+
+### 404 on POST /
+- The MCP URL in Claude.ai must include the `/mcp` path. Enter `https://api.memorable.chat/mcp`, not just `https://api.memorable.chat`.
+
+### CORS errors
+- `Mcp-Session-Id` and `Accept` must be in `allowedHeaders`.
+- `DELETE` must be in allowed methods (MCP session teardown).
+- `Mcp-Session-Id` must be in `exposedHeaders`.
+
+### Connection drops overnight
+- OAuth tokens expire. Claude.ai should auto-refresh, but if the session dies, re-add the connector.
+
+### Checking Server Logs
 ```bash
-echo $OAUTH_CLIENT_ID
-echo $OAUTH_CLIENT_SECRET
+# Via SSM (no SSH key needed)
+aws ssm send-command \
+  --instance-ids "i-0b7bf983feabd6c00" \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["docker logs memorable-mcp --tail 50"]'
 ```
 
-### "CORS error"
+### Runtime Log Level (nervous system)
+```bash
+# Tickle the nervous system — see everything
+curl -X POST "https://api.memorable.chat/admin/log-level" \
+  -H "Content-Type: application/json" \
+  -d '{"level":"debug"}'
 
-Ensure `ALLOWED_ORIGINS` includes Claude.ai domains:
-```env
-ALLOWED_ORIGINS=https://claude.ai,https://claude.com
+# Calm it back down
+curl -X POST "https://api.memorable.chat/admin/log-level" \
+  -H "Content-Type: application/json" \
+  -d '{"level":"info"}'
 ```
-
-### "Connection refused"
-
-1. Check server is running: `docker ps`
-2. Verify port is accessible: `curl http://localhost:8080/health`
-3. Check firewall rules allow port 443/8080
-
-### "Token expired"
-
-Tokens expire after 1 hour by default. Claude.ai should automatically refresh tokens. If issues persist:
-```env
-OAUTH_TOKEN_EXPIRY=2h
-OAUTH_REFRESH_EXPIRY=30d
-```
-
-## Security Best Practices
-
-1. **Use strong secrets**: Generate with `openssl rand -hex 32`
-2. **Enable HTTPS**: Never expose HTTP endpoints publicly
-3. **Limit CORS origins**: Only allow claude.ai domains
-4. **Monitor access logs**: Watch for suspicious patterns
-5. **Rotate credentials**: Update OAuth secrets periodically
-6. **Use Redis for tokens**: In production, configure Redis for token storage
-
-## Rate Limits
-
-MemoRable does not impose rate limits by default. For production:
-
-```env
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_WINDOW=60000
-RATE_LIMIT_MAX_REQUESTS=100
-```
-
-## Support
-
-- **GitHub Issues**: https://github.com/alanchelmickjr/memoRable/issues
-- **Documentation**: https://github.com/alanchelmickjr/memoRable/docs
