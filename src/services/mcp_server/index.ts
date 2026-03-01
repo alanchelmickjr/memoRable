@@ -7369,7 +7369,8 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
     if (response_type !== 'code') return res.status(400).json({ error: 'unsupported_response_type' });
     const dynamicClient = registeredClientsStandalone.get(client_id as string);
     const isStaticClient = client_id === CONFIG.oauth.clientId;
-    if (!dynamicClient && !isStaticClient) return res.status(400).json({ error: 'invalid_client' });
+    const isPublicPKCE = !dynamicClient && !isStaticClient && code_challenge;
+    if (!dynamicClient && !isStaticClient && !isPublicPKCE) return res.status(400).json({ error: 'invalid_client' });
     if (dynamicClient && !dynamicClient.redirectUris.includes(redirect_uri as string)) return res.status(400).json({ error: 'invalid_redirect_uri' });
     const code = randomUUID();
     const authCode: AuthorizationCode = { code, clientId: client_id as string, redirectUri: redirect_uri as string, userId: CONFIG.defaultUserId, scope: (scope as string || 'read write mcp').split(' '), expiresAt: new Date(Date.now() + 10 * 60 * 1000) };
@@ -7401,7 +7402,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    const isPublicClient = dynamicClient && !client_secret && code_verifier;
+    const isPublicClient = !client_secret && code_verifier;
     if (!isStaticClient && !isDynamicValid && !isPublicClient) {
       console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}, public=${!!isPublicClient}`);
       return res.status(401).json({ error: 'invalid_client' });
@@ -7946,12 +7947,13 @@ export async function mountMcpEndpoint(
       return res.status(400).json({ error: 'unsupported_response_type' });
     }
 
-    // Validate client — accept both statically configured and dynamically registered
+    // Validate client — accept static, dynamic, or public PKCE clients
     const dynamicClient = registeredClients.get(client_id as string);
     const isStaticClient = client_id === CONFIG.oauth.clientId;
+    const isPublicPKCE = !dynamicClient && !isStaticClient && code_challenge;
 
-    if (!dynamicClient && !isStaticClient) {
-      return res.status(400).json({ error: 'invalid_client', error_description: 'Unknown client_id. Register via /register first.' });
+    if (!dynamicClient && !isStaticClient && !isPublicPKCE) {
+      return res.status(400).json({ error: 'invalid_client' });
     }
 
     // Validate redirect_uri for dynamic clients
@@ -7995,7 +7997,7 @@ export async function mountMcpEndpoint(
     const dynamicClient = registeredClients.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    const isPublicClient = dynamicClient && !client_secret && code_verifier;
+    const isPublicClient = !client_secret && code_verifier;
 
     if (!isStaticClient && !isDynamicValid && !isPublicClient) {
       return res.status(401).json({ error: 'invalid_client' });
