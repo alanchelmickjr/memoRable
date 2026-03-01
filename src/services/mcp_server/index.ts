@@ -7261,12 +7261,13 @@ function createExpressApp() {
   // Trust nginx reverse proxy for correct protocol (https) in URLs
   app.set('trust proxy', 1);
 
-  // CORS configuration for Claude.ai
+  // CORS configuration for Claude.ai and MCP spec
   app.use(cors({
     origin: CONFIG.allowedOrigins,
     credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Mcp-Session-Id', 'Accept'],
+    exposedHeaders: ['Mcp-Session-Id'],
   }));
 
   app.use(express.json());
@@ -7331,7 +7332,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
       revocation_endpoint: `${baseUrl}/revoke`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
-      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
       code_challenge_methods_supported: ['S256'],
       scopes_supported: ['read', 'write', 'mcp'],
     });
@@ -7400,8 +7401,9 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    if (!isStaticClient && !isDynamicValid) {
-      console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}`);
+    const isPublicClient = dynamicClient && !client_secret && code_verifier;
+    if (!isStaticClient && !isDynamicValid && !isPublicClient) {
+      console.error(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}, public=${!!isPublicClient}`);
       return res.status(401).json({ error: 'invalid_client' });
     }
     if (grant_type === 'authorization_code') {
@@ -7920,7 +7922,7 @@ export async function mountMcpEndpoint(
       revocation_endpoint: `${baseUrl}/revoke`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
-      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      token_endpoint_auth_methods_supported: ['none', 'client_secret_post'],
       code_challenge_methods_supported: ['S256'],
       scopes_supported: ['read', 'write', 'mcp'],
     });
@@ -7989,12 +7991,13 @@ export async function mountMcpEndpoint(
   app.post('/token', async (req: Request, res: Response) => {
     const { grant_type, code, client_id, client_secret, refresh_token, code_verifier } = req.body;
 
-    // Validate client — accept dynamic or static
+    // Validate client — accept dynamic, static, or public (PKCE) clients
     const dynamicClient = registeredClients.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
+    const isPublicClient = dynamicClient && !client_secret && code_verifier;
 
-    if (!isStaticClient && !isDynamicValid) {
+    if (!isStaticClient && !isDynamicValid && !isPublicClient) {
       return res.status(401).json({ error: 'invalid_client' });
     }
 
