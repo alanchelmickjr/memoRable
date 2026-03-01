@@ -15,12 +15,14 @@ const logColors = {
 };
 
 // ALL levels go to stderr - stdout is reserved for MCP JSON-RPC protocol
+// eslint-disable-next-line no-console
+const stderr = console.error.bind(console);
 let logger = {
-  info: (...args) => console.error('[INFO]', ...args),
-  warn: (...args) => console.error('[WARN]', ...args),
-  error: (...args) => console.error('[ERROR]', ...args),
-  debug: (...args) => console.error('[DEBUG]', ...args),
-  stream: { write: (msg) => console.error(msg.trim()) }
+  info: (...args) => stderr('[INFO]', ...args),
+  warn: (...args) => stderr('[WARN]', ...args),
+  error: (...args) => stderr('[ERROR]', ...args),
+  debug: (...args) => stderr('[DEBUG]', ...args),
+  stream: { write: (msg) => stderr(msg.trim()) }
 };
 
 let isWinstonSetup = false;
@@ -114,7 +116,7 @@ export async function setupLogger() {
  * @param {string} level - 'error' | 'warn' | 'info' | 'debug'
  */
 export function setLogLevel(level) {
-  if (!logLevels.hasOwnProperty(level)) return false;
+  if (!Object.prototype.hasOwnProperty.call(logLevels, level)) return false;
   logger.level = level;
   if (logger.transports) {
     logger.transports.forEach(t => { t.level = level; });
@@ -132,7 +134,7 @@ export async function createLogsDirectory() {
     await mkdir('logs', { recursive: true });
   } catch (error) {
     if (error.code !== 'EEXIST') {
-      console.error('Failed to create logs directory:', error);
+      stderr('Failed to create logs directory:', error);
     }
   }
 }
