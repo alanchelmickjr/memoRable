@@ -7425,7 +7425,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
     const dynamicClient = registeredClientsStandalone.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    const isPublicClient = !client_secret && code_verifier;
+    const isPublicClient = !!code_verifier;
     if (!isStaticClient && !isDynamicValid && !isPublicClient) {
       logger.warn(`[MCP] Token rejected: client_id=${client_id ? client_id.slice(0, 8) + '...' : 'MISSING'}, dynamic=${!!dynamicClient}, static=${isStaticClient}, public=${!!isPublicClient}`);
       return res.status(401).json({ error: 'invalid_client' });
@@ -8022,7 +8022,7 @@ export async function mountMcpEndpoint(
     const dynamicClient = registeredClients.get(client_id);
     const isStaticClient = client_id === CONFIG.oauth.clientId && client_secret === CONFIG.oauth.clientSecret;
     const isDynamicValid = dynamicClient && dynamicClient.clientSecret === client_secret;
-    const isPublicClient = !client_secret && code_verifier;
+    const isPublicClient = !!code_verifier;
 
     if (!isStaticClient && !isDynamicValid && !isPublicClient) {
       return res.status(401).json({ error: 'invalid_client' });
