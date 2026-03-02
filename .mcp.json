@@ -3,6 +3,10 @@
     "memorable": {
       "type": "streamable-http",
       "url": "https://api.memorable.chat/mcp"
+    },
+    "memorable-direct": {
+      "type": "streamable-http",
+      "url": "http://52.9.62.72:8080/mcp"
     }
   }
 }
