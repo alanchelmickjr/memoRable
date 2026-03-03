@@ -152,6 +152,12 @@ function calculateRelevanceScore(features, userProfile) {
         const commitmentsMade = features.commitments.filter((c) => c.type === 'made');
         score += Math.min(30, commitmentsMade.length * 15);
     }
+    // Directive/instruction content is inherently relevant
+    score += Math.round((features.directiveStrength || 0) * 30);
+    // Instructions and startup memories are always personally relevant
+    if (features.memoryCategory === 'instruction' || features.memoryCategory === 'startup') {
+        score += 20;
+    }
     return Math.min(100, Math.round(score));
 }
 /**
@@ -198,6 +204,17 @@ function calculateConsequentialScore(features) {
     // Deadlines mentioned
     const explicitDeadlines = features.datesMentioned.filter((d) => d.type === 'deadline');
     score += Math.min(20, explicitDeadlines.length * 10);
+    // Urgency language — imperative/consequential language signals downstream effects
+    const urgencyBoost = {
+        critical: 40,
+        high: 30,
+        medium: 15,
+        low: 5,
+        none: 0,
+    };
+    score += urgencyBoost[features.urgencyLevel] || 0;
+    // Directive strength: rules/instructions have consequences when violated
+    score += Math.round((features.directiveStrength || 0) * 25);
     return Math.min(100, Math.round(score));
 }
 /**

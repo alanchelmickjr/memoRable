@@ -15,9 +15,12 @@ import {
 import type {
   ExtractedFeatures,
   CaptureContext,
-  SalienceConfig,
   UserProfile,
 } from '../../../src/services/salience_service/models';
+
+import type {
+  SalienceConfig,
+} from '../../../src/services/salience_service/salience_calculator';
 
 // Helper to create minimal extracted features
 function createMinimalFeatures(overrides: Partial<ExtractedFeatures> = {}): ExtractedFeatures {
@@ -38,6 +41,10 @@ function createMinimalFeatures(overrides: Partial<ExtractedFeatures> = {}): Extr
     questionsAsked: [],
     requestsMade: [],
     mutualAgreements: [],
+    urgencyLevel: 'none',
+    urgencyKeywords: [],
+    directiveStrength: 0,
+    memoryCategory: 'uncategorized',
     ...overrides,
   };
 }
@@ -527,6 +534,106 @@ describe('Salience Calculator', () => {
       const unusualResult = computeSalience(features, unusualContext);
 
       expect(unusualResult.components.novelty).toBeGreaterThan(normalResult.components.novelty);
+    });
+  });
+
+  describe('urgency and directive scoring', () => {
+    it('should boost consequential score for critical urgency', () => {
+      const normalFeatures = createMinimalFeatures();
+      const criticalFeatures = createMinimalFeatures({
+        urgencyLevel: 'critical',
+        urgencyKeywords: ['CRITICAL', 'non-negotiable', 'MUST'],
+      });
+      const context = createMinimalContext();
+
+      const normalResult = computeSalience(normalFeatures, context);
+      const criticalResult = computeSalience(criticalFeatures, context);
+
+      expect(criticalResult.components.consequential).toBeGreaterThan(normalResult.components.consequential);
+      // Critical urgency should add 40 points to consequential
+      expect(criticalResult.components.consequential).toBeGreaterThanOrEqual(40);
+    });
+
+    it('should boost consequential score for high urgency', () => {
+      const normalFeatures = createMinimalFeatures();
+      const highFeatures = createMinimalFeatures({
+        urgencyLevel: 'high',
+        urgencyKeywords: ['MUST', 'NEVER'],
+      });
+      const context = createMinimalContext();
+
+      const normalResult = computeSalience(normalFeatures, context);
+      const highResult = computeSalience(highFeatures, context);
+
+      expect(highResult.components.consequential).toBeGreaterThan(normalResult.components.consequential);
+      expect(highResult.components.consequential).toBeGreaterThanOrEqual(30);
+    });
+
+    it('should boost consequential score for directive strength', () => {
+      const casualFeatures = createMinimalFeatures({
+        directiveStrength: 0.0,
+      });
+      const directiveFeatures = createMinimalFeatures({
+        directiveStrength: 1.0,
+      });
+      const context = createMinimalContext();
+
+      const casualResult = computeSalience(casualFeatures, context);
+      const directiveResult = computeSalience(directiveFeatures, context);
+
+      expect(directiveResult.components.consequential).toBeGreaterThan(casualResult.components.consequential);
+    });
+
+    it('should boost relevance score for directive content', () => {
+      const casualFeatures = createMinimalFeatures({
+        directiveStrength: 0.0,
+        memoryCategory: 'uncategorized',
+      });
+      const directiveFeatures = createMinimalFeatures({
+        directiveStrength: 0.9,
+        memoryCategory: 'instruction',
+      });
+      const context = createMinimalContext();
+
+      const casualResult = computeSalience(casualFeatures, context);
+      const directiveResult = computeSalience(directiveFeatures, context);
+
+      expect(directiveResult.components.relevance).toBeGreaterThan(casualResult.components.relevance);
+    });
+
+    it('should boost relevance for startup-category memories', () => {
+      const normalFeatures = createMinimalFeatures({
+        memoryCategory: 'uncategorized',
+      });
+      const startupFeatures = createMinimalFeatures({
+        memoryCategory: 'startup',
+      });
+      const context = createMinimalContext();
+
+      const normalResult = computeSalience(normalFeatures, context);
+      const startupResult = computeSalience(startupFeatures, context);
+
+      expect(startupResult.components.relevance).toBeGreaterThan(normalResult.components.relevance);
+    });
+
+    it('should produce high overall score for critical directive startup memory', () => {
+      // Simulates: "CRITICAL: NEVER push to main. This is non-negotiable."
+      const criticalDirective = createMinimalFeatures({
+        urgencyLevel: 'critical',
+        urgencyKeywords: ['CRITICAL', 'NEVER', 'non-negotiable'],
+        directiveStrength: 1.0,
+        memoryCategory: 'startup',
+        emotionalKeywords: ['critical'],
+        sentimentIntensity: 0.6,
+      });
+      const context = createMinimalContext();
+
+      const result = computeSalience(criticalDirective, context);
+
+      // A critical, directive, startup memory should score high
+      expect(result.score).toBeGreaterThanOrEqual(30);
+      expect(result.components.consequential).toBeGreaterThanOrEqual(60);
+      expect(result.components.relevance).toBeGreaterThanOrEqual(40);
     });
   });
 });

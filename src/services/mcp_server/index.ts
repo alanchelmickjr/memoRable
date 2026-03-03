@@ -1376,6 +1376,22 @@ function createServer(): Server {
               description: 'Security classification. Tier1=external LLM OK, Tier2=local LLM only (default), Tier3=no LLM, encrypted, no vectors. Use Tier3 for sensitive data like financial info, medical records, passwords.',
               default: 'Tier2_Personal',
             },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tags for memory categorization and recall routing. Use "startup" to mark memories that should be loaded on session init.',
+            },
+            category: {
+              type: 'string',
+              enum: ['instruction', 'preference', 'fact', 'event', 'project', 'task', 'startup', 'relationship', 'strategy', 'uncategorized'],
+              description: 'Memory category. Instructions/startup memories get boosted relevance and consequential scores. Use "startup" for session-init memories, "instruction" for rules/directives.',
+            },
+            salienceBoost: {
+              type: 'number',
+              description: 'Additional salience points (0-50) added to the computed score. Startup protocols and critical instructions inherently carry extra salience because non-compliance has real consequences. This is not an override — the computed score is still the baseline; the boost reflects the human cost of forgetting.',
+              minimum: 0,
+              maximum: 50,
+            },
           },
           required: ['text'],
         },
@@ -1415,6 +1431,38 @@ function createServer(): Server {
         },
         annotations: {
           title: 'Recall Memories',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'recall_startup',
+        description:
+          'Load session-initialization memories. Returns all memories tagged as "startup" or categorized as "instruction"/"startup", sorted by salience. Call this at the beginning of every session to load protocols, rules, preferences, and critical context.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            includeInstructions: {
+              type: 'boolean',
+              description: 'Include instruction-category memories (default: true)',
+              default: true,
+            },
+            includePreferences: {
+              type: 'boolean',
+              description: 'Include preference-category memories (default: true)',
+              default: true,
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum memories to return (default: 50)',
+              default: 50,
+            },
+          },
+        },
+        annotations: {
+          title: 'Load Startup Memories',
           readOnlyHint: true,
           destructiveHint: false,
           idempotentHint: true,
@@ -2995,7 +3043,10 @@ function createServer(): Server {
             deviceType,
             deviceName,
             useLLM = true,
-            securityTier = 'Tier2_Personal'
+            securityTier = 'Tier2_Personal',
+            tags,
+            category,
+            salienceBoost,
           } = args as {
             text: string;
             context?: { location?: string; activity?: string; mood?: string; people?: string[] };
@@ -3004,6 +3055,9 @@ function createServer(): Server {
             deviceName?: string;
             useLLM?: boolean;
             securityTier?: SecurityTier;
+            tags?: string[];
+            category?: string;
+            salienceBoost?: number;
           };
 
           // FOUNDATION MODE: Route to HTTP API instead of direct DB
@@ -3091,6 +3145,30 @@ function createServer(): Server {
 
           // Store the memory document in MongoDB
           // IMPORTANT: Capture ALL factors - time, emotion, location, context, device
+          // Apply salience boost: startup protocols and critical instructions carry extra
+          // salience because non-compliance has real human consequences. The computed score
+          // is the baseline; the boost adds the cost-of-forgetting factor.
+          const computedScore = result.salience?.score ?? 0;
+          const boost = (salienceBoost !== undefined && salienceBoost >= 0 && salienceBoost <= 50)
+            ? salienceBoost
+            : 0;
+          const effectiveScore = Math.min(100, computedScore + boost);
+
+          // Merge auto-detected category with explicit category (explicit wins)
+          const validCategories = [
+            'instruction', 'preference', 'fact', 'event', 'project',
+            'task', 'startup', 'relationship', 'strategy', 'uncategorized',
+          ];
+          const effectiveCategory = (category && validCategories.includes(category))
+            ? category
+            : result.extractedFeatures?.memoryCategory || 'uncategorized';
+
+          // Auto-add "startup" tag if category is "startup"
+          const effectiveTags = [...(tags || [])];
+          if (effectiveCategory === 'startup' && !effectiveTags.includes('startup')) {
+            effectiveTags.push('startup');
+          }
+
           const memoryDoc: MemoryDocument = {
             memoryId,
             userId: CONFIG.defaultUserId,
@@ -3098,8 +3176,9 @@ function createServer(): Server {
             createdAt: now,
             updatedAt: now,
             state: 'active',
-            // Salience scoring
-            salienceScore: result.salience?.score,
+            // Salience scoring (effective = override or computed)
+            salienceScore: effectiveScore,
+            computedSalienceScore: computedScore,  // Always store what the engine computed
             salienceComponents: result.salience?.components,  // Fixed: was .factors
             weightsUsed: result.salience?.weightsUsed,
             // Feature extraction (emotion, people, topics, etc.)
@@ -3120,6 +3199,9 @@ function createServer(): Server {
             openLoopIds: result.openLoopsCreated?.map(l => l.id),
             // Timeline events
             timelineEventIds: result.timelineEventsCreated?.map(e => e.id),
+            // Categorization and recall routing
+            tags: effectiveTags.length > 0 ? effectiveTags : undefined,
+            category: effectiveCategory,
             // Security classification
             securityTier: tier,
             encrypted: isEncrypted,
@@ -3722,6 +3804,83 @@ function createServer(): Server {
               },
             ],
           };
+        }
+
+        case 'recall_startup': {
+          const {
+            includeInstructions = true,
+            includePreferences = true,
+            limit: startupLimit = 50,
+          } = args as {
+            includeInstructions?: boolean;
+            includePreferences?: boolean;
+            limit?: number;
+          };
+
+          // Build category filter: always include "startup", optionally instructions/preferences
+          const categories: string[] = ['startup'];
+          if (includeInstructions) categories.push('instruction');
+          if (includePreferences) categories.push('preference');
+
+          // Query MongoDB for startup-tagged or startup-categorized memories
+          const startupQuery: Record<string, unknown> = {
+            userId: CONFIG.defaultUserId,
+            state: 'active',
+            $or: [
+              { tags: { $in: ['startup'] } },
+              { category: { $in: categories } },
+            ],
+          };
+
+          try {
+            const memoriesCollection = collections.memories();
+            const startupMemories = await memoriesCollection
+              .find(startupQuery)
+              .sort({ salienceScore: -1, createdAt: -1 })
+              .limit(startupLimit)
+              .toArray();
+
+            // Decrypt if needed
+            const results = startupMemories.map((m: any) => {
+              let displayText = m.text;
+              if (m.encrypted && displayText) {
+                try {
+                  displayText = decryptMemoryContent(displayText);
+                } catch {
+                  displayText = '[ENCRYPTED - Decryption failed]';
+                }
+              }
+              return {
+                id: m.memoryId,
+                text: displayText,
+                category: m.category || 'uncategorized',
+                tags: m.tags || [],
+                salience: m.salienceScore,
+                createdAt: m.createdAt,
+              };
+            });
+
+            logger.info(`[MCP] recall_startup: Loaded ${results.length} startup memories (categories: ${categories.join(', ')})`);
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  startupMemories: results,
+                  count: results.length,
+                  categories,
+                  message: results.length > 0
+                    ? 'Startup memories loaded. Apply these protocols and instructions to this session.'
+                    : 'No startup memories found. Store memories with category "startup" or tag "startup" to auto-load them.',
+                }, null, 2),
+              }],
+            };
+          } catch (err) {
+            throw new McpError(
+              ErrorCode.InternalError,
+              `recall_startup failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+            );
+          }
         }
 
         case 'get_briefing': {

@@ -108,6 +108,17 @@ function parseExtractionResponse(response) {
  * Transform LLM response to our internal ExtractedFeatures format.
  */
 function transformToExtractedFeatures(response) {
+    const validUrgencyLevels = ['none', 'low', 'medium', 'high', 'critical'];
+    const urgencyLevel = validUrgencyLevels.includes(response.urgency_level)
+        ? response.urgency_level
+        : 'none';
+    const validCategories = [
+        'instruction', 'preference', 'fact', 'event', 'project',
+        'task', 'startup', 'relationship', 'strategy', 'uncategorized',
+    ];
+    const memoryCategory = validCategories.includes(response.memory_category)
+        ? response.memory_category
+        : 'uncategorized';
     return {
         emotionalKeywords: response.emotional_keywords || [],
         sentimentScore: clamp(response.sentiment_score || 0, -1, 1),
@@ -125,6 +136,10 @@ function transformToExtractedFeatures(response) {
         questionsAsked: response.questions_asked || [],
         requestsMade: (response.requests_made || []).map(transformRequest),
         mutualAgreements: (response.mutual_agreements || []).map(transformAgreement),
+        urgencyLevel,
+        urgencyKeywords: response.urgency_keywords || [],
+        directiveStrength: clamp(response.directive_strength || 0, 0, 1),
+        memoryCategory,
     };
 }
 /**
@@ -226,6 +241,10 @@ function getEmptyFeatures() {
         questionsAsked: [],
         requestsMade: [],
         mutualAgreements: [],
+        urgencyLevel: 'none',
+        urgencyKeywords: [],
+        directiveStrength: 0,
+        memoryCategory: 'uncategorized',
     };
 }
 /**
@@ -338,6 +357,62 @@ export function extractFeaturesHeuristic(text) {
             assignedTo: 'self',
         });
     }
+    // Urgency detection
+    const urgencyPatterns = [
+        { pattern: /\bcritical\b/i, keyword: 'critical', weight: 4 },
+        { pattern: /\bnon-?negotiable\b/i, keyword: 'non-negotiable', weight: 4 },
+        { pattern: /\bMUST\b/, keyword: 'MUST', weight: 3 },
+        { pattern: /\bNEVER\b/, keyword: 'NEVER', weight: 3 },
+        { pattern: /\bALWAYS\b/, keyword: 'ALWAYS', weight: 3 },
+        { pattern: /\burgent\b/i, keyword: 'urgent', weight: 3 },
+        { pattern: /\bimmediately\b/i, keyword: 'immediately', weight: 3 },
+        { pattern: /\bessential\b/i, keyword: 'essential', weight: 2 },
+        { pattern: /\bmandatory\b/i, keyword: 'mandatory', weight: 2 },
+        { pattern: /\brequired\b/i, keyword: 'required', weight: 2 },
+        { pattern: /\btop priority\b/i, keyword: 'top priority', weight: 3 },
+        { pattern: /\bdo not\b/i, keyword: 'do not', weight: 1 },
+        { pattern: /\bmust never\b/i, keyword: 'must never', weight: 4 },
+        { pattern: /\bimportant\b/i, keyword: 'important', weight: 1 },
+    ];
+    let urgencyScore = 0;
+    for (const { pattern, keyword, weight } of urgencyPatterns) {
+        if (pattern.test(text)) {
+            features.urgencyKeywords.push(keyword);
+            urgencyScore += weight;
+        }
+    }
+    if (urgencyScore >= 8) features.urgencyLevel = 'critical';
+    else if (urgencyScore >= 5) features.urgencyLevel = 'high';
+    else if (urgencyScore >= 3) features.urgencyLevel = 'medium';
+    else if (urgencyScore >= 1) features.urgencyLevel = 'low';
+    else features.urgencyLevel = 'none';
+    // Directive strength detection
+    const directivePatterns = [
+        /\balways\b/i, /\bnever\b/i, /\bmust\b/i, /\bshall\b/i,
+        /\bdo not\b/i, /\bdon'?t\b/i, /\brule\b/i, /\brequire/i,
+        /\bfollow\b/i, /\bobey\b/i, /\bmandat/i, /\bensure\b/i,
+    ];
+    let directiveCount = 0;
+    for (const pattern of directivePatterns) {
+        if (pattern.test(text)) directiveCount++;
+    }
+    features.directiveStrength = Math.min(1.0, directiveCount * 0.15);
+    // Memory category detection (heuristic)
+    if (/\brule\b|always|never|must|instruction|protocol|procedure/i.test(lowerText)) {
+        features.memoryCategory = 'instruction';
+    } else if (/\bprefer|like|dislike|favorite|hate\b/i.test(lowerText)) {
+        features.memoryCategory = 'preference';
+    } else if (/\bproject\b|sprint|milestone|release|deploy/i.test(lowerText)) {
+        features.memoryCategory = 'project';
+    } else if (/\btask\b|todo|action item|assigned|due/i.test(lowerText)) {
+        features.memoryCategory = 'task';
+    } else if (/\bstrategy\b|plan|goal|objective|vision/i.test(lowerText)) {
+        features.memoryCategory = 'strategy';
+    } else if (/\bstartup\b|session.?init|boot|first.?thing|load.?on.?start/i.test(lowerText)) {
+        features.memoryCategory = 'startup';
+    } else {
+        features.memoryCategory = 'uncategorized';
+    }
     return features;
 }
 /**
@@ -372,6 +447,10 @@ export function createMockLLMClient(responses) {
                 questions_asked: [],
                 requests_made: [],
                 mutual_agreements: [],
+                urgency_level: features.urgencyLevel,
+                urgency_keywords: features.urgencyKeywords,
+                directive_strength: features.directiveStrength,
+                memory_category: features.memoryCategory,
             });
         },
     };

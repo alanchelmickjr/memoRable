@@ -421,6 +421,88 @@ describe('Feature Extractor', () => {
     });
   });
 
+  describe('urgency and directive detection (heuristic)', () => {
+    it('should detect critical urgency from emphatic language', () => {
+      const text = 'CRITICAL: NEVER push to main. This is non-negotiable. You MUST follow this.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.urgencyLevel).toBe('critical');
+      expect(features.urgencyKeywords).toContain('critical');
+      expect(features.urgencyKeywords).toContain('NEVER');
+      expect(features.urgencyKeywords).toContain('non-negotiable');
+      expect(features.urgencyKeywords).toContain('MUST');
+    });
+
+    it('should detect high/critical urgency from strong imperative language', () => {
+      const text = 'This is urgent - you MUST address this immediately.';
+      const features = extractFeaturesHeuristic(text);
+
+      // urgent(3) + MUST(3) + immediately(3) = 9 → critical
+      expect(['high', 'critical']).toContain(features.urgencyLevel);
+      expect(features.urgencyKeywords).toContain('urgent');
+      expect(features.urgencyKeywords).toContain('MUST');
+      expect(features.urgencyKeywords).toContain('immediately');
+    });
+
+    it('should detect medium urgency from moderate language', () => {
+      const text = 'This is required for the project to work.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(['medium', 'low']).toContain(features.urgencyLevel);
+      expect(features.urgencyKeywords).toContain('required');
+    });
+
+    it('should detect no urgency for casual text', () => {
+      const text = 'The weather is nice today. Maybe we should go for a walk.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.urgencyLevel).toBe('none');
+      expect(features.urgencyKeywords).toHaveLength(0);
+    });
+
+    it('should compute directive strength for rule-like text', () => {
+      const text = 'You must ALWAYS follow this rule. NEVER skip this step. Ensure compliance is mandatory.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.directiveStrength).toBeGreaterThan(0.3);
+    });
+
+    it('should compute low directive strength for informational text', () => {
+      const text = 'The project uses React and TypeScript. We have 15 contributors.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.directiveStrength).toBeLessThanOrEqual(0.15);
+    });
+
+    it('should detect instruction category for directive text', () => {
+      const text = 'Rule: Always validate input. Never trust user data without sanitization.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.memoryCategory).toBe('instruction');
+    });
+
+    it('should detect preference category for preference text', () => {
+      const text = 'I prefer dark mode. I dislike loud notifications.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.memoryCategory).toBe('preference');
+    });
+
+    it('should detect project category for project text', () => {
+      const text = 'The memoRable project milestone is to deploy by Q2.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.memoryCategory).toBe('project');
+    });
+
+    it('should detect startup category for session-init text', () => {
+      const text = 'Load on start: first thing every session, authenticate and load context.';
+      const features = extractFeaturesHeuristic(text);
+
+      expect(features.memoryCategory).toBe('startup');
+    });
+  });
+
   describe('text sanitization', () => {
     it('should handle very long text', async () => {
       const mockClient = createMockLLMClient();
