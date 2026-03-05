@@ -257,6 +257,15 @@ function calculateRelevanceScore(
     score += Math.min(30, commitmentsMade.length * 15);
   }
 
+  // Directive/instruction content is inherently relevant — it's telling you what to do
+  // High directive strength = high personal relevance regardless of profile
+  score += Math.round(features.directiveStrength * 30);
+
+  // Instructions and startup memories are always personally relevant
+  if (features.memoryCategory === 'instruction' || features.memoryCategory === 'startup') {
+    score += 20;
+  }
+
   return Math.min(100, Math.round(score));
 }
 
@@ -295,6 +304,8 @@ function calculateSocialScore(features: ExtractedFeatures): number {
 /**
  * Consequentiality (0-100)
  * Things with downstream effects matter more than isolated events.
+ * Now includes urgency language detection — "CRITICAL", "MUST", "NEVER"
+ * signal real-world consequences even without explicit action items.
  */
 function calculateConsequentialScore(features: ExtractedFeatures): number {
   let score = 0;
@@ -316,6 +327,21 @@ function calculateConsequentialScore(features: ExtractedFeatures): number {
   // Deadlines mentioned
   const explicitDeadlines = features.datesMentioned.filter((d) => d.type === 'deadline');
   score += Math.min(20, explicitDeadlines.length * 10);
+
+  // Urgency language — imperative/consequential language signals downstream effects
+  // "CRITICAL", "non-negotiable", "MUST", "NEVER" = things that matter
+  const urgencyBoost: Record<string, number> = {
+    critical: 40,
+    high: 30,
+    medium: 15,
+    low: 5,
+    none: 0,
+  };
+  score += urgencyBoost[features.urgencyLevel] || 0;
+
+  // Directive strength: rules/instructions have consequences when violated
+  // 0.0-1.0 mapped to 0-25 points
+  score += Math.round(features.directiveStrength * 25);
 
   return Math.min(100, Math.round(score));
 }

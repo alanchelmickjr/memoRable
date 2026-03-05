@@ -156,7 +156,28 @@ export interface ExtractedFeatures {
   questionsAsked: string[];
   requestsMade: ExtractedRequest[];
   mutualAgreements: ExtractedMutualAgreement[];
+
+  // Urgency and directive signals (for consequential + relevance scoring)
+  urgencyLevel: 'none' | 'low' | 'medium' | 'high' | 'critical';
+  urgencyKeywords: string[];
+  directiveStrength: number;  // 0.0 (informational) to 1.0 (absolute command)
+  memoryCategory: MemoryCategory;
 }
+
+/**
+ * Memory category for routing, filtering, and startup recall.
+ */
+export type MemoryCategory =
+  | 'instruction'     // Rules, directives, behavioral guidance
+  | 'preference'      // User preferences and likes/dislikes
+  | 'fact'            // Factual information about entities
+  | 'event'           // Something that happened
+  | 'project'         // Project-level context
+  | 'task'            // Action items, todos
+  | 'startup'         // Must-load on session init
+  | 'relationship'    // Info about people/connections
+  | 'strategy'        // Plans, goals, business direction
+  | 'uncategorized';  // Default
 
 export type RelationshipEventType =
   | 'death'
@@ -572,6 +593,9 @@ export interface MemoryDocument {
   lastRetrievedAt?: string;
   hasOpenLoops?: boolean;
   earliestDueDate?: string;
+  // Categorization and recall routing
+  tags?: string[];
+  category?: MemoryCategory;
   // Security tier classification
   securityTier?: SecurityTier;
   // Encryption metadata (for Tier2/3)
@@ -631,6 +655,10 @@ export interface LLMExtractionResponse {
     timeframe: string | null;
     specificity: 'specific' | 'vague' | 'none';
   }[];
+  urgency_level: 'none' | 'low' | 'medium' | 'high' | 'critical';
+  urgency_keywords: string[];
+  directive_strength: number;
+  memory_category: string;
 }
 
 /**
