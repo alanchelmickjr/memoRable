@@ -68,6 +68,18 @@ function getContinuity(entity) {
   return result || {};
 }
 
+function getPainMemories() {
+  // Recall pain memories — the hot stove warnings
+  const result = mcpCall('recall', {
+    query: 'pain_memory frustration recurring pattern',
+    limit: 5,
+    minSalience: 50,
+  });
+  if (Array.isArray(result)) return result;
+  if (result?.memories) return result.memories;
+  return [];
+}
+
 // ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
@@ -338,6 +350,30 @@ async function main() {
   const lessons = buildLessonsSection();
   if (lessons) {
     parts.push(lessons);
+  }
+
+  // ── PAIN MEMORIES: The hot stove ─────────────────────────────
+  // Load frustration patterns from lessons.json AND from MCP
+  // "Documents don't fix models. Enforcement does."
+  if (mcpConnected) {
+    try {
+      const painMemories = getPainMemories();
+      const painItems = painMemories
+        .filter(m => {
+          const text = (m.text || m.content || '').toLowerCase();
+          return text.includes('pain memory') || text.includes('frustration');
+        })
+        .slice(0, 3);
+
+      if (painItems.length > 0) {
+        parts.push('## Pain Memories (DO NOT REPEAT THESE BEHAVIORS)');
+        for (const pain of painItems) {
+          const text = (pain.text || pain.content || '').substring(0, 200);
+          parts.push(`- ${text}`);
+        }
+        parts.push('');
+      }
+    } catch {}
   }
 
   // Git context

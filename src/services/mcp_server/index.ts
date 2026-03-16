@@ -3903,11 +3903,53 @@ function createServer(): Server {
             logger.warn('[MCP] TierManager access tracking failed (non-fatal):', tierError);
           }
 
+          // ── PAIN MEMORY CHECK ──────────────────────────────────
+          // If any recalled memory is tagged as a pain memory,
+          // or if the query matches a known pain signature,
+          // surface the warning alongside results.
+          // "The hot stove doesn't write docs. It burns you."
+          let painWarnings: string[] = [];
+          try {
+            const painMems = await collections.memories().find({
+              userId: CONFIG.defaultUserId,
+              tags: 'pain_memory',
+              state: { $ne: 'deleted' },
+            }).sort({ salienceScore: -1 }).limit(10).toArray();
+
+            if (painMems.length > 0) {
+              const queryLower = query.toLowerCase();
+              for (const pain of painMems) {
+                const painTags = ((pain as any).tags || []) as string[];
+                const painText = ((pain as any).text || '').toLowerCase();
+                // Match if query overlaps with pain signature tags or text
+                const tagMatch = painTags.some(t =>
+                  t !== 'pain_memory' && t !== 'frustration' && queryLower.includes(t)
+                );
+                const textMatch = queryLower.split(/\s+/).some(word =>
+                  word.length > 3 && painText.includes(word)
+                );
+                if (tagMatch || textMatch) {
+                  painWarnings.push((pain as any).text?.substring(0, 200) || '');
+                }
+              }
+            }
+          } catch (painError) {
+            logger.warn('[MCP] Pain memory check failed (non-fatal):', painError);
+          }
+
+          const recallResult: any = {
+            memories: decrypted,
+          };
+          if (painWarnings.length > 0) {
+            recallResult.painWarnings = painWarnings.slice(0, 3);
+            recallResult.note = 'Pain memories matched this query. These represent past frustrations — do not repeat the behaviors that caused them.';
+          }
+
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(decrypted, null, 2),
+                text: JSON.stringify(recallResult, null, 2),
               },
             ],
           };
