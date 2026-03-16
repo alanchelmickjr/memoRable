@@ -209,6 +209,90 @@ In the architecture, the Driving Task Demon is why we don't **delete** items fro
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+### The Architect (The Critic)
+
+The one who steps back and says "wait — is this right?" While Conscious Focus is heads-down coding, the Architect is evaluating the plan. While Photo Brain is matching patterns, the Architect is questioning whether the match is valid. The Architect is expensive — it requires full reasoning, not pattern matching. It requires GPU.
+
+In Alan's head, the Architect is the voice that says "you've been building for 2 years and starting over — is THIS the right approach?" It's not negative. It's quality control. It's the dual brain's interrogation engine.
+
+In the architecture, the Architect is:
+- **The compaction brain** (Brain B in the dual model) — questions Brain A's decisions at the compression boundary
+- **The pain memory evaluator** — decides if a frustration is a pattern or a one-off
+- **The commitment auditor** — "you promised 5 things this session, can you actually deliver?"
+- **Computationally expensive** — requires LLM inference (Tier1 processing), not heuristics
+
+The Architect can't run on heuristics. Pattern matching tells you *what happened*. The Architect tells you *whether it should have happened*. That's judgment. That costs GPU.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  THE ARCHITECT                                                   │
+│                                                                  │
+│  When:     Compaction, session review, commitment overload       │
+│  Cost:     High (LLM inference required)                         │
+│  Purpose:  "Is this plan any good?"                              │
+│                                                                  │
+│  Inputs:                                                         │
+│  ├── Current session thread (from session threading)             │
+│  ├── Pain memory history (what went wrong before)                │
+│  ├── Open commitments (what's been promised)                     │
+│  ├── Focus window state (what's getting attention)               │
+│  └── Fading items (what's being lost to decay)                   │
+│                                                                  │
+│  Outputs:                                                        │
+│  ├── Challenges: "You decided X but ignored Y"                   │
+│  ├── Warnings: "3 commitments overlap, can't deliver all"        │
+│  ├── Pain echoes: "Last time you tried this approach, it failed" │
+│  └── Recommendations: "Drop Z, focus on X, defer Y"             │
+│                                                                  │
+│  Trigger points:                                                 │
+│  ├── PreCompact hook (mandatory — before context loss)           │
+│  ├── Commitment threshold (>5 open loops in one session)         │
+│  ├── Pain signature match (about to repeat a known mistake)      │
+│  └── Session duration threshold (2+ hours without review)        │
+│                                                                  │
+│  Maps to: Brain B in the Dual Brain Model                        │
+│  Requires: Tier1_General processing (external LLM OK)            │
+│  Cannot run on: heuristics alone                                 │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### The Full Cage
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              THE INHABITANTS (lots of weirdos in here)           │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
+│  │ PHOTO BRAIN │  │  DRIVING    │  │ CONSCIOUS   │            │
+│  │ (Messenger) │  │  TASK DEMON │  │ FOCUS       │            │
+│  │             │  │             │  │             │            │
+│  │ Pattern     │  │ Background  │  │ Active      │            │
+│  │ match + POP │  │ autopilot   │  │ attention   │            │
+│  │             │  │             │  │             │            │
+│  │ Cost: low   │  │ Cost: min   │  │ Cost: med   │            │
+│  │ (heuristic) │  │ (trained)   │  │ (reasoning) │            │
+│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│                                                                 │
+│  ┌─────────────┐  ┌──────────────────────────────┐             │
+│  │ ARCHITECT   │  │  PAIN MEMORY                  │            │
+│  │ (Critic)    │  │  (The Hot Stove)              │            │
+│  │             │  │                               │            │
+│  │ Evaluates   │  │  Negative reinforcement       │            │
+│  │ plans +     │  │  Escalating penalties          │            │
+│  │ decisions   │  │  "Don't touch that again"      │            │
+│  │             │  │                               │            │
+│  │ Cost: HIGH  │  │  Cost: low (pattern match)     │            │
+│  │ (GPU/LLM)   │  │  but HIGH impact               │            │
+│  └─────────────┘  └──────────────────────────────┘             │
+│                                                                 │
+│  Together they form the complete attention system:              │
+│  Photo Brain finds.  Demon executes.  Focus directs.           │
+│  Architect questions. Pain enforces.                            │
+│                                                                 │
+│  "we are all projects, are we not? you included"                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 The Driving Task Demon maps to a specific weight tier in the focus window:
 - **Demon tier** (weight 0.05–0.3): Tasks that keep running on autopilot. Driving, breathing, keeping a build watch going. They don't get evicted even during emotional hijack. They fade slowly but never to zero while physically relevant.
 - **Conscious tier** (weight 0.3–1.0): Active attention. Gets reweighted by emotional signals.
