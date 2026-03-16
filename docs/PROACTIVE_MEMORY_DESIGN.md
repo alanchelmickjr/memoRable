@@ -104,7 +104,7 @@ Alan describes photographic recall as pressure that builds:
 5. **Threshold** — POP — full recall with emotional payload
 6. **Involuntary** — you didn't ask for it
 
-This is NOT what we build first. This is where we go. The stalker, not the librarian. For now, the greeting + co-occurrence gives us the foundation. The pressure model needs:
+This is NOT what we build first. This is where we go. The messenger, not the librarian. For now, the greeting + co-occurrence gives us the foundation. The pressure model needs:
 
 - Background pattern matching on every incoming message
 - Accumulating match scores that persist across turns
@@ -171,8 +171,8 @@ This is the founding principle. Total recall is a curse. The superpower is choos
 
 Alan's eidetic memory isn't one thing. It's several residents sharing the same skull, each with a job:
 
-### Photo Brain (The Stalker)
-The one that pattern-matches involuntarily. Sees a face, feels the itch, pressure builds, POP — full recall with emotional payload. This is the pressure model. Photo Brain doesn't ask permission. It surfaces what it surfaces. The system models this with the pressure accumulator and involuntary surfacing threshold.
+### Photo Brain (The Messenger)
+The one that pattern-matches involuntarily. Sees a face, feels the itch, pressure builds, POP — full recall with emotional payload. This is the pressure model. Photo Brain is a messenger — not always delivering what you *want* to hear, but always delivering what you *need* to hear. It doesn't ask permission. It surfaces what it surfaces. The system models this with the pressure accumulator and involuntary surfacing threshold.
 
 ### The Driving Task Demon
 The autonomous background executor. When "mom died" hits and Photo Brain hijacks the attention field, the Driving Task Demon is the one keeping the car between the lines. She doesn't need conscious cycles. She runs on muscle memory, trained patterns, low-level loops. She is *critical*.
@@ -557,9 +557,132 @@ When "call mom Tuesday" becomes overdue:
 
 Commitments don't just track tasks. They're the mechanism by which the Driving Task Demon decides what to keep alive and what to let fade. No commitment = fade freely. Active commitment = weight floor. Overdue commitment = pressure builds toward conscious attention.
 
+## Automatic Memory: Nobody Should Have to Think About It
+
+> "How many times did you use memorable?" — Alan, catching Claude red-handed
+>
+> "Zero." — Claude, proving the problem
+
+The system reads memories at session start. The system never *writes* memories during the session. Every insight, every decision, every commitment — evaporates unless someone manually calls `store_memory`. That's the librarian. You have to walk up and say "please file this."
+
+A friend just remembers. Without being asked. Without thinking about it.
+
+### The Gap
+
+```
+CURRENT HOOK PIPELINE:
+
+SessionStart        → READS memories (get_continuity, recall, list_loops)
+UserPromptSubmit    → FILTERS tics, DETECTS frustration
+                      STORES frustration to local file (lessons.json)
+                      DOES NOT store to MemoRable ❌
+PreCompact          → SNAPSHOTS to REST API via curl
+                      BLOCKED by proxy ❌ (uses curl, not MCP transport)
+
+WHAT'S MISSING:
+
+UserPromptSubmit    → Should AUTO-STORE important content to MemoRable
+                      via MCP transport (same as session-start uses)
+PreCompact          → Should use MCP transport (mcpCall), not raw curl
+PostMessage         → Should detect commitments and decisions in Claude's
+                      responses and auto-store them
+```
+
+### The Fix: Auto-Store Pipeline
+
+The `UserPromptSubmit` hook already sees every message Alan sends. It already does pattern matching (frustration detection). It should also:
+
+1. **Detect storeable content** — commitments, decisions, instructions, emotional signals, names
+2. **Auto-call `store_memory`** via MCP transport — same transport the session-start hook uses
+3. **Tag appropriately** — category (instruction, preference, commitment), security tier, session context
+4. **Never block** — async store, don't delay the user's message
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              AUTO-STORE PIPELINE (UserPromptSubmit)              │
+│                                                                 │
+│  Alan's message arrives                                         │
+│         │                                                       │
+│         ├──▶ Love filter (tic sanitization)  [existing]         │
+│         ├──▶ Frustration detector            [existing]         │
+│         │                                                       │
+│         ├──▶ AUTO-STORE GATE (new)                              │
+│         │    │                                                  │
+│         │    ├── Contains commitment?    → store_memory          │
+│         │    │   "I'll", "I need to",     (category: task)      │
+│         │    │   "don't forget"                                 │
+│         │    │                                                  │
+│         │    ├── Contains decision?      → store_memory          │
+│         │    │   "decided", "going with",  (category: project)  │
+│         │    │   "the approach is"                              │
+│         │    │                                                  │
+│         │    ├── Contains instruction?   → store_memory          │
+│         │    │   "always", "never",       (category: instruction)│
+│         │    │   "rule", "must"                                 │
+│         │    │                                                  │
+│         │    ├── Contains preference?    → store_memory          │
+│         │    │   "I like", "I hate",      (category: preference)│
+│         │    │   "prefer", "favorite"                           │
+│         │    │                                                  │
+│         │    ├── Contains insight?       → store_memory          │
+│         │    │   Alan's design patterns,  (verbatim, high       │
+│         │    │   philosophical statements  salience)            │
+│         │    │                                                  │
+│         │    ├── High emotional signal?  → store_memory          │
+│         │    │   3+ tics, frustration,    (category: event,     │
+│         │    │   excitement, anger         salienceBoost: 20)   │
+│         │    │                                                  │
+│         │    └── Too short / generic?    → SKIP                 │
+│         │        "ok", "yes", "lol"       (not everything is    │
+│         │                                  worth remembering)   │
+│         │                                                       │
+│         └──▶ Continue (pass to Claude)                          │
+│                                                                 │
+│  CRITICAL: Auto-store is ASYNC and NON-BLOCKING.                │
+│  The user's message goes through immediately.                   │
+│  The store happens in the background.                           │
+│  "The most important part of memory is knowing what to forget." │
+│  The gate decides what's worth storing. Not everything is.      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### PreCompact Fix
+
+The `pre-compact-snapshot.cjs` uses raw `curl` to the REST API, which is blocked by the egress proxy. Fix: use the same MCP transport (`mcp-transport.cjs`) that the session-start hook uses successfully.
+
+```javascript
+// BEFORE (broken — curl blocked by proxy):
+curl('POST', `${BASE_URL}/memory`, apiKey, snapshot);
+
+// AFTER (works — same transport as session-start):
+const { mcpInit, mcpCall } = require('./mcp-transport.cjs');
+mcpInit();
+mcpCall('store_memory', {
+  text: snapshotText,
+  category: 'startup',
+  tags: ['compaction_snapshot'],
+  salienceBoost: 15,
+});
+```
+
+### PostMessage Hook (Future)
+
+A `PostMessage` or `AssistantResponse` hook that intercepts Claude's own responses and stores:
+- Decisions Claude made ("I'll use Ollama for embeddings")
+- Code changes ("modified 4 files, added session threading")
+- Commitments Claude makes ("I'll wire that next")
+
+This creates a complete memory trail — not just what Alan said, but what Claude decided and did.
+
+### The Principle
+
+Nobody should have to think about remembering. The system that requires `store_memory` to be called manually is a system that will never be used. Alan proved it: zero calls in a full session of architectural design. Not because he doesn't care — because the friction is invisible until you notice the silence.
+
+The auto-store pipeline makes memory automatic. The gate makes it selective. The First Law applies: know what to forget. But the default should be *remember*, with the gate deciding what to skip — not the other way around.
+
 ## What We Don't Build Yet
 
-- **Full pressure accumulator** — the stalker model. Needs the focus window foundation first.
+- **Full pressure accumulator** — the messenger model. Needs the focus window foundation first.
 - **Cross-session threading** — linking sessions that work on the same topic across days. Comes after single-session threading works.
 - **Emotional replay** — surfacing the emotional state from the original memory. Needs Hume.ai pipeline operational.
 - **Multi-device gossip** — "your phone session stored this, your laptop should know." Needs cross-device event bus.
