@@ -452,6 +452,111 @@ The Redis focus window feeds both brains:
 4. Post-compaction, the new context starts with Brain B's interrogation
 5. Session threading ensures the cross-compaction memories stay linked
 
+## The Commitment Pipeline: Loops Run the World
+
+> "The most important part of memory is knowing what to forget." — Alan Helmick
+>
+> But commitments? Those you NEVER forget.
+
+The open loop tracker / commitment tracker IS the heart of MemoRable. It's what everyone asks for. It's what makes the Driving Task Demon useful — she executes, but the loops tell her *what* to execute. Without commitments, the demon is just idling. With commitments, she's your project manager.
+
+### The Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  COMMITMENT PIPELINE — END TO END               │
+│                                                                 │
+│  "I'll send you that paper by Tuesday"                          │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌──────────────┐                                               │
+│  │ store_memory  │──▶ Feature Extraction (LLM or Heuristic)     │
+│  └──────────────┘         │                                     │
+│                           ▼                                     │
+│                    ┌──────────────┐                              │
+│                    │ Commitment   │ type: made                   │
+│                    │ Detected     │ from: self                   │
+│                    │              │ to: recipient                │
+│                    │              │ what: "send paper"           │
+│                    │              │ byWhen: "Tuesday"            │
+│                    └──────┬───────┘                              │
+│                           │                                     │
+│                           ▼                                     │
+│                    ┌──────────────┐                              │
+│                    │ Open Loop    │ Creates tracked loop         │
+│                    │ Tracker      │ with urgency, escalation,    │
+│                    │              │ reminder dates                │
+│                    └──────┬───────┘                              │
+│                           │                                     │
+│           ┌───────────────┼───────────────┐                     │
+│           ▼               ▼               ▼                     │
+│    ┌────────────┐  ┌────────────┐  ┌────────────┐              │
+│    │  Session    │  │  Recall    │  │  Whats     │              │
+│    │  Start     │  │  Boost     │  │  Relevant  │              │
+│    │            │  │            │  │            │              │
+│    │ Greeting   │  │ Loop-linked│  │ Shows      │              │
+│    │ references │  │ memories   │  │ commitments│              │
+│    │ open loops │  │ rank 25%   │  │ in context │              │
+│    │ first      │  │ higher     │  │ + overdue  │              │
+│    └────────────┘  └────────────┘  └────────────┘              │
+│           │               │               │                     │
+│           └───────────────┼───────────────┘                     │
+│                           ▼                                     │
+│                    ┌──────────────┐                              │
+│                    │ Prediction   │ When you talk to the         │
+│                    │ Hook         │ other party, the loop        │
+│                    │              │ resurfaces automatically     │
+│                    └──────────────┘                              │
+│                                                                 │
+│  Loop Types:                                                    │
+│  ├── commitment_made      "I'll send you that paper"            │
+│  ├── commitment_received  "She said she'd email me"             │
+│  ├── information_waiting  "Asked Bob for the report"            │
+│  ├── mutual_agreement     "We agreed to use Ollama"             │
+│  └── question_pending     "What's the deploy timeline?"         │
+│                                                                 │
+│  Urgency Tiers:                                                 │
+│  ├── urgent   ≤1 day   (escalation: 1 day)                     │
+│  ├── high     ≤3 days  (escalation: 3 days)                    │
+│  ├── normal   ≤7 days  (escalation: 7 days)                    │
+│  └── low      >7 days  (escalation: 14 days)                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### What Changed: All Three Arteries Connected
+
+**Before:** The commitment tracker existed but was isolated:
+- `recall` tool didn't know about loops — promises didn't surface when you searched
+- `whats_relevant` didn't show commitments — the "what matters now" tool forgot what you owed people
+- Heuristic mode (Tier2/Tier3) never created loops — "I'll call mom Tuesday" vanished because it was personal
+
+**After:** Commitments are wired into everything:
+
+1. **`recall` → Commitment Boost**: Memories linked to open loops get 25% retrieval score boost. When you search, your promises surface first. The Driving Task Demon keeps them visible.
+
+2. **`whats_relevant` → Commitment Summary**: Shows all commitments relevant to current context (people present), with overdue count. The tool that answers "what matters?" now actually tells you what matters.
+
+3. **Heuristic Loop Extraction**: Tier2_Personal and Tier3_Vault memories now get commitment tracking via pattern matching. "I'll call mom Tuesday" creates a real loop even without LLM processing. Personal promises are the MOST important loops.
+
+### The Driving Task Demon + Commitments
+
+The Demon keeps tasks alive in the focus window with minimal cycles. Commitments are the Demon's leash — they define *what* stays alive:
+
+```
+Focus Window (Redis):
+  [deploying to EC2]      w=0.8  conscious (active work)
+  [call mom Tuesday]      w=0.15 demon tier (commitment keeps it alive)
+  [send paper to Bob]     w=0.10 demon tier (overdue → weight rises)
+  [meeting notes]         w=0.05 fading (no commitment, will evict)
+
+When "call mom Tuesday" becomes overdue:
+  w increases from 0.15 → 0.4 (pressure builds)
+  The itch. The Demon nudges it toward conscious tier.
+  Eventually: POP → "Hey, you said you'd call mom. It's Wednesday."
+```
+
+Commitments don't just track tasks. They're the mechanism by which the Driving Task Demon decides what to keep alive and what to let fade. No commitment = fade freely. Active commitment = weight floor. Overdue commitment = pressure builds toward conscious attention.
+
 ## What We Don't Build Yet
 
 - **Full pressure accumulator** — the stalker model. Needs the focus window foundation first.

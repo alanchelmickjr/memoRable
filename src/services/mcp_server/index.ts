@@ -3686,6 +3686,42 @@ function createServer(): Server {
               )
             : memories;
 
+          // ── COMMITMENT BOOST ──────────────────────────────────────────
+          // Memories linked to open loops get a retrieval score boost.
+          // Commitments run the world — they should surface first.
+          // The driving task demon is kept at bay by their presence.
+          try {
+            const activeLoops = await getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true });
+            if (activeLoops.length > 0) {
+              const loopMemoryIds = new Set<string>();
+              for (const loop of activeLoops) {
+                if ((loop as any).memoryId) loopMemoryIds.add((loop as any).memoryId);
+                if ((loop as any).sourceMemoryId) loopMemoryIds.add((loop as any).sourceMemoryId);
+              }
+
+              // Boost memories that are linked to open loops
+              for (const m of filtered) {
+                const mem = m as ScoredMemory & { hasOpenLoops?: boolean; openLoopIds?: string[] };
+                if (mem.hasOpenLoops || loopMemoryIds.has(mem.memoryId)) {
+                  // Commitment-linked memories get 25% retrieval boost
+                  if (mem.retrievalScore !== undefined) {
+                    mem.retrievalScore = Math.min(1, mem.retrievalScore * 1.25);
+                  }
+                  if (mem.salienceScore !== undefined) {
+                    mem.salienceScore = Math.min(100, mem.salienceScore * 1.15);
+                  }
+                }
+              }
+
+              // Re-sort by boosted scores
+              filtered.sort((a: ScoredMemory, b: ScoredMemory) =>
+                (b.retrievalScore || 0) - (a.retrievalScore || 0)
+              );
+            }
+          } catch (loopBoostError) {
+            logger.warn('[MCP] Loop boost failed (non-fatal):', loopBoostError);
+          }
+
           // CONTEXT GATE: Filter by current context relevance
           // The right memory at the wrong time is the wrong memory
           try {
@@ -4255,6 +4291,33 @@ function createServer(): Server {
             };
           }
 
+          // ── COMMITMENTS: The heart of memorable ──────────────────
+          // Loops run the world. whats_relevant MUST show them.
+          let commitments: Array<{ description: string; owner: string; otherParty?: string; dueDate?: string; isOverdue?: boolean }> = [];
+          try {
+            const currentPeople = frame.people.map(p => p.value);
+            const loops = await getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true });
+            // Filter to loops relevant to current context (people present, or all if no people)
+            commitments = loops
+              .filter(l => {
+                if (currentPeople.length === 0) return true;
+                const party = ((l as any).otherParty || '').toLowerCase();
+                const contact = ((l as any).contactName || '').toLowerCase();
+                return currentPeople.some(p => party.includes(p.toLowerCase()) || contact.includes(p.toLowerCase())) ||
+                  (l as any).isOverdue; // always show overdue
+              })
+              .slice(0, 10)
+              .map(l => ({
+                description: (l as any).description || (l as any).content || '',
+                owner: (l as any).owner || 'unknown',
+                otherParty: (l as any).otherParty,
+                dueDate: (l as any).dueDate,
+                isOverdue: (l as any).isOverdue,
+              }));
+          } catch (loopError) {
+            logger.warn('[MCP] whats_relevant loop fetch failed (non-fatal):', loopError);
+          }
+
           return {
             content: [
               {
@@ -4268,6 +4331,9 @@ function createServer(): Server {
                     activity: frame.activity?.value,
                     timeOfDay: frame.timeOfDay,
                   },
+                  // COMMITMENTS — the task demon's leash
+                  commitments: commitments.length > 0 ? commitments : undefined,
+                  overdueCount: commitments.filter(c => c.isOverdue).length || undefined,
                   relevantMemories: memories.recentRelevant.slice(0, 5).map(m => ({
                     text: m.text,
                     matchedOn: m.matchedOn,
