@@ -63,6 +63,11 @@ function getRelevantContext() {
   return result || {};
 }
 
+function getContinuity(entity) {
+  const result = mcpCall('get_continuity', { entity, hoursBack: 72 });
+  return result || {};
+}
+
 // ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
@@ -393,11 +398,28 @@ async function main() {
       const loops = getLoops();
       const anticipated = getAnticipated(project);
 
-      // Predictive greeting (personalized)
-      const relevant = getRelevantContext();
-      const greetLocation = relevant?.location || env.location;
-      const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
-      const greeting = buildPredictiveGreeting(loops, anticipated, project, { name: greetName, location: greetLocation });
+      // PROACTIVE CONTINUITY — try get_continuity first for a friend's greeting
+      let greeting;
+      const continuity = getContinuity(identifiedEntity);
+      if (continuity?.greeting) {
+        // The friend greeting — one sentence that proves we were listening
+        greeting = continuity.greeting;
+        // Add session context if we have it
+        if (continuity.lastSession) {
+          const ls = continuity.lastSession;
+          if (ls.openLoops && ls.openLoops.length > 0) {
+            parts.push(`## Open from last session`);
+            ls.openLoops.forEach(l => parts.push(`- ${l}`));
+            parts.push('');
+          }
+        }
+      } else {
+        // Fallback to predictive greeting
+        const relevant = getRelevantContext();
+        const greetLocation = relevant?.location || env.location;
+        const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
+        greeting = buildPredictiveGreeting(loops, anticipated, project, { name: greetName, location: greetLocation });
+      }
       parts.push(`## ${greeting}`);
       parts.push('');
 

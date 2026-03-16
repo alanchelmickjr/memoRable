@@ -586,6 +586,11 @@ export interface MemoryDocument {
   eventTimestamp?: string;
   updatedAt?: string;
   state?: 'active' | 'archived' | 'suppressed' | 'deleted';
+  // SESSION THREADING — co-occurrence linking
+  // Memories within the same session are linked by birth, not by search
+  sessionId?: string;
+  sessionIndex?: number;
+  previousMemoryId?: string;
   salienceScore?: number;
   salienceComponents?: SalienceComponents;
   extractedFeatures?: ExtractedFeatures;

@@ -330,6 +330,9 @@ export interface MemoryDocument {
     eventTimestamp?: string;
     updatedAt?: string;
     state?: 'active' | 'archived' | 'suppressed' | 'deleted';
+    sessionId?: string;
+    sessionIndex?: number;
+    previousMemoryId?: string;
     salienceScore?: number;
     salienceComponents?: SalienceComponents;
     extractedFeatures?: ExtractedFeatures;
