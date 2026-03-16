@@ -13,34 +13,7 @@
  */
 
 const { execSync } = require('child_process');
-
-const BASE_URL = process.env.MEMORABLE_API_URL || process.env.API_BASE_URL || '';
-const PASSPHRASE = process.env.MEMORABLE_PASSPHRASE || 'I remember what I have learned from you.';
-const TIMEOUT = 8;
-
-function curl(method, url, apiKey, data) {
-  try {
-    let cmd = `curl -s --connect-timeout ${TIMEOUT} -X ${method} "${url}"`;
-    cmd += ` -H "Content-Type: application/json"`;
-    if (apiKey) cmd += ` -H "X-API-Key: ${apiKey}"`;
-    if (data) cmd += ` -d '${JSON.stringify(data).replace(/'/g, "'\\''")}'`;
-    return JSON.parse(execSync(cmd, { encoding: 'utf8', timeout: (TIMEOUT + 3) * 1000 }));
-  } catch { return null; }
-}
-
-function authenticate() {
-  const knock = curl('POST', `${BASE_URL}/auth/knock`, null, {
-    device: { type: 'terminal', name: 'Claude Code PreCompact' }
-  });
-  if (!knock?.challenge) return null;
-
-  const exchange = curl('POST', `${BASE_URL}/auth/exchange`, null, {
-    challenge: knock.challenge,
-    passphrase: PASSPHRASE,
-    device: { type: 'terminal', name: 'Claude Code PreCompact' }
-  });
-  return exchange?.api_key || null;
-}
+const { mcpInit, mcpCall, isConnected } = require('./mcp-transport.cjs');
 
 function detectProject() {
   try {
@@ -97,9 +70,11 @@ async function main() {
 
   try {
     const hookInput = JSON.parse(input);
-    const apiKey = authenticate();
-    if (!apiKey) {
-      console.error('[PreCompact] Auth failed');
+
+    // Use MCP transport (same as session-start) — not raw curl (blocked by proxy)
+    const mcpConnected = mcpInit();
+    if (!mcpConnected) {
+      console.error('[PreCompact] MCP not available — snapshot skipped');
       console.log(JSON.stringify({ continue: true }));
       return;
     }
@@ -108,29 +83,24 @@ async function main() {
     const transcript = hookInput.transcript_path ? readTranscript(hookInput.transcript_path) : null;
     const critical = extractCriticalContext(transcript, hookInput);
 
-    // Store snapshot to MemoRable
-    const snapshot = {
-      content: `[COMPACTION SNAPSHOT] Session ${hookInput.session_id || 'unknown'} - ${hookInput.trigger || 'auto'} compaction. Tasks: ${JSON.stringify(critical.tasks || [])}. Current: ${critical.currentTask || 'none'}. Decisions: ${JSON.stringify(critical.decisions || [])}`,
-      entities: [project, 'compaction_snapshots'],
-      metadata: {
-        type: 'compaction_snapshot',
-        trigger: hookInput.trigger,
-        session_id: hookInput.session_id,
-        critical_context: critical,
-        timestamp: critical.timestamp
-      }
-    };
+    // Store snapshot via MCP store_memory — goes through the real pipeline
+    // with salience scoring, session threading, commitment detection
+    const snapshotText = [
+      `[COMPACTION SNAPSHOT] Session ${hookInput.session_id || 'unknown'}`,
+      critical.currentTask ? `Current task: ${critical.currentTask}` : null,
+      critical.decisions?.length ? `Decisions: ${critical.decisions.join('; ')}` : null,
+      critical.tasks?.length ? `Active tasks: ${critical.tasks.join('; ')}` : null,
+      critical.instructions?.length ? `Key instructions: ${critical.instructions.slice(0, 5).join('; ')}` : null,
+    ].filter(Boolean).join('. ');
 
-    curl('POST', `${BASE_URL}/memory`, apiKey, snapshot);
-
-    // Also store to Redis context for fast recovery
-    curl('POST', `${BASE_URL}/context/snapshot`, apiKey, {
-      entity: project,
-      snapshot: critical,
-      type: 'pre_compaction'
+    mcpCall('store_memory', {
+      text: snapshotText,
+      category: 'startup',
+      tags: ['compaction_snapshot', project],
+      salienceBoost: 15,  // Compaction snapshots matter for continuity
     });
 
-    console.error(`[PreCompact] Snapshot saved for ${project}`);
+    console.error(`[PreCompact] Snapshot stored via MCP for ${project}`);
     console.log(JSON.stringify({ continue: true }));
 
   } catch (e) {

@@ -20,38 +20,48 @@ import { PreprocessingPrism, PreprocessingOutcome, PreprocessingFailure } from '
 import { MementoConstructor } from './memento_constructor'; // Removed MementoConstructionResult
 import { SchemaManager } from './schema_manager'; // Corrected import
 import { MemorySteward, StorageResult } from './memory_steward';
-// import { EmbeddingServiceClient } from './clients/embedding_service_client'; // Placeholder
-// import { Logger } from '../../utils/logger'; // Assuming a shared logger utility
+import { EmbeddingServiceClient } from './clients/embedding_service_client';
 
-// --- Placeholder Implementations for Dependencies ---
-
-// Placeholder for NarrativeWeaver
+/**
+ * NarrativeWeaver - Constructs a searchable narrative from a memento's fields.
+ * Combines processed content, entities, topics, and temporal context into
+ * a single text suitable for embedding generation.
+ */
 class NarrativeWeaver {
-  weave(memento: MemoryMemento): string | null {
-    this.logger.info(`NarrativeWeaver.weave called for memento ${memento.mementoId} (placeholder)`);
-    // Simulate narrative generation. In a real scenario, this would involve complex logic.
-    // For example, concatenate key text fields from the memento.
-    if (typeof memento.contentProcessed === 'string') {
-      return memento.contentProcessed.substring(0, 512); // Truncate for embedding
-    }
-    if (typeof memento.contentRaw === 'string') {
-      return memento.contentRaw.substring(0, 512);
-    }
-    return `Narrative for memento ${memento.mementoId}`;
-  }
   private logger = console;
-}
 
-// Placeholder for EmbeddingServiceClient
-class EmbeddingServiceClient {
-  async generateEmbedding(text: string): Promise<number[] | null> {
-    this.logger.info(`EmbeddingServiceClient.generateEmbedding called for text (first 50 chars): "${text.substring(0,50)}..." (placeholder)`);
-    // Simulate embedding generation
-    // In a real scenario, this would make an HTTP request to the Embedding Service
-    if (!text || text.trim() === "") return null;
-    return Array.from({ length: 768 }, () => Math.random() * 2 - 1); // Example 768-dim vector
+  weave(memento: MemoryMemento): string | null {
+    const parts: string[] = [];
+
+    // Primary content
+    if (typeof memento.contentProcessed === 'string' && memento.contentProcessed.trim()) {
+      parts.push(memento.contentProcessed);
+    } else if (typeof memento.contentRaw === 'string' && memento.contentRaw.trim()) {
+      parts.push(memento.contentRaw);
+    }
+
+    if (parts.length === 0) {
+      this.logger.warn(`NarrativeWeaver: memento ${memento.mementoId} has no content to weave`);
+      return null;
+    }
+
+    // Enrich with extracted metadata if available
+    const meta = (memento as any).extractedFeatures || {};
+    if (meta.topics?.length) {
+      parts.push(`Topics: ${meta.topics.join(', ')}`);
+    }
+    if (meta.peopleMentioned?.length) {
+      parts.push(`People: ${meta.peopleMentioned.join(', ')}`);
+    }
+    if (meta.entities?.length) {
+      parts.push(`Entities: ${meta.entities.map((e: any) => e.name || e).join(', ')}`);
+    }
+
+    // Truncate to reasonable embedding input size (most models handle ~8k tokens)
+    const narrative = parts.join('. ');
+    const MAX_CHARS = parseInt(process.env.NARRATIVE_MAX_CHARS || '4096', 10);
+    return narrative.length > MAX_CHARS ? narrative.substring(0, MAX_CHARS) : narrative;
   }
-  private logger = console;
 }
 
 // Helper to create a simplified error response structure

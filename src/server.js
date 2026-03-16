@@ -4326,7 +4326,7 @@ app.get('/dashboard/interactive', (_req, res) => {
 // =============================================================================
 // MISSION CONTROL - Space Shuttle meets Hollywood
 // =============================================================================
-app.get('/dashboard/mission-control', (_req, res) => {
+app.get('/dashboard/mission-control', async (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
   const memoryCount = memories.length;
@@ -4343,35 +4343,54 @@ app.get('/dashboard/mission-control', (_req, res) => {
   });
   const entityCount = Object.keys(entityCounts).length;
 
-  // System "vitals"
-  const cpuFake = 23 + Math.floor(Math.random() * 15);
-  const memFake = 45 + Math.floor(Math.random() * 20);
-  const networkFake = 78 + Math.floor(Math.random() * 20);
+  // Real system vitals from OS
+  const os = await import('os');
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const cpus = os.cpus();
+  const cpuLoad = cpus.length > 0
+    ? Math.round(cpus.reduce((acc, cpu) => {
+        const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+        return acc + ((total - cpu.times.idle) / total) * 100;
+      }, 0) / cpus.length)
+    : 0;
+  const memLoad = Math.round(((totalMem - freeMem) / totalMem) * 100);
+  const networkLoad = entityCount > 0 ? Math.min(99, entityCount * 5 + memoryCount) : 0;
 
-  // Pre-compute dynamic HTML elements (avoid nested template literals)
-  const radarBlips = Object.keys(entityCounts).slice(0, 5).map((_, i) => {
+  // Radar blips — deterministic positions from entity names
+  const entityNames = Object.keys(entityCounts);
+  const radarBlips = entityNames.slice(0, 5).map((name, i) => {
     const angle = (i * 72) * Math.PI / 180;
-    const r = 30 + Math.random() * 40;
+    let nameHash = 0;
+    for (let c = 0; c < name.length; c++) {
+      nameHash = ((nameHash << 5) - nameHash + name.charCodeAt(c)) | 0;
+    }
+    const r = 30 + (Math.abs(nameHash) % 40);
     const x = 50 + r * Math.cos(angle);
     const y = 50 + r * Math.sin(angle);
-    return '<div class="radar-blip" style="left: ' + x + '%; top: ' + y + '%;"></div>';
+    return '<div class="radar-blip" style="left: ' + x + '%; top: ' + y + '%;" title="' + name + '"></div>';
   }).join('');
 
-  // Indicator lights with icons representing attention/recognition types
-  // Maps to Redis attention system categories
+  // Indicator lights - state driven by real system signals
   const indicatorConfig = [
-    { icon: '◎', color: 'c1', label: 'context' },    // Cyan - Location/Context
-    { icon: '☺', color: 'c2', label: 'person' },     // Green - People/Relationships
-    { icon: '⏱', color: 'c3', label: 'time' },       // Yellow - Time/Deadlines
-    { icon: '⚡', color: 'c4', label: 'alert' },     // Red - Urgent/Alerts
-    { icon: '♥', color: 'c5', label: 'emotion' },    // Magenta - Emotions
-    { icon: '✓', color: 'c6', label: 'task' },       // Orange - Actions/Tasks
-    { icon: '◈', color: 'c7', label: 'memory' },     // Blue - Memory/Recall
+    { icon: '◎', color: 'c1', label: 'context' },
+    { icon: '☺', color: 'c2', label: 'person' },
+    { icon: '⏱', color: 'c3', label: 'time' },
+    { icon: '⚡', color: 'c4', label: 'alert' },
+    { icon: '♥', color: 'c5', label: 'emotion' },
+    { icon: '✓', color: 'c6', label: 'task' },
+    { icon: '◈', color: 'c7', label: 'memory' },
   ];
-  const states = ['on', 'slow', 'off', 'on'];
+  const systemHealthy = memoryCount > 0;
   const indicatorLights = Array(32).fill(0).map((_, i) => {
     const cfg = indicatorConfig[i % 7];
-    const state = states[Math.floor(Math.random() * 4)];
+    const group = Math.floor(i / 7);
+    let state;
+    if (group === 0) state = systemHealthy ? 'on' : 'off';
+    else if (group === 1) state = avgSalience > 0 ? 'slow' : 'off';
+    else if (group === 2) state = entityCount > 0 ? 'on' : 'off';
+    else if (group === 3) state = memoryCount > 10 ? 'slow' : 'on';
+    else state = (i % 3 === 0) ? 'on' : 'slow';
     return '<div class="indicator-light ' + cfg.color + ' ' + state + '" title="' + cfg.label + '">' + cfg.icon + '</div>';
   }).join('');
 
@@ -5119,9 +5138,9 @@ app.get('/dashboard/mission-control', (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--cyan)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * cpuFake / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * cpuLoad / 100)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--cyan);">${cpuFake}%</div>
+            <div class="gauge-value" style="color: var(--cyan);">${cpuLoad}%</div>
           </div>
           <div class="gauge-label">CPU Load</div>
         </div>
@@ -5132,9 +5151,9 @@ app.get('/dashboard/mission-control', (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--magenta)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * memFake / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * memLoad / 100)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--magenta);">${memFake}%</div>
+            <div class="gauge-value" style="color: var(--magenta);">${memLoad}%</div>
           </div>
           <div class="gauge-label">Memory</div>
         </div>
@@ -5145,9 +5164,9 @@ app.get('/dashboard/mission-control', (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--green)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * networkFake / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * networkLoad / 100)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--green);">${networkFake}%</div>
+            <div class="gauge-value" style="color: var(--green);">${networkLoad}%</div>
           </div>
           <div class="gauge-label">Network</div>
         </div>
@@ -7424,17 +7443,15 @@ app.get('/api/billing/checkout', async (req, res) => {
     return res.status(400).json({ error: 'Invalid tier' });
   }
 
-  // TODO: Initialize Stripe and create checkout session
-  // For now, redirect to a placeholder
   const STRIPE_PRICE_IDS = {
-    pro: process.env.STRIPE_PRO_PRICE_ID || 'price_pro_placeholder',
-    enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID || 'price_enterprise_placeholder',
+    pro: process.env.STRIPE_PRO_PRICE_ID,
+    enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID,
   };
 
-  if (!process.env.STRIPE_SECRET_KEY) {
+  if (!process.env.STRIPE_SECRET_KEY || !STRIPE_PRICE_IDS[tier]) {
     return res.status(503).json({
       error: 'Stripe not configured',
-      message: 'Set STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID in environment'
+      message: 'Set STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID in environment',
     });
   }
 

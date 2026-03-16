@@ -1182,6 +1182,35 @@ let llmClient: LLMClient | null = null;
 let connectionMode: 'rest' | 'direct' | null = null;
 let apiClient: ApiClient | null = null;
 
+// ============================================================================
+// SESSION THREADING STATE — co-occurrence tracking
+// Memories that happen together LIVE together. Not by search, by birth.
+// ============================================================================
+let currentSessionId: string | null = null;
+let sessionMemoryIndex = 0;
+let lastStoredMemoryId: string | null = null;
+
+/**
+ * Get or create a session ID for the current MCP session.
+ * Sessions are time-windowed: a new session starts after 30 min of silence.
+ */
+function getSessionId(): string {
+  const SESSION_GAP_MS = 30 * 60 * 1000; // 30 minutes
+  const now = Date.now();
+
+  if (!currentSessionId || (now - sessionLastActivity) > SESSION_GAP_MS) {
+    // New session — reset everything
+    const dateStr = new Date(now).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    currentSessionId = `session_${dateStr}_${Math.random().toString(36).slice(2, 6)}`;
+    sessionMemoryIndex = 0;
+    lastStoredMemoryId = null;
+  }
+
+  sessionLastActivity = now;
+  return currentSessionId;
+}
+let sessionLastActivity = Date.now();
+
 /**
  * Initialize database connection.
  *
@@ -1724,6 +1753,31 @@ function createServer(): Server {
         },
         annotations: {
           title: 'Session Continuity',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      // Proactive Continuity — not a librarian, a friend
+      {
+        name: 'get_continuity',
+        description: 'Get proactive session continuity. Returns last session\'s thread (what was worked on, open loops, emotional arc) and generates ONE natural greeting sentence that proves continuity. Use this at session start to greet like a friend, not a stranger.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity: {
+              type: 'string',
+              description: 'Entity/person to get continuity for (default: configured user)',
+            },
+            hoursBack: {
+              type: 'number',
+              description: 'How many hours back to look for the last session (default: 72)',
+            },
+          },
+        },
+        annotations: {
+          title: 'Proactive Continuity',
           readOnlyHint: true,
           destructiveHint: false,
           idempotentHint: true,
@@ -3169,6 +3223,11 @@ function createServer(): Server {
             effectiveTags.push('startup');
           }
 
+          // ── Session threading: memories born together live together ──
+          const sessionId = getSessionId();
+          sessionMemoryIndex++;
+          const previousMemoryId = lastStoredMemoryId;
+
           const memoryDoc: MemoryDocument = {
             memoryId,
             userId: CONFIG.defaultUserId,
@@ -3176,6 +3235,11 @@ function createServer(): Server {
             createdAt: now,
             updatedAt: now,
             state: 'active',
+            // SESSION THREADING — co-occurrence linking
+            // Memories within the same session are linked by birth, not by search
+            sessionId,
+            sessionIndex: sessionMemoryIndex,
+            previousMemoryId: previousMemoryId || undefined,
             // Salience scoring (effective = override or computed)
             salienceScore: effectiveScore,
             computedSalienceScore: computedScore,  // Always store what the engine computed
@@ -3209,6 +3273,9 @@ function createServer(): Server {
             // Vector storage flag
             vectorStored: !shouldSkipVectorStorage(tier),
           };
+
+          // Update the chain — this memory becomes the previous for the next one
+          lastStoredMemoryId = memoryId;
 
           try {
             await collections.memories().insertOne(memoryDoc as any);
@@ -3527,6 +3594,10 @@ function createServer(): Server {
                   {
                     stored: true,
                     memoryId,
+                    // Session threading — co-occurrence
+                    sessionId,
+                    sessionIndex: sessionMemoryIndex,
+                    previousMemoryId: previousMemoryId || null,
                     securityTier: tier,
                     encrypted: isEncrypted,
                     vectorStored: !shouldSkipVectorStorage(tier),
@@ -3614,6 +3685,42 @@ function createServer(): Server {
                 )
               )
             : memories;
+
+          // ── COMMITMENT BOOST ──────────────────────────────────────────
+          // Memories linked to open loops get a retrieval score boost.
+          // Commitments run the world — they should surface first.
+          // The driving task demon is kept at bay by their presence.
+          try {
+            const activeLoops = await getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true });
+            if (activeLoops.length > 0) {
+              const loopMemoryIds = new Set<string>();
+              for (const loop of activeLoops) {
+                if ((loop as any).memoryId) loopMemoryIds.add((loop as any).memoryId);
+                if ((loop as any).sourceMemoryId) loopMemoryIds.add((loop as any).sourceMemoryId);
+              }
+
+              // Boost memories that are linked to open loops
+              for (const m of filtered) {
+                const mem = m as ScoredMemory & { hasOpenLoops?: boolean; openLoopIds?: string[] };
+                if (mem.hasOpenLoops || loopMemoryIds.has(mem.memoryId)) {
+                  // Commitment-linked memories get 25% retrieval boost
+                  if (mem.retrievalScore !== undefined) {
+                    mem.retrievalScore = Math.min(1, mem.retrievalScore * 1.25);
+                  }
+                  if (mem.salienceScore !== undefined) {
+                    mem.salienceScore = Math.min(100, mem.salienceScore * 1.15);
+                  }
+                }
+              }
+
+              // Re-sort by boosted scores
+              filtered.sort((a: ScoredMemory, b: ScoredMemory) =>
+                (b.retrievalScore || 0) - (a.retrievalScore || 0)
+              );
+            }
+          } catch (loopBoostError) {
+            logger.warn('[MCP] Loop boost failed (non-fatal):', loopBoostError);
+          }
 
           // CONTEXT GATE: Filter by current context relevance
           // The right memory at the wrong time is the wrong memory
@@ -3796,11 +3903,53 @@ function createServer(): Server {
             logger.warn('[MCP] TierManager access tracking failed (non-fatal):', tierError);
           }
 
+          // ── PAIN MEMORY CHECK ──────────────────────────────────
+          // If any recalled memory is tagged as a pain memory,
+          // or if the query matches a known pain signature,
+          // surface the warning alongside results.
+          // "The hot stove doesn't write docs. It burns you."
+          let painWarnings: string[] = [];
+          try {
+            const painMems = await collections.memories().find({
+              userId: CONFIG.defaultUserId,
+              tags: 'pain_memory',
+              state: { $ne: 'deleted' },
+            }).sort({ salienceScore: -1 }).limit(10).toArray();
+
+            if (painMems.length > 0) {
+              const queryLower = query.toLowerCase();
+              for (const pain of painMems) {
+                const painTags = ((pain as any).tags || []) as string[];
+                const painText = ((pain as any).text || '').toLowerCase();
+                // Match if query overlaps with pain signature tags or text
+                const tagMatch = painTags.some(t =>
+                  t !== 'pain_memory' && t !== 'frustration' && queryLower.includes(t)
+                );
+                const textMatch = queryLower.split(/\s+/).some(word =>
+                  word.length > 3 && painText.includes(word)
+                );
+                if (tagMatch || textMatch) {
+                  painWarnings.push((pain as any).text?.substring(0, 200) || '');
+                }
+              }
+            }
+          } catch (painError) {
+            logger.warn('[MCP] Pain memory check failed (non-fatal):', painError);
+          }
+
+          const recallResult: any = {
+            memories: decrypted,
+          };
+          if (painWarnings.length > 0) {
+            recallResult.painWarnings = painWarnings.slice(0, 3);
+            recallResult.note = 'Pain memories matched this query. These represent past frustrations — do not repeat the behaviors that caused them.';
+          }
+
           return {
             content: [
               {
                 type: 'text',
-                text: JSON.stringify(decrypted, null, 2),
+                text: JSON.stringify(recallResult, null, 2),
               },
             ],
           };
@@ -4184,6 +4333,33 @@ function createServer(): Server {
             };
           }
 
+          // ── COMMITMENTS: The heart of memorable ──────────────────
+          // Loops run the world. whats_relevant MUST show them.
+          let commitments: Array<{ description: string; owner: string; otherParty?: string; dueDate?: string; isOverdue?: boolean }> = [];
+          try {
+            const currentPeople = frame.people.map(p => p.value);
+            const loops = await getOpenLoops(CONFIG.defaultUserId, { includeOverdue: true });
+            // Filter to loops relevant to current context (people present, or all if no people)
+            commitments = loops
+              .filter(l => {
+                if (currentPeople.length === 0) return true;
+                const party = ((l as any).otherParty || '').toLowerCase();
+                const contact = ((l as any).contactName || '').toLowerCase();
+                return currentPeople.some(p => party.includes(p.toLowerCase()) || contact.includes(p.toLowerCase())) ||
+                  (l as any).isOverdue; // always show overdue
+              })
+              .slice(0, 10)
+              .map(l => ({
+                description: (l as any).description || (l as any).content || '',
+                owner: (l as any).owner || 'unknown',
+                otherParty: (l as any).otherParty,
+                dueDate: (l as any).dueDate,
+                isOverdue: (l as any).isOverdue,
+              }));
+          } catch (loopError) {
+            logger.warn('[MCP] whats_relevant loop fetch failed (non-fatal):', loopError);
+          }
+
           return {
             content: [
               {
@@ -4197,6 +4373,9 @@ function createServer(): Server {
                     activity: frame.activity?.value,
                     timeOfDay: frame.timeOfDay,
                   },
+                  // COMMITMENTS — the task demon's leash
+                  commitments: commitments.length > 0 ? commitments : undefined,
+                  overdueCount: commitments.filter(c => c.isOverdue).length || undefined,
                   relevantMemories: memories.recentRelevant.slice(0, 5).map(m => ({
                     text: m.text,
                     matchedOn: m.matchedOn,
@@ -4437,6 +4616,206 @@ function createServer(): Server {
                 }, null, 2),
               },
             ],
+          };
+        }
+
+        // ================================================================
+        // PROACTIVE CONTINUITY — a friend, not a librarian
+        // "Hey Alan — did the CloudFormation deploy land?"
+        // One sentence that proves we were listening.
+        // ================================================================
+        case 'get_continuity': {
+          const {
+            entity: contEntity,
+            hoursBack = 72,
+          } = args as {
+            entity?: string;
+            hoursBack?: number;
+          };
+
+          const userId = CONFIG.defaultUserId;
+          const lookbackMs = hoursBack * 60 * 60 * 1000;
+          const cutoff = new Date(Date.now() - lookbackMs).toISOString();
+
+          // REST mode passthrough
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const params: Record<string, string> = {};
+              if (contEntity) params.entity = contEntity;
+              params.hoursBack = String(hoursBack);
+              const result = await apiClient.request('GET', '/continuity', undefined, params);
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST mode get_continuity failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            }
+          }
+
+          // DIRECT MODE: Query MongoDB for last session's memories
+          const memoriesCol = collections.memories();
+
+          // Find the most recent session ID from recent memories
+          const recentMemories = await memoriesCol.find({
+            userId,
+            state: { $ne: 'deleted' },
+            createdAt: { $gte: cutoff },
+            ...(contEntity ? {
+              $or: [
+                { 'extractedFeatures.people': contEntity },
+                { 'userContext.people': contEntity },
+                { 'extractedFeatures.entities': contEntity },
+              ],
+            } : {}),
+          })
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .toArray();
+
+          if (recentMemories.length === 0) {
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  lastSession: null,
+                  greeting: 'Hey! First time here — or at least, first time I can remember. What are we working on?',
+                  memoryCount: 0,
+                }, null, 2),
+              }],
+            };
+          }
+
+          // Group memories by sessionId to find the last complete session
+          const sessionGroups = new Map<string, typeof recentMemories>();
+          for (const mem of recentMemories) {
+            const sid = (mem as any).sessionId || 'unknown';
+            if (!sessionGroups.has(sid)) sessionGroups.set(sid, []);
+            sessionGroups.get(sid)!.push(mem);
+          }
+
+          // Find the most recent session (by latest memory timestamp)
+          let lastSessionId = '';
+          let lastSessionTime = '';
+          for (const [sid, mems] of sessionGroups) {
+            const latest = mems[0].createdAt; // already sorted desc
+            if (!lastSessionTime || latest > lastSessionTime) {
+              lastSessionTime = latest;
+              lastSessionId = sid;
+            }
+          }
+
+          const lastSessionMemories = sessionGroups.get(lastSessionId) || recentMemories.slice(0, 10);
+          // Sort by sessionIndex or createdAt ascending for chronological order
+          lastSessionMemories.sort((a, b) => {
+            const ai = (a as any).sessionIndex || 0;
+            const bi = (b as any).sessionIndex || 0;
+            return ai - bi || a.createdAt.localeCompare(b.createdAt);
+          });
+
+          // Extract the thread
+          const lastMemory = lastSessionMemories[lastSessionMemories.length - 1];
+          const firstMemory = lastSessionMemories[0];
+          const topics = new Set<string>();
+          const people = new Set<string>();
+          const openLoopIds: string[] = [];
+
+          for (const mem of lastSessionMemories) {
+            const ef = (mem as any).extractedFeatures || {};
+            if (ef.topics) ef.topics.forEach((t: string) => topics.add(t));
+            if (ef.people) ef.people.forEach((p: string) => people.add(p));
+            if ((mem as any).hasOpenLoops && (mem as any).openLoopIds) {
+              openLoopIds.push(...(mem as any).openLoopIds);
+            }
+          }
+
+          // Get the highest salience memory — the thing that matters most
+          const highestSalience = [...lastSessionMemories].sort(
+            (a, b) => ((b as any).salienceScore || 0) - ((a as any).salienceScore || 0)
+          )[0];
+
+          // Determine emotional arc from first to last memory
+          const firstEmotion = (firstMemory as any).extractedFeatures?.emotional_keywords?.[0] || '';
+          const lastEmotion = (lastMemory as any).extractedFeatures?.emotional_keywords?.[0] || '';
+          const emotionalArc = firstEmotion && lastEmotion && firstEmotion !== lastEmotion
+            ? `${firstEmotion} → ${lastEmotion}`
+            : firstEmotion || lastEmotion || undefined;
+
+          // Calculate session duration
+          const sessionStart = new Date(firstMemory.createdAt);
+          const sessionEnd = new Date(lastMemory.createdAt);
+          const durationMs = sessionEnd.getTime() - sessionStart.getTime();
+          const durationMin = Math.round(durationMs / 60000);
+          const duration = durationMin >= 60
+            ? `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`
+            : `${durationMin}m`;
+
+          // Get open loops that are still open
+          let openLoops: string[] = [];
+          if (openLoopIds.length > 0) {
+            try {
+              const loopsCol = collections.openLoops();
+              const loops = await loopsCol.find({
+                $or: [
+                  { id: { $in: openLoopIds } },
+                  { loopId: { $in: openLoopIds } },
+                ],
+                status: { $ne: 'closed' },
+              }).toArray();
+              openLoops = loops.map(l => (l as any).description || (l as any).content || '').filter(Boolean);
+            } catch {
+              // Non-fatal
+            }
+          }
+
+          // Build the last topic — the specific thing being worked on
+          const lastTopic = (highestSalience as any).text?.substring(0, 120)
+            || (lastMemory as any).text?.substring(0, 120)
+            || 'recent work';
+          const lastMemoryText = (lastMemory as any).text?.substring(0, 150) || '';
+
+          // Generate ONE natural greeting sentence
+          // Not a briefing. Not a bullet list. A sentence a friend would say.
+          const greetingName = contEntity
+            ? contEntity.charAt(0).toUpperCase() + contEntity.slice(1)
+            : '';
+          const namePrefix = greetingName ? `Hey ${greetingName}` : 'Hey';
+
+          let greeting: string;
+          if (openLoops.length > 0) {
+            // Ask about an unresolved thing
+            const loop = openLoops[0].length > 80 ? openLoops[0].substring(0, 80) + '...' : openLoops[0];
+            greeting = `${namePrefix} — did "${loop}" get resolved, or is it still in play?`;
+          } else if (lastMemoryText) {
+            // Reference the last thing that happened
+            const shortText = lastMemoryText.length > 80
+              ? lastMemoryText.substring(0, 80) + '...'
+              : lastMemoryText;
+            greeting = `${namePrefix} — last time we were on "${shortText}". Ready to pick up?`;
+          } else {
+            greeting = `${namePrefix} — picking up where we left off. What's next?`;
+          }
+
+          const lastSession = {
+            sessionId: lastSessionId,
+            date: sessionStart.toISOString().split('T')[0],
+            duration,
+            memoryCount: lastSessionMemories.length,
+            lastTopic,
+            openLoops,
+            emotionalArc,
+            lastMemory: lastMemoryText,
+            topics: Array.from(topics).slice(0, 10),
+            people: Array.from(people).slice(0, 10),
+          };
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                lastSession,
+                greeting,
+                memoryCount: recentMemories.length,
+                sessionCount: sessionGroups.size,
+              }, null, 2),
+            }],
           };
         }
 

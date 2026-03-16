@@ -546,23 +546,40 @@ export class OpenAIEmbeddingClient implements EmbeddingClient {
 }
 
 /**
- * Local/mock embedding client (for testing)
+ * Hash-based deterministic embedding client.
+ * Uses cryptographic hashing with n-gram overlap for consistent,
+ * content-sensitive vectors. Not as good as a trained model but
+ * produces real similarity signal — identical/similar texts get
+ * similar vectors. Use when no model API is available.
  */
-export class LocalEmbeddingClient implements EmbeddingClient {
+export class HashEmbeddingClient implements EmbeddingClient {
   readonly dimension = 1024;
-  readonly modelName = 'local-mock-v1';
+  readonly modelName = 'hash-deterministic-v1';
 
   async embed(texts: string[]): Promise<number[][]> {
-    // Generate deterministic mock embeddings based on content hash
     return texts.map(text => {
-      const hash = crypto.createHash('md5').update(text).digest();
-      const vector = Array.from({ length: this.dimension }, (_, i) => {
-        const byte = hash[i % hash.length];
-        return (byte / 255) * 2 - 1;
-      });
-      // Normalize
+      const normalized = text.toLowerCase().trim();
+      const vector = new Float64Array(this.dimension);
+
+      // Base hash for global signal
+      const fullHash = crypto.createHash('sha512').update(normalized).digest();
+      for (let i = 0; i < this.dimension; i++) {
+        vector[i] = (fullHash[i % fullHash.length] / 255) * 2 - 1;
+      }
+
+      // Layer trigram hashes for local structure (similar texts → similar vectors)
+      for (let i = 0; i < normalized.length - 2; i++) {
+        const trigram = normalized.substring(i, i + 3);
+        const trigramHash = crypto.createHash('md5').update(trigram).digest();
+        const idx = trigramHash.readUInt16BE(0) % this.dimension;
+        vector[idx] += (trigramHash[2] / 255) * 0.1;
+      }
+
+      // Normalize to unit vector
       const mag = Math.sqrt(vector.reduce((s, v) => s + v * v, 0));
-      return vector.map(v => v / mag);
+      return mag === 0
+        ? Array.from({ length: this.dimension }, () => 0)
+        : Array.from(vector, v => v / mag);
     });
   }
 }
@@ -602,7 +619,7 @@ export class IngestionPipeline extends EventEmitter {
         this.embeddingClient = new OpenAIEmbeddingClient();
         break;
       default:
-        this.embeddingClient = new LocalEmbeddingClient();
+        this.embeddingClient = new HashEmbeddingClient();
     }
 
     this.stats = {

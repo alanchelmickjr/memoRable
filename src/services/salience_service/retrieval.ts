@@ -480,8 +480,9 @@ export async function retrieveMemoriesByQuery(
   const minSalience = options.minSalience ?? 0;
 
   try {
-    // Simple text search - in production would use vector search
-    const searchRegex = new RegExp(query.split(/\s+/).join('|'), 'i');
+    // Text search with computed match quality scoring
+    const searchTerms = query.split(/\s+/).filter(Boolean);
+    const searchRegex = new RegExp(searchTerms.join('|'), 'i');
 
     const memories = await collections.memories()
       .find({
@@ -498,21 +499,37 @@ export async function retrieveMemoriesByQuery(
       .limit(limit * 3)
       .toArray();
 
-    const candidates = memories.map((m: any) => ({
-      memoryId: m.memoryId || m._id?.toString() || m.mementoId,
-      text: m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)),
-      createdAt: m.createdAt || m.eventTimestamp || new Date().toISOString(),
-      semanticSimilarity: 0.8, // Placeholder since no vector search
-      salienceScore: m.salienceScore,
-      salienceComponents: m.salienceComponents,
-      peopleMentioned: m.extractedFeatures?.peopleMentioned,
-      topics: m.extractedFeatures?.topics,
-      hasOpenLoops: m.hasOpenLoops,
-      earliestDueDate: m.earliestDueDate,
-      // Security tier metadata for encryption handling
-      securityTier: m.securityTier,
-      encrypted: m.encrypted,
-    }));
+    const candidates = memories.map((m: any) => {
+      const memText = (m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)) || '').toLowerCase();
+      const topics = (m.extractedFeatures?.topics || []).join(' ').toLowerCase();
+      const people = (m.extractedFeatures?.peopleMentioned || []).join(' ').toLowerCase();
+      const searchableText = `${memText} ${topics} ${people}`;
+
+      // Compute real text match ratio: what fraction of query terms appear in this memory
+      const matchedTerms = searchTerms.filter(term => searchableText.includes(term.toLowerCase()));
+      const termMatchRatio = searchTerms.length > 0 ? matchedTerms.length / searchTerms.length : 0;
+
+      // Boost for exact phrase match
+      const exactMatch = searchableText.includes(query.toLowerCase()) ? 0.2 : 0;
+
+      // Semantic similarity approximation from text overlap (0-1 range)
+      const similarity = Math.min(1, termMatchRatio + exactMatch);
+
+      return {
+        memoryId: m.memoryId || m._id?.toString() || m.mementoId,
+        text: m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)),
+        createdAt: m.createdAt || m.eventTimestamp || new Date().toISOString(),
+        semanticSimilarity: similarity,
+        salienceScore: m.salienceScore,
+        salienceComponents: m.salienceComponents,
+        peopleMentioned: m.extractedFeatures?.peopleMentioned,
+        topics: m.extractedFeatures?.topics,
+        hasOpenLoops: m.hasOpenLoops,
+        earliestDueDate: m.earliestDueDate,
+        securityTier: m.securityTier,
+        encrypted: m.encrypted,
+      };
+    });
 
     return retrieveWithSalience(candidates, {
       query,

@@ -471,6 +471,131 @@ export function extractFeaturesHeuristic(text: string): ExtractedFeatures {
     });
   }
 
+  // ── COMMITMENT EXTRACTION (heuristic) ────────────────────────
+  // Commitments run the world. Even without LLM, we track promises.
+  // "The most important part of memory is knowing what to forget."
+  // But commitments? Those you NEVER forget.
+
+  // Commitments MADE (I → someone)
+  const commitmentMadePatterns = [
+    /I('ll| will| shall)\s+(.{5,60})/i,
+    /I('m going to| am going to)\s+(.{5,60})/i,
+    /I promise(?:d)?\s+(?:to\s+)?(.{5,60})/i,
+    /I need to\s+(.{5,60})/i,
+    /don'?t forget to\s+(.{5,60})/i,
+    /remember to\s+(.{5,60})/i,
+    /let me\s+(.{5,60})/i,
+    /I('ll| will) get (?:back to|it to)\s+(.{5,60})/i,
+  ];
+
+  for (const pattern of commitmentMadePatterns) {
+    const m = pattern.exec(text);
+    if (m) {
+      const what = (m[2] || m[1] || '').replace(/[.!?,;]+$/, '').trim();
+      if (what.length >= 5) {
+        features.commitments.push({
+          type: 'made',
+          from: 'self',
+          to: features.peopleMentioned[0] || 'unknown',
+          what,
+          byWhen: null,
+          dueType: 'none',
+          explicit: true,
+        });
+      }
+    }
+  }
+
+  // Commitments RECEIVED (someone → I)
+  const commitmentReceivedPatterns = [
+    /(\w+)\s+(?:will|shall|'ll)\s+(.{5,60})/i,
+    /(\w+)\s+promise[sd]?\s+(?:to\s+)?(.{5,60})/i,
+    /(\w+)\s+(?:said|agreed)\s+(?:they'?d|they would|to)\s+(.{5,60})/i,
+  ];
+
+  for (const pattern of commitmentReceivedPatterns) {
+    const m = pattern.exec(text);
+    if (m) {
+      const who = m[1];
+      const what = (m[2] || '').replace(/[.!?,;]+$/, '').trim();
+      // Skip if "I" was matched as the committer (that's a made commitment)
+      if (who.toLowerCase() !== 'i' && what.length >= 5) {
+        features.commitments.push({
+          type: 'received',
+          from: who,
+          to: 'self',
+          what,
+          byWhen: null,
+          dueType: 'none',
+          explicit: true,
+        });
+      }
+    }
+  }
+
+  // Requests (asking someone for something)
+  const requestPatterns = [
+    /(?:can|could|would) you\s+(.{5,60})/i,
+    /(?:please|pls)\s+(.{5,60})/i,
+    /I (?:asked|need|want)\s+(\w+)\s+to\s+(.{5,60})/i,
+  ];
+
+  for (const pattern of requestPatterns) {
+    const m = pattern.exec(text);
+    if (m) {
+      const what = (m[2] || m[1] || '').replace(/[.!?,;]+$/, '').trim();
+      if (what.length >= 5) {
+        features.requestsMade.push({
+          whoRequested: 'self',
+          what,
+          fromWhom: features.peopleMentioned[0] || 'unknown',
+          byWhen: null,
+        });
+      }
+    }
+  }
+
+  // Mutual agreements
+  if (/we (?:agreed|decided|committed)\s+(?:to\s+)?(.{5,60})/i.test(text)) {
+    const m = /we (?:agreed|decided|committed)\s+(?:to\s+)?(.{5,60})/i.exec(text);
+    if (m) {
+      features.mutualAgreements.push({
+        what: m[1].replace(/[.!?,;]+$/, '').trim(),
+        parties: ['self', ...features.peopleMentioned.slice(0, 2)],
+        timeframe: null,
+        specificity: 'vague',
+      });
+    }
+  }
+
+  // Date extraction for commitment timing
+  const datePatterns = [
+    { pattern: /\b(?:by|before|due|until)\s+(tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i, type: 'deadline' as const },
+    { pattern: /\b(?:by|before|due|until)\s+(next week|next month|end of (?:day|week|month))/i, type: 'deadline' as const },
+    { pattern: /\b(tomorrow|tonight|today)\b/i, type: 'deadline' as const },
+  ];
+
+  for (const { pattern, type } of datePatterns) {
+    const m = pattern.exec(text);
+    if (m) {
+      features.datesMentioned.push({
+        rawText: m[1],
+        resolved: null,
+        context: text.substring(Math.max(0, (m.index || 0) - 20), (m.index || 0) + m[0].length + 20),
+        whose: 'self',
+        type,
+      });
+      // Attach to most recent commitment
+      if (features.commitments.length > 0) {
+        const lastCommitment = features.commitments[features.commitments.length - 1];
+        if (!lastCommitment.byWhen) {
+          lastCommitment.byWhen = m[1];
+          lastCommitment.dueType = 'implicit';
+        }
+      }
+    }
+  }
+
   // Urgency detection
   const urgencyPatterns: Array<{ pattern: RegExp; keyword: string; weight: number }> = [
     { pattern: /\bcritical\b/i, keyword: 'critical', weight: 4 },

@@ -549,13 +549,37 @@ export async function enrichMemoryWithSalienceHeuristic(
     observeSalienceScore(salience.score);
     incMemoriesProcessed('heuristic', 'success');
 
-    // Note: Skip loop/timeline creation with heuristics (less reliable)
+    // ── HEURISTIC LOOP CREATION ──────────────────────────────────
+    // Commitments run the world. Even Tier2/Tier3 memories deserve
+    // commitment tracking. "I'll call mom Tuesday" is Tier2_Personal
+    // but it's the MOST important loop to track.
+    // "The most important part of memory is knowing what to forget."
+    // But commitments? Those you NEVER forget.
+    let openLoopsCreated: OpenLoop[] = [];
+    try {
+      if (features.commitments.length > 0 || features.requestsMade.length > 0 || features.mutualAgreements.length > 0) {
+        openLoopsCreated = await createOpenLoopsFromFeatures(
+          features,
+          input.userId,
+          input.memoryId,
+          memoryCreatedAt
+        );
+        if (openLoopsCreated.length > 0) {
+          for (const loop of openLoopsCreated) {
+            incOpenLoopsCreated(loop.owner || 'self');
+          }
+          console.log(`[SalienceService] Heuristic mode created ${openLoopsCreated.length} open loop(s)`);
+        }
+      }
+    } catch (loopError) {
+      console.warn('[SalienceService] Heuristic loop creation failed (non-fatal):', loopError);
+    }
 
     return {
       success: true,
       salience,
       extractedFeatures: features,
-      openLoopsCreated: [],
+      openLoopsCreated,
       timelineEventsCreated: [],
     };
   } catch (error) {

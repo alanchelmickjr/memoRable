@@ -63,6 +63,23 @@ function getRelevantContext() {
   return result || {};
 }
 
+function getContinuity(entity) {
+  const result = mcpCall('get_continuity', { entity, hoursBack: 72 });
+  return result || {};
+}
+
+function getPainMemories() {
+  // Recall pain memories — the hot stove warnings
+  const result = mcpCall('recall', {
+    query: 'pain_memory frustration recurring pattern',
+    limit: 5,
+    minSalience: 50,
+  });
+  if (Array.isArray(result)) return result;
+  if (result?.memories) return result.memories;
+  return [];
+}
+
 // ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
@@ -335,6 +352,30 @@ async function main() {
     parts.push(lessons);
   }
 
+  // ── PAIN MEMORIES: The hot stove ─────────────────────────────
+  // Load frustration patterns from lessons.json AND from MCP
+  // "Documents don't fix models. Enforcement does."
+  if (mcpConnected) {
+    try {
+      const painMemories = getPainMemories();
+      const painItems = painMemories
+        .filter(m => {
+          const text = (m.text || m.content || '').toLowerCase();
+          return text.includes('pain memory') || text.includes('frustration');
+        })
+        .slice(0, 3);
+
+      if (painItems.length > 0) {
+        parts.push('## Pain Memories (DO NOT REPEAT THESE BEHAVIORS)');
+        for (const pain of painItems) {
+          const text = (pain.text || pain.content || '').substring(0, 200);
+          parts.push(`- ${text}`);
+        }
+        parts.push('');
+      }
+    } catch {}
+  }
+
   // Git context
   let branch = '';
   try {
@@ -393,11 +434,28 @@ async function main() {
       const loops = getLoops();
       const anticipated = getAnticipated(project);
 
-      // Predictive greeting (personalized)
-      const relevant = getRelevantContext();
-      const greetLocation = relevant?.location || env.location;
-      const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
-      const greeting = buildPredictiveGreeting(loops, anticipated, project, { name: greetName, location: greetLocation });
+      // PROACTIVE CONTINUITY — try get_continuity first for a friend's greeting
+      let greeting;
+      const continuity = getContinuity(identifiedEntity);
+      if (continuity?.greeting) {
+        // The friend greeting — one sentence that proves we were listening
+        greeting = continuity.greeting;
+        // Add session context if we have it
+        if (continuity.lastSession) {
+          const ls = continuity.lastSession;
+          if (ls.openLoops && ls.openLoops.length > 0) {
+            parts.push(`## Open from last session`);
+            ls.openLoops.forEach(l => parts.push(`- ${l}`));
+            parts.push('');
+          }
+        }
+      } else {
+        // Fallback to predictive greeting
+        const relevant = getRelevantContext();
+        const greetLocation = relevant?.location || env.location;
+        const greetName = identifiedEntity.charAt(0).toUpperCase() + identifiedEntity.slice(1);
+        greeting = buildPredictiveGreeting(loops, anticipated, project, { name: greetName, location: greetLocation });
+      }
       parts.push(`## ${greeting}`);
       parts.push('');
 

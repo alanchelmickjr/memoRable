@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { mcpInit, mcpCall, isConnected } = require('./mcp-transport.cjs');
 
 const LESSONS_FILE = path.join(__dirname, '..', 'lessons.json');
 
@@ -58,6 +59,94 @@ function detectFrustration(text) {
     if (pattern.test(text)) detected.add(signal);
   }
   return [...detected];
+}
+
+// ── AUTO-STORE GATE ────────────────────────────────────────────
+// "The most important part of memory is knowing what to forget."
+// But the default should be remember. The gate decides what to skip.
+// Nobody should have to think about storing. It just happens.
+
+const STORE_PATTERNS = {
+  commitment:  /I('ll| will| shall| need to| have to| gotta| must)\s+.{5,}/i,
+  decision:    /(?:decided|going with|the approach is|we('ll| will) use|let'?s go with)\s+.{5,}/i,
+  instruction: /(?:always|never|must|rule|don'?t ever|non-?negotiable)\s+.{5,}/i,
+  preference:  /(?:I (?:like|love|hate|prefer|dislike|want|need))\s+.{5,}/i,
+  insight:     /(?:the (?:key|important|critical|real) (?:thing|part|issue|point) is|remember that|the reason is)\s+.{5,}/i,
+  fact:        /(?:my (?:name|birthday|address|phone|email|age)|I am|I have|I work)\s+.{3,}/i,
+};
+
+const SKIP_PATTERNS = [
+  /^(ok|yes|no|yeah|yep|nah|lol|haha|hmm|kk|k|sure|thanks|ty|thx|cool|nice|right|yep|nope)$/i,
+  /^.{0,15}$/,  // Too short to be meaningful
+];
+
+function shouldAutoStore(text) {
+  // Skip trivial messages
+  const trimmed = text.trim();
+  for (const skip of SKIP_PATTERNS) {
+    if (skip.test(trimmed)) return null;
+  }
+
+  // Check each pattern
+  for (const [category, pattern] of Object.entries(STORE_PATTERNS)) {
+    if (pattern.test(trimmed)) {
+      return { category, text: trimmed };
+    }
+  }
+
+  // High emotional content (even without specific pattern)
+  const emotionalWords = ['died', 'death', 'cancer', 'pregnant', 'married', 'divorced', 'fired', 'promoted', 'won', 'lost'];
+  for (const word of emotionalWords) {
+    if (trimmed.toLowerCase().includes(word)) {
+      return { category: 'event', text: trimmed, salienceBoost: 20 };
+    }
+  }
+
+  // Messages over 100 chars with substance are worth storing
+  if (trimmed.length > 100 && /[a-zA-Z]/.test(trimmed)) {
+    return { category: 'uncategorized', text: trimmed };
+  }
+
+  return null;
+}
+
+function autoStore(text, frustrationSignals, ticCount) {
+  const storeDecision = shouldAutoStore(text);
+  if (!storeDecision) return;
+
+  // Initialize MCP if not already connected
+  if (!isConnected()) {
+    mcpInit();
+  }
+  if (!isConnected()) return; // MCP down, degrade gracefully
+
+  const storeArgs = {
+    text: storeDecision.text,
+    category: storeDecision.category,
+    securityTier: 'Tier2_Personal', // User messages are personal by default
+  };
+
+  if (storeDecision.salienceBoost) {
+    storeArgs.salienceBoost = storeDecision.salienceBoost;
+  }
+
+  // Frustration boosts salience — these are the lessons that matter most
+  if (frustrationSignals.length > 0) {
+    storeArgs.salienceBoost = Math.min(50, (storeArgs.salienceBoost || 0) + 15);
+    storeArgs.tags = ['frustration', ...frustrationSignals];
+  }
+
+  // High tic count = emotional intensity
+  if (ticCount >= 3) {
+    storeArgs.salienceBoost = Math.min(50, (storeArgs.salienceBoost || 0) + 10);
+  }
+
+  // Fire and forget — don't block the user's message
+  try {
+    mcpCall('store_memory', storeArgs);
+  } catch {
+    // Non-fatal. Memory is important but not worth blocking for.
+  }
 }
 
 function loadLessons() {
@@ -122,29 +211,67 @@ async function main() {
       frustrationSignals.push('high_tic_count');
     }
 
+    // ── AUTO-STORE: Remember without being asked ─────────────
+    // "Nobody should have to think about remembering."
+    // The gate decides what's worth storing. Not everything is.
+    autoStore(sanitized || message, frustrationSignals, ticCount);
+
     const contextParts = [];
 
-    // Frustration detected — record the lesson AND alert Claude NOW
+    // Frustration detected — record lesson, store pain memory, alert Claude
     if (frustrationSignals.length > 0) {
       const lesson = saveLesson(frustrationSignals, sanitized || message);
 
-      // Load recent lessons for pattern detection
+      // Load recent lessons for pattern detection + penalty escalation
       const data = loadLessons();
-      const recent = data.lessons.slice(-5);
+      const recent = data.lessons.slice(-20);
       const signalCounts = {};
       for (const l of recent) {
         for (const s of l.signals) signalCounts[s] = (signalCounts[s] || 0) + 1;
       }
       const recurring = Object.entries(signalCounts)
         .filter(([, count]) => count >= 2)
-        .map(([signal]) => signal);
+        .map(([signal, count]) => ({ signal, count }));
+
+      // ── PAIN MEMORY: Store frustration to MCP with escalating penalty ──
+      // "A child touches a hot stove once. The pain is the enforcement."
+      if (isConnected() || mcpInit()) {
+        const maxCount = recurring.length > 0
+          ? Math.max(...recurring.map(r => r.count))
+          : 1;
+        const penaltyWeight = Math.min(1.0, maxCount * 0.3);
+        const salienceBoost = Math.min(50, 15 + (maxCount * 10));
+
+        try {
+          mcpCall('store_memory', {
+            text: `[PAIN MEMORY] Frustration: "${(sanitized || message).substring(0, 200)}". Signals: ${frustrationSignals.join(', ')}. Repetition count: ${maxCount}. Penalty: ${penaltyWeight}.`,
+            category: 'instruction',
+            tags: ['pain_memory', 'frustration', ...frustrationSignals],
+            salienceBoost,
+            securityTier: 'Tier2_Personal',
+          });
+        } catch {}
+      }
+
+      // Escalating enforcement based on repetition
+      const maxRepeat = recurring.length > 0 ? Math.max(...recurring.map(r => r.count)) : 0;
 
       contextParts.push('[FRUSTRATION DETECTED — STOP AND REFLECT]');
       contextParts.push(`Signals: ${frustrationSignals.join(', ')}`);
-      if (recurring.length > 0) {
-        contextParts.push(`RECURRING pattern (${recurring.join(', ')}) — you have made this SAME mistake before. Check .claude/lessons.json.`);
+
+      if (maxRepeat >= 4) {
+        // GATE: Hard stop
+        contextParts.push(`PAIN MEMORY (${maxRepeat}x): This behavior has caused frustration ${maxRepeat} times. DO NOT proceed with whatever you were about to do. Re-read Alan's message. Do EXACTLY and ONLY what was asked.`);
+      } else if (maxRepeat >= 3) {
+        // BLOCK: Strong warning
+        contextParts.push(`PAIN MEMORY (${maxRepeat}x): RECURRING pattern (${recurring.map(r => r.signal).join(', ')}). You have been corrected for this SAME behavior ${maxRepeat} times. The stove is hot. Do not touch it.`);
+      } else if (maxRepeat >= 2) {
+        // PAIN: It hurts
+        contextParts.push(`RECURRING pattern (${recurring.map(r => r.signal).join(', ')}) — you have made this SAME mistake before. This is the ${maxRepeat}${maxRepeat === 2 ? 'nd' : 'rd'} time. Check .claude/lessons.json.`);
+      } else {
+        // WARN: First time
+        contextParts.push('Action: Re-read what Alan actually asked. Do ONLY that. No extras.');
       }
-      contextParts.push('Action: Re-read what Alan actually asked. Do ONLY that. No extras.');
       contextParts.push('');
     }
 
