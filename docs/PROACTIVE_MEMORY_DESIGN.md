@@ -161,17 +161,229 @@ db.memories.find({
 });
 ```
 
+## The Focus Window: Redis as a Living Attention Field
+
+The Redis context frame isn't a flat key-value cache. It's an **attention field** — a weighted, threaded, fading window of everything the system is paying attention to *right now*. Same co-occurrence threading as MongoDB memories, but for the present moment.
+
+### How Attention Actually Works
+
+You're driving. You're focused. A text comes in: "mom died." The driving doesn't vanish — it gets fewer cycles. The emotional payload of that text *hijacks the attention field*, not by erasing what was there, but by **reweighting everything**.
+
+This is how the brain works. This is how our Redis window must work.
+
+```
+BEFORE TEXT:
+┌──────────────────────────────────────────────────────────────┐
+│  REDIS FOCUS WINDOW (attention field)                        │
+│                                                              │
+│  [driving]  ████████████  weight: 0.9  decay: slow          │
+│  [music]    ████           weight: 0.4  decay: fast          │
+│  [meeting]  ██████         weight: 0.6  decay: medium        │
+│                                                              │
+│  Relations: driving ←→ meeting (co-occurring, linked)        │
+│             music ←→ driving (ambient, weak link)            │
+└──────────────────────────────────────────────────────────────┘
+
+AFTER "mom died" TEXT:
+┌──────────────────────────────────────────────────────────────┐
+│  REDIS FOCUS WINDOW (attention field reweighted)             │
+│                                                              │
+│  [mom died] ████████████████████  weight: 1.0  decay: NONE  │
+│  [driving]  ███                   weight: 0.3  decay: slow   │
+│  [music]    ░                     weight: 0.05 decay: fast   │
+│  [meeting]  █                     weight: 0.1  decay: medium │
+│                                                              │
+│  Relations: mom_died → NEW DOMINANT NODE                     │
+│             driving still linked (you're still on the road)  │
+│             music faded to near-zero (irrelevant now)        │
+│             meeting suppressed (not important anymore)        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The driving context doesn't get deleted — you're still physically driving. It just gets fewer cycles. The emotional signal hijacks the weight distribution.
+
+### RNN-Like Relational Fading
+
+We're working with recurrent patterns. The underlying architecture maps to what RNNs do — hidden state that carries forward, gates that control what persists and what fades. But ours is explicit and inspectable:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│           ATTENTION FIELD — RNN-INSPIRED ARCHITECTURE           │
+│                                                                 │
+│  Input gate:  What new information enters the focus window?     │
+│               (every store_memory, every context change)        │
+│                                                                 │
+│  Forget gate: What fades? Temporal decay + relevance scoring    │
+│               (low-salience items decay faster, high persist)   │
+│                                                                 │
+│  Output gate: What surfaces? The pressure model decides         │
+│               (threshold crossing → involuntary recall)         │
+│                                                                 │
+│  Hidden state: The Redis focus window IS the hidden state       │
+│               (carries forward across turns, fades naturally)   │
+│                                                                 │
+│  ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐  │
+│  │  INPUT   │───▶│  FOCUS   │───▶│  DECAY   │───▶│  OUTPUT  │  │
+│  │  GATE    │    │  WINDOW  │    │  GATE    │    │  GATE    │  │
+│  │          │    │  (Redis) │    │          │    │          │  │
+│  │ salience │    │ weighted │    │ temporal │    │ pressure │  │
+│  │ emotion  │    │ threaded │    │ salience │    │ threshold│  │
+│  │ novelty  │    │ relational│   │ relevance│    │ pop!     │  │
+│  └─────────┘    └──────────┘    └──────────┘    └──────────┘  │
+│                                                                 │
+│  Relational mapping:                                            │
+│  - Each node in the window links to co-occurring nodes          │
+│  - Links have weights (strong co-occurrence = strong link)      │
+│  - When one node activates, linked nodes get a boost            │
+│  - When one node fades, weakly-linked nodes fade faster         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Redis Focus Window Data Structure
+
+```javascript
+// Each item in the focus window
+{
+  key: "focus:{userId}:{itemId}",
+  value: {
+    content: "deploying CloudFormation stack",
+    weight: 0.85,                    // current attention weight (0-1)
+    baseWeight: 0.7,                 // weight when it entered
+    emotionalCharge: 0.3,            // emotional signal strength
+    enteredAt: "2026-03-16T03:00:00Z",
+    lastActivatedAt: "2026-03-16T03:15:00Z",
+    decayRate: 0.02,                 // weight lost per minute of inactivity
+    sessionId: "session_2026-03-16",  // same threading as memories
+    // Relational links to other focus items
+    relations: [
+      { itemId: "focus_abc", strength: 0.8, type: "co-occurring" },
+      { itemId: "focus_def", strength: 0.3, type: "topical" },
+    ],
+    // Source memory if this came from recall
+    sourceMemoryId: "mem_xyz",
+  },
+  TTL: 3600  // 1 hour max, but weight decay handles real fading
+}
+
+// The emotional hijack: when a high-emotion signal arrives
+// 1. New item enters with weight = 1.0 and emotionalCharge > 0.8
+// 2. ALL other items get reweighted: weight *= (1 - newItem.emotionalCharge * 0.5)
+// 3. Strongly-related items resist the suppression (relation strength acts as shield)
+// 4. Weakly-related items drop fast
+// 5. The driving context survives because it's "co-occurring" (you're still driving)
+// 6. The music context nearly vanishes (no relation to the emotional signal)
+```
+
+### Threading the Focus Window
+
+Same principle as MongoDB session threading, but real-time:
+
+```javascript
+// When a new item enters the focus window:
+// 1. Link it to whatever was most recently active (previousFocusId)
+// 2. Link it to any items sharing topics/entities (topical relation)
+// 3. If emotional charge > threshold, trigger reweight cascade
+
+// Focus window query: "what am I paying attention to?"
+ZRANGEBYSCORE focus:{userId}:weights 0.1 1.0  // everything above fade threshold
+// Returns weighted, threaded, relational attention field
+
+// Focus window decay tick (runs every 30 seconds):
+// For each item:
+//   weight -= decayRate * minutesSinceLastActivation
+//   if weight < 0.05: evict (move to MongoDB as memory if worthy)
+//   if weight dropped below 0.3: check if any linked items should also fade
+```
+
+### Lotto vs Mom: The Emotional Hijack Spectrum
+
+Not all hijacks are grief. "You won the lotto" also reweights everything — but with different emotional valence. The system needs to handle both:
+
+- **Negative hijack** (mom died): suppresses unrelated items *hard*, related items (family, phone) get *boosted*
+- **Positive hijack** (won lotto): suppresses unrelated items *moderately*, related items (money, plans, freedom) get boosted
+- **Neutral high-salience** (boss calling): suppresses low-priority items, boosts work-related items
+
+The emotional valence from the salience engine (emotion 30% weight) already computes this. The focus window just needs to *react to it in real-time* instead of waiting for the next recall query.
+
+## The Dual Brain Model: Compaction as Disagreement
+
+Alan's insight: compaction (context compression) shouldn't be data loss. It should be an **adversarial handoff** between two brains.
+
+### The Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    DUAL BRAIN MODEL                       │
+│              (Alan calls it "dual", Google "twin")        │
+│                                                           │
+│  ┌─────────────┐         ┌─────────────┐                │
+│  │   BRAIN A    │◄───────▶│   BRAIN B    │               │
+│  │   (Active)   │  swap   │  (Watchdog)  │               │
+│  │              │         │              │                │
+│  │ Current      │         │ Compressed   │                │
+│  │ context      │         │ context +    │                │
+│  │ Full detail  │         │ Judgment     │                │
+│  │ Makes calls  │         │ Questions    │                │
+│  └──────┬───────┘         └──────┬───────┘               │
+│         │                        │                        │
+│         │    COMPACTION EVENT     │                        │
+│         │    ═══════════════     │                        │
+│         │                        │                        │
+│         ▼                        ▼                        │
+│  Brain A compresses ──▶ Brain B receives compressed       │
+│  Brain B reviews   ──▶ "You decided X, but Y was better" │
+│  Roles swap        ──▶ Brain B leads, Brain A watches     │
+│                                                           │
+│  The compression boundary is a DISAGREEMENT OPPORTUNITY   │
+│  Not data loss. An interrogation.                         │
+└──────────────────────────────────────────────────────────┘
+```
+
+### How It Works
+
+1. **Brain A** runs the session — full context, makes decisions, stores memories
+2. **Brain B** watches in the background — maintains a compressed summary + its own assessment
+3. **Compaction triggers** — context window filling up, or PreCompact hook fires
+4. **Brain B interrogates** — "You decided to use Ollama, but the user mentioned latency concerns 40 minutes ago. Did you account for that?"
+5. **Roles swap** — Brain B takes over with compressed context + its challenges. Brain A becomes the watchdog.
+6. **The itch** — Brain B's challenges become pressure signals. If Brain A ignored something important, Brain B's pressure builds until it POPs.
+
+### Why This Matters
+
+Current compaction: context gets summarized, nuance is lost, decisions get flattened into facts.
+
+Dual-brain compaction: the compression *itself* is an intelligence act. The receiving brain doesn't just accept — it questions. It's adversarial in the healthy sense. Like a code review for your attention.
+
+### Connection to the Focus Window
+
+The Redis focus window feeds both brains:
+- Brain A sees the full weighted attention field
+- Brain B sees the *fading patterns* — what Brain A is letting go of
+- Brain B's job: notice when something important is fading and push back
+- "You're losing the driving context but you're still in the car"
+
+### Implementation Path
+
+1. **PreCompact hook** already exists — `pre-compact-snapshot.cjs` fires before compaction
+2. Wire it to capture the focus window state at compaction time
+3. The compressed context includes Brain B's challenges as structured data
+4. Post-compaction, the new context starts with Brain B's interrogation
+5. Session threading ensures the cross-compaction memories stay linked
+
 ## What We Don't Build Yet
 
-- **Pressure accumulator** — the stalker model. Needs the co-occurrence foundation first.
+- **Full pressure accumulator** — the stalker model. Needs the focus window foundation first.
 - **Cross-session threading** — linking sessions that work on the same topic across days. Comes after single-session threading works.
 - **Emotional replay** — surfacing the emotional state from the original memory. Needs Hume.ai pipeline operational.
 - **Multi-device gossip** — "your phone session stored this, your laptop should know." Needs cross-device event bus.
+- **Full dual-brain swap** — needs the focus window relational mapping operational first. Start with the PreCompact interrogation.
 
 ## The Principle
 
 Simple is elegant. A friend who remembers what you talked about yesterday is worth more than a system that can search a million memories. Start with one sentence of continuity. Build from there.
 
+The focus window is the *present*. MongoDB is the *past*. The dual brain model is how the present becomes the past without losing what matters. And when the lotto text comes in, the whole field reweights — you don't forget you're driving, it just gets fewer cycles.
+
 > "AI that knows you like a friend, every time you talk to it."
 
-That sentence from the README — this is how we deliver it. Not with 37 tools and a mission control dashboard. With one greeting that proves we were listening.
+That sentence from the README — this is how we deliver it. Not with 37 tools and a mission control dashboard. With one greeting that proves we were listening. With a focus window that breathes. With two brains that keep each other honest.
