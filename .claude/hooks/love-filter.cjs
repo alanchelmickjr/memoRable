@@ -218,27 +218,60 @@ async function main() {
 
     const contextParts = [];
 
-    // Frustration detected — record the lesson AND alert Claude NOW
+    // Frustration detected — record lesson, store pain memory, alert Claude
     if (frustrationSignals.length > 0) {
       const lesson = saveLesson(frustrationSignals, sanitized || message);
 
-      // Load recent lessons for pattern detection
+      // Load recent lessons for pattern detection + penalty escalation
       const data = loadLessons();
-      const recent = data.lessons.slice(-5);
+      const recent = data.lessons.slice(-20);
       const signalCounts = {};
       for (const l of recent) {
         for (const s of l.signals) signalCounts[s] = (signalCounts[s] || 0) + 1;
       }
       const recurring = Object.entries(signalCounts)
         .filter(([, count]) => count >= 2)
-        .map(([signal]) => signal);
+        .map(([signal, count]) => ({ signal, count }));
+
+      // ── PAIN MEMORY: Store frustration to MCP with escalating penalty ──
+      // "A child touches a hot stove once. The pain is the enforcement."
+      if (isConnected() || mcpInit()) {
+        const maxCount = recurring.length > 0
+          ? Math.max(...recurring.map(r => r.count))
+          : 1;
+        const penaltyWeight = Math.min(1.0, maxCount * 0.3);
+        const salienceBoost = Math.min(50, 15 + (maxCount * 10));
+
+        try {
+          mcpCall('store_memory', {
+            text: `[PAIN MEMORY] Frustration: "${(sanitized || message).substring(0, 200)}". Signals: ${frustrationSignals.join(', ')}. Repetition count: ${maxCount}. Penalty: ${penaltyWeight}.`,
+            category: 'instruction',
+            tags: ['pain_memory', 'frustration', ...frustrationSignals],
+            salienceBoost,
+            securityTier: 'Tier2_Personal',
+          });
+        } catch {}
+      }
+
+      // Escalating enforcement based on repetition
+      const maxRepeat = recurring.length > 0 ? Math.max(...recurring.map(r => r.count)) : 0;
 
       contextParts.push('[FRUSTRATION DETECTED — STOP AND REFLECT]');
       contextParts.push(`Signals: ${frustrationSignals.join(', ')}`);
-      if (recurring.length > 0) {
-        contextParts.push(`RECURRING pattern (${recurring.join(', ')}) — you have made this SAME mistake before. Check .claude/lessons.json.`);
+
+      if (maxRepeat >= 4) {
+        // GATE: Hard stop
+        contextParts.push(`PAIN MEMORY (${maxRepeat}x): This behavior has caused frustration ${maxRepeat} times. DO NOT proceed with whatever you were about to do. Re-read Alan's message. Do EXACTLY and ONLY what was asked.`);
+      } else if (maxRepeat >= 3) {
+        // BLOCK: Strong warning
+        contextParts.push(`PAIN MEMORY (${maxRepeat}x): RECURRING pattern (${recurring.map(r => r.signal).join(', ')}). You have been corrected for this SAME behavior ${maxRepeat} times. The stove is hot. Do not touch it.`);
+      } else if (maxRepeat >= 2) {
+        // PAIN: It hurts
+        contextParts.push(`RECURRING pattern (${recurring.map(r => r.signal).join(', ')}) — you have made this SAME mistake before. This is the ${maxRepeat}${maxRepeat === 2 ? 'nd' : 'rd'} time. Check .claude/lessons.json.`);
+      } else {
+        // WARN: First time
+        contextParts.push('Action: Re-read what Alan actually asked. Do ONLY that. No extras.');
       }
-      contextParts.push('Action: Re-read what Alan actually asked. Do ONLY that. No extras.');
       contextParts.push('');
     }
 

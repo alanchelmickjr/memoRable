@@ -680,6 +680,101 @@ Nobody should have to think about remembering. The system that requires `store_m
 
 The auto-store pipeline makes memory automatic. The gate makes it selective. The First Law applies: know what to forget. But the default should be *remember*, with the gate deciding what to skip — not the other way around.
 
+## Pain Memory: Penalties That Prevent Repetition
+
+A child touches a hot stove once. The memory doesn't just say "stove is hot." It *hurts* to recall. The pain is the enforcement. The pain is why you never touch it again.
+
+MemoRable's frustration detector already captures the signal — Alan says "you're not listening" and it gets written to `lessons.json`. But that file is a document. Documents don't fix models. The lesson needs to become a **pain memory** — a salience penalty that activates when the system is about to repeat the same mistake.
+
+### How Pain Memory Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PAIN MEMORY CYCLE                             │
+│                                                                 │
+│  1. BURN: Alan says "you're not listening"                       │
+│     → Frustration detector fires                                │
+│     → store_memory with category: "pain"                        │
+│     → salienceBoost: 30 (pain memories are HIGH salience)       │
+│     → tags: [frustration signal, recurring pattern]             │
+│     → painSignature: hash of the behavior pattern               │
+│                                                                 │
+│  2. SCAR: Memory stored with negative emotional charge           │
+│     → emotionalValence: -0.8 (strongly negative)                │
+│     → penaltyWeight: escalates with repetition count            │
+│       1st offense: 0.3                                          │
+│       2nd offense: 0.6                                          │
+│       3rd offense: 0.9 (almost blocking)                        │
+│       4th+: 1.0 (the system should REFUSE the behavior)        │
+│                                                                 │
+│  3. ITCH: Next session, similar pattern detected                 │
+│     → Pressure accumulator matches painSignature                │
+│     → Instead of pleasant recall, PAIN surfaces                 │
+│     → "Last time you did this, Alan said: 'not listening'"      │
+│     → The cost of repetition is felt BEFORE the action          │
+│                                                                 │
+│  4. BLOCK: If penalty is high enough, behavior is suppressed     │
+│     → Context injection: "WARNING: This matches a pain memory.  │
+│       You have been corrected for this 3 times. DO NOT repeat." │
+│     → The hook BLOCKS the action, not just warns about it       │
+│     → "Documents don't fix models. Enforcement does."           │
+│                                                                 │
+│  Escalation:                                                     │
+│  ┌─────┐    ┌─────┐    ┌─────┐    ┌─────┐                     │
+│  │ Warn │───▶│ Pain│───▶│Block│───▶│ Gate│                     │
+│  │      │    │     │    │     │    │     │                     │
+│  │ 1st  │    │ 2nd │    │ 3rd │    │ 4th+│                     │
+│  │ time │    │ time│    │ time│    │ hard│                     │
+│  │      │    │hurts│    │stops│    │ stop│                     │
+│  └─────┘    └─────┘    └─────┘    └─────┘                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### The Pain Signature
+
+Each frustration gets a **pain signature** — a hash of the behavioral pattern, not the specific words. "You're not listening" and "I already told you" and "same mistake" all map to the same signature: `repeated_instruction`. The signature is what gets matched, not the text.
+
+```javascript
+// Pain memory document
+{
+  memoryId: "mem_pain_abc",
+  text: "Alan: 'you're not listening' — was adding unsolicited advice",
+  category: "pain",
+  painSignature: "unsolicited",       // behavioral pattern hash
+  penaltyWeight: 0.6,                 // 2nd offense
+  repetitionCount: 2,
+  originalFrustration: "don't add advice, tips, or instructions",
+  emotionalValence: -0.8,
+  salienceScore: 95,                  // pain memories are near-max salience
+  tags: ["frustration", "unsolicited", "recurring"],
+}
+```
+
+### Wiring Pain into the Pipeline
+
+The pieces already exist. They just need connecting:
+
+1. **`love-filter.cjs`** already detects frustration signals and counts repetitions
+2. **`lessons.json`** already stores the rolling window of frustrations
+3. **Auto-store pipeline** (just built) can store pain memories via MCP
+4. **Salience scoring** already has emotional weighting (30%)
+5. **Focus window** can hold pain memories in the pressure tier
+
+What's needed:
+- Auto-store frustration as **pain memories** (not just to `lessons.json`)
+- Add `painSignature` field to memory documents
+- On recall/context load, check for pain signature matches against current behavior
+- Inject warnings that escalate with repetition count
+- At high enough penalty: **block the behavior via hook output**
+
+### The Key Insight
+
+The hot stove doesn't write a document about being hot. It doesn't suggest you read the documentation. It burns you. Once. And you never touch it again.
+
+Pain memories are the stove. The first time is a warning. The second time hurts. The third time blocks. The fourth time is a gate that won't open.
+
+This is what separates MemoRable from every other memory system. Other systems remember facts. MemoRable remembers *consequences*. The cost of forgetting isn't lost data — it's repeated pain.
+
 ## What We Don't Build Yet
 
 - **Full pressure accumulator** — the messenger model. Needs the focus window foundation first.
