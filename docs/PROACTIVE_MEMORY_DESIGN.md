@@ -161,6 +161,88 @@ db.memories.find({
 });
 ```
 
+## The First Law
+
+> "The most important part of memory is knowing what to forget." — Alan Helmick
+
+This is the founding principle. Total recall is a curse. The superpower is choosing what matters and letting the rest go. Every system in MemoRable — salience scoring, temporal decay, the focus window, the forget gate — serves this law.
+
+## The Inhabitants: Who Lives in the Cage
+
+Alan's eidetic memory isn't one thing. It's several residents sharing the same skull, each with a job:
+
+### Photo Brain (The Stalker)
+The one that pattern-matches involuntarily. Sees a face, feels the itch, pressure builds, POP — full recall with emotional payload. This is the pressure model. Photo Brain doesn't ask permission. It surfaces what it surfaces. The system models this with the pressure accumulator and involuntary surfacing threshold.
+
+### The Driving Task Demon
+The autonomous background executor. When "mom died" hits and Photo Brain hijacks the attention field, the Driving Task Demon is the one keeping the car between the lines. She doesn't need conscious cycles. She runs on muscle memory, trained patterns, low-level loops. She is *critical*.
+
+In the architecture, the Driving Task Demon is why we don't **delete** items from the Redis focus window when attention shifts — we **deprioritize** them. The driving context drops to 0.3 weight but it doesn't vanish. The Demon keeps it alive with minimal resources.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    THE INHABITANTS                                │
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  PHOTO BRAIN  │  │  DRIVING     │  │  CONSCIOUS FOCUS     │  │
+│  │  (Stalker)    │  │  TASK DEMON  │  │  (Active Attention)  │  │
+│  │               │  │              │  │                      │  │
+│  │ Involuntary   │  │ Autonomous   │  │ Deliberate           │  │
+│  │ Pattern match │  │ Background   │  │ What you're "doing"  │  │
+│  │ Pressure/pop  │  │ Keeps car    │  │ The main thread      │  │
+│  │ Emotional     │  │ on road      │  │                      │  │
+│  │               │  │ Doesn't need │  │ Can be hijacked by   │  │
+│  │ Maps to:      │  │ attention    │  │ emotional signals    │  │
+│  │ Pressure      │  │              │  │                      │  │
+│  │ accumulator   │  │ Maps to:     │  │ Maps to:             │  │
+│  │ + threshold   │  │ Background   │  │ Highest-weight       │  │
+│  │ + output gate │  │ tasks in     │  │ items in focus       │  │
+│  │               │  │ focus window │  │ window               │  │
+│  │               │  │ w < 0.3 but  │  │ w > 0.5              │  │
+│  │               │  │ w > 0 always │  │                      │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                                                                  │
+│  When emotional hijack fires:                                    │
+│  - Conscious Focus: REPLACED by emotional signal                 │
+│  - Photo Brain: ACTIVATED (pattern matching the new signal)      │
+│  - Driving Task Demon: CONTINUES (fewer cycles, still running)   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+The Driving Task Demon maps to a specific weight tier in the focus window:
+- **Demon tier** (weight 0.05–0.3): Tasks that keep running on autopilot. Driving, breathing, keeping a build watch going. They don't get evicted even during emotional hijack. They fade slowly but never to zero while physically relevant.
+- **Conscious tier** (weight 0.3–1.0): Active attention. Gets reweighted by emotional signals.
+- **Pressure tier** (weight 0 in focus, non-zero in pressure accumulator): Photo Brain's domain. Not in the focus window at all — lurking underneath, building pressure until threshold POP.
+
+### Implementation: Demon Tasks
+
+```javascript
+// When storing a focus item, classify it:
+{
+  itemId: "focus_driving",
+  content: "driving home on I-280",
+  weight: 0.85,
+  tier: "conscious",      // starts conscious
+  isDemonEligible: true,  // CAN become a demon task (physical, ongoing, trained)
+  minWeight: 0.05,        // demon floor — never drops below this while active
+}
+
+// On emotional hijack:
+// 1. Conscious tier items get reweighted (most drop)
+// 2. Demon-eligible items get reclassified to demon tier
+//    - weight drops to max(0.15, current * 0.3) — significant drop but never zero
+//    - continues executing in background
+// 3. New emotional signal enters at weight 1.0 in conscious tier
+
+// Demon eligibility heuristics:
+// - Physical ongoing tasks (driving, walking, cooking)
+// - Automated processes (build running, deploy in progress)
+// - Safety-critical items (anything involving movement, health monitoring)
+// - Items tagged "background" or "autonomous"
+```
+
+The key insight: the Driving Task Demon isn't a feature we add. She's a **weight floor** on certain categories of focus items. She's the guarantee that "you're still driving" even when the world falls apart.
+
 ## The Focus Window: Redis as a Living Attention Field
 
 The Redis context frame isn't a flat key-value cache. It's an **attention field** — a weighted, threaded, fading window of everything the system is paying attention to *right now*. Same co-occurrence threading as MongoDB memories, but for the present moment.
