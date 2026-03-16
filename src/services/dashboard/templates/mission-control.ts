@@ -13,18 +13,24 @@ export function renderMissionControl(data: MissionControlData): string {
   const sourceCount = data.dataSources;
   const uptimeHours = Math.floor(data.uptimeSeconds / 3600);
 
-  // System vitals (randomized for CRT aesthetic)
-  const cpuFake = 23 + Math.floor(Math.random() * 15);
-  const memFake = 45 + Math.floor(Math.random() * 20);
-  const networkFake = 78 + Math.floor(Math.random() * 20);
+  // Real system vitals from OS
+  const cpuLoad = data.vitals?.cpuPercent ?? 0;
+  const memLoad = data.vitals?.memoryPercent ?? 0;
+  const networkLoad = data.vitals?.networkConnections ?? 0;
 
-  // Radar blips from top entities
-  const radarBlips = data.topEntities.slice(0, 5).map((_, i) => {
+  // Radar blips from top entities — deterministic positions based on entity name
+  const radarBlips = data.topEntities.slice(0, 5).map((entity, i) => {
     const angle = (i * 72) * Math.PI / 180;
-    const r = 30 + Math.random() * 40;
+    // Deterministic radius from entity name hash
+    let nameHash = 0;
+    const name = entity.name || '';
+    for (let c = 0; c < name.length; c++) {
+      nameHash = ((nameHash << 5) - nameHash + name.charCodeAt(c)) | 0;
+    }
+    const r = 30 + (Math.abs(nameHash) % 40);
     const x = 50 + r * Math.cos(angle);
     const y = 50 + r * Math.sin(angle);
-    return `<div class="radar-blip" style="left: ${x}%; top: ${y}%;"></div>`;
+    return `<div class="radar-blip" style="left: ${x}%; top: ${y}%;" title="${name}"></div>`;
   }).join('');
 
   // Indicator lights
@@ -37,10 +43,21 @@ export function renderMissionControl(data: MissionControlData): string {
     { icon: '\u2713', color: 'c6', label: 'task' },
     { icon: '\u25C8', color: 'c7', label: 'memory' },
   ];
-  const states = ['on', 'slow', 'off', 'on'];
+  // Indicator states derived from real data
+  const systemHealthy = data.totalMemories > 0;
+  const salienceActive = data.avgSalience > 0;
+  const hasEntities = data.uniqueEntities > 0;
+  const hasOpenLoops = data.openLoops > 0;
   const indicatorLights = Array(32).fill(0).map((_, i) => {
     const cfg = indicatorConfig[i % 7];
-    const state = states[Math.floor(Math.random() * 4)];
+    // State based on real system signals, cycling through indicators deterministically
+    let state: string;
+    const group = Math.floor(i / 7);
+    if (group === 0) state = systemHealthy ? 'on' : 'off';
+    else if (group === 1) state = salienceActive ? 'slow' : 'off';
+    else if (group === 2) state = hasEntities ? 'on' : 'off';
+    else if (group === 3) state = hasOpenLoops ? 'slow' : 'on';
+    else state = (i % 3 === 0) ? 'on' : 'slow';
     return `<div class="indicator-light ${cfg.color} ${state}" title="${cfg.label}">${cfg.icon}</div>`;
   }).join('');
 
@@ -460,9 +477,9 @@ export function renderMissionControl(data: MissionControlData): string {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--cyan)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${gaugeOffset(cpuFake)}" />
+                stroke-dashoffset="${gaugeOffset(cpuLoad)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--cyan);">${cpuFake}%</div>
+            <div class="gauge-value" style="color: var(--cyan);">${cpuLoad}%</div>
           </div>
           <div class="gauge-label">CPU Load</div>
         </div>
@@ -473,9 +490,9 @@ export function renderMissionControl(data: MissionControlData): string {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--magenta)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${gaugeOffset(memFake)}" />
+                stroke-dashoffset="${gaugeOffset(memLoad)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--magenta);">${memFake}%</div>
+            <div class="gauge-value" style="color: var(--magenta);">${memLoad}%</div>
           </div>
           <div class="gauge-label">Memory</div>
         </div>
@@ -486,9 +503,9 @@ export function renderMissionControl(data: MissionControlData): string {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--green)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${gaugeOffset(networkFake)}" />
+                stroke-dashoffset="${gaugeOffset(networkLoad)}" />
             </svg>
-            <div class="gauge-value" style="color: var(--green);">${networkFake}%</div>
+            <div class="gauge-value" style="color: var(--green);">${networkLoad}%</div>
           </div>
           <div class="gauge-label">Network</div>
         </div>

@@ -39,8 +39,17 @@ export interface CalendarData {
   totals: { memories: number; avgSalience: number; entities: number; openLoops: number };
 }
 
+export interface SystemVitals {
+  cpuPercent: number;
+  memoryPercent: number;
+  memoryUsedMB: number;
+  memoryTotalMB: number;
+  networkConnections: number;
+}
+
 export interface MissionControlData extends DashboardSummary {
   uptimeSeconds: number;
+  vitals: SystemVitals;
 }
 
 /**
@@ -271,13 +280,36 @@ export async function getCalendarData(db: Db, userId?: string, days = 7): Promis
 }
 
 /**
- * Mission control data — extends summary with uptime.
+ * Mission control data — extends summary with uptime and real system vitals.
  */
 export async function getMissionControlData(db: Db, startTime: number, userId?: string): Promise<MissionControlData> {
+  const os = await import('os');
   const summary = await getDashboardSummary(db, userId);
+
+  // Real system vitals from the OS
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  const cpus = os.cpus();
+
+  // CPU usage: average across cores (idle time ratio)
+  const cpuPercent = cpus.length > 0
+    ? Math.round(cpus.reduce((acc, cpu) => {
+        const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+        return acc + ((total - cpu.times.idle) / total) * 100;
+      }, 0) / cpus.length)
+    : 0;
+
   return {
     ...summary,
     uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
+    vitals: {
+      cpuPercent,
+      memoryPercent: Math.round((usedMem / totalMem) * 100),
+      memoryUsedMB: Math.round(usedMem / (1024 * 1024)),
+      memoryTotalMB: Math.round(totalMem / (1024 * 1024)),
+      networkConnections: 0, // populated by dashboard if monitoring stack available
+    },
   };
 }
 
