@@ -352,6 +352,27 @@ async function main() {
     parts.push(lessons);
   }
 
+  // Git context
+  let branch = '';
+  try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
+  } catch {}
+
+  let connectorDoc = false;
+  try {
+    execSync('test -f docs/CHLOE_MEMORABLE_INTEGRATION.md', { encoding: 'utf8' });
+    connectorDoc = true;
+  } catch {}
+
+  const project = detectProject();
+
+  // ─── Identity Resolution (cache + device fingerprint) ───
+  const identity = resolveFromCache();
+  const identifiedEntity = identity.entity;
+
+  // ─── MCP Cloud Connection (MCP init IS the health check) ───
+  const mcpConnected = mcpInit();
+
   // ── PAIN MEMORIES: The hot stove ─────────────────────────────
   // Load frustration patterns from lessons.json AND from MCP
   // "Documents don't fix models. Enforcement does."
@@ -375,27 +396,6 @@ async function main() {
       }
     } catch {}
   }
-
-  // Git context
-  let branch = '';
-  try {
-    branch = execSync('git rev-parse --abbrev-ref HEAD 2>/dev/null', { encoding: 'utf8' }).trim();
-  } catch {}
-
-  let connectorDoc = false;
-  try {
-    execSync('test -f docs/CHLOE_MEMORABLE_INTEGRATION.md', { encoding: 'utf8' });
-    connectorDoc = true;
-  } catch {}
-
-  const project = detectProject();
-
-  // ─── Identity Resolution (cache + device fingerprint) ───
-  const identity = resolveFromCache();
-  const identifiedEntity = identity.entity;
-
-  // ─── MCP Cloud Connection (MCP init IS the health check) ───
-  const mcpConnected = mcpInit();
 
   parts.push('## Connector');
   parts.push(`MCP: ${mcpConnected ? 'UP (StreamableHTTP)' : 'DOWN'} (${require('./mcp-transport.cjs').MCP_URL})`);

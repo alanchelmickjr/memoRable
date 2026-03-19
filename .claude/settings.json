@@ -1,5 +1,33 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(ls *)",
+      "Bash(chmod *)",
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Skill",
+      "Agent",
+      "TodoWrite",
+      "mcp__e068f6d3-e30c-4e36-b9c8-88ff27d629f7__*"
+    ],
+    "deny": [
+      "Bash(git push * main)",
+      "Bash(git push * master)",
+      "Bash(git push --force *)",
+      "Bash(git reset --hard *)",
+      "Bash(curl * 8080*)",
+      "Bash(curl * 3000*)",
+      "Bash(wget *)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
@@ -23,6 +51,26 @@
           {
             "type": "command",
             "command": ".claude/hooks/love-filter.cjs"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-overwrites.cjs"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-destructive.cjs"
           }
         ]
       }
