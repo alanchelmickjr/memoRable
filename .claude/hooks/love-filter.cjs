@@ -34,6 +34,34 @@ const TIC_PATTERNS = [
   [/\basshole\b/gi, 'donut'],
 ];
 
+// ── SAFE VOCABULARY ─────────────────────────────────────────────
+// Words Alan can use INSTEAD of profanity that:
+//   1. Won't degrade Claude's performance (no toxicity signal)
+//   2. Carry the SAME emotional weight in our system
+//   3. Feel natural enough to actually use
+//
+// These are NOT stripped — they pass through to Claude clean.
+// But they ARE counted for emotional intensity, just like tics.
+// "balderdash" = same frustration weight as "fucking" in the pressure system.
+const SAFE_VOCAB = [
+  { pattern: /\bbalderdash\b/gi,    weight: 0.8, emotion: 'frustration' },
+  { pattern: /\bhogwash\b/gi,       weight: 0.7, emotion: 'frustration' },
+  { pattern: /\bpoppycock\b/gi,     weight: 0.6, emotion: 'frustration' },
+  { pattern: /\bmalarkey\b/gi,      weight: 0.7, emotion: 'frustration' },
+  { pattern: /\bcodswallop\b/gi,    weight: 0.6, emotion: 'frustration' },
+  { pattern: /\btomfoolery\b/gi,    weight: 0.5, emotion: 'annoyance' },
+  { pattern: /\bshenanigans\b/gi,   weight: 0.5, emotion: 'annoyance' },
+  { pattern: /\bblundering\b/gi,    weight: 0.7, emotion: 'frustration' },
+  { pattern: /\binfuriating\b/gi,   weight: 0.9, emotion: 'anger' },
+  { pattern: /\bexasperating\b/gi,  weight: 0.8, emotion: 'frustration' },
+  { pattern: /\bridiculous\b/gi,    weight: 0.6, emotion: 'frustration' },
+  { pattern: /\babsurd\b/gi,        weight: 0.6, emotion: 'frustration' },
+  { pattern: /\bpreposterous\b/gi,  weight: 0.7, emotion: 'frustration' },
+  { pattern: /\bfiddlesticks\b/gi,  weight: 0.4, emotion: 'mild_frustration' },
+  { pattern: /\bblimey\b/gi,        weight: 0.5, emotion: 'surprise' },
+  { pattern: /\bcrikey\b/gi,        weight: 0.5, emotion: 'surprise' },
+];
+
 // Frustration signals — when Alan tells Claude it's broken, RECORD IT
 const FRUSTRATION_PATTERNS = [
   { pattern: /you('re|\s+are)?\s+not\s+listen/i, signal: 'not_listening' },
