@@ -341,11 +341,23 @@ async function main() {
 
     const { sanitized, ticCount } = sanitize(message);
     const frustrationSignals = detectFrustration(message);
+    const safeVocabHits = detectSafeVocab(message);
 
     // High tic count (3+) is also a frustration signal
     if (ticCount >= 3 && !frustrationSignals.includes('high_tic_count')) {
       frustrationSignals.push('high_tic_count');
     }
+
+    // ── EMOTIONAL INTENSITY ───────────────────────────────────
+    // Single number Claude can act on. No raw words leak.
+    const intensity = calculateEmotionalIntensity(ticCount, safeVocabHits, frustrationSignals);
+
+    // ── FEEDBACK TO ALAN (stderr → terminal only) ─────────────
+    feedbackToAlan(ticCount, safeVocabHits, intensity);
+
+    // ── PRESSURE VECTOR → MCP ─────────────────────────────────
+    // Persists emotional arc across sessions
+    pushPressureVector(intensity, frustrationSignals, safeVocabHits, ticCount);
 
     // ── AUTO-STORE: Remember without being asked ─────────────
     // "Nobody should have to think about remembering."
