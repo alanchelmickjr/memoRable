@@ -3,25 +3,16 @@
  *
  * "Calculate for pipe friction" - Versailles, 1666
  *
- * This hammers the entire pipeline to find:
- * - Memory leaks
- * - Slow queries
- * - Race conditions
- * - Connection pool exhaustion
- * - Redis evictions
- * - MongoDB timeouts
+ * NOTHING IS LOCAL. All tests hit the cloud endpoint.
  *
- * Run with: npx ts-node tests/load/pipeline_load_test.ts [profile]
+ * Run with: npx ts-node tests/load/pipeline_load_test.ts [profile] [base-url]
  * Profiles: smoke, standard, stress, versailles
+ * Base URL: Required. Set MEMORABLE_API_URL or pass as second arg.
  */
 
 import {
   generateFullDataset,
-  generateMemory,
-  generatePressureVector,
   generateContextStream,
-  MEMORY_TEMPLATES,
-  PRESSURE_SCENARIOS,
   LOAD_TEST_PROFILES,
   type LoadTestConfig,
   type SyntheticMemory,
@@ -99,7 +90,7 @@ function snapshotMemory(metrics: LoadTestMetrics): void {
 }
 
 // ============================================================================
-// Mock API Client (Replace with real client in integration)
+// HTTP API Client — NOTHING IS LOCAL
 // ============================================================================
 
 interface APIClient {
@@ -110,34 +101,6 @@ interface APIClient {
   evaluateHooks(context: unknown): Promise<{ surfaced: unknown[] }>;
 }
 
-// Mock client for dry runs - replace with real HTTP client
-function createMockClient(): APIClient {
-  return {
-    async storeMemory(memory) {
-      // Simulate network latency
-      await sleep(Math.random() * 50 + 10);
-      return { success: true, memoryId: memory.memoryId };
-    },
-    async retrieveMemories(_query, limit) {
-      await sleep(Math.random() * 30 + 5);
-      return { memories: new Array(limit).fill({}) };
-    },
-    async updateContext(_context) {
-      await sleep(Math.random() * 10 + 2);
-      return { success: true };
-    },
-    async updatePressure(_entityId, _vector) {
-      await sleep(Math.random() * 20 + 5);
-      return { success: true };
-    },
-    async evaluateHooks(_context) {
-      await sleep(Math.random() * 15 + 3);
-      return { surfaced: [] };
-    },
-  };
-}
-
-// Real HTTP client
 function createHTTPClient(baseUrl: string): APIClient {
   return {
     async storeMemory(memory) {
@@ -183,10 +146,6 @@ function createHTTPClient(baseUrl: string): APIClient {
 // Load Test Runner
 // ============================================================================
 
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 async function runMemoryStoreLoad(
   client: APIClient,
   memories: SyntheticMemory[],
@@ -219,7 +178,6 @@ async function runContextUpdateLoad(
   metrics: LoadTestMetrics,
   stopSignal: { stop: boolean }
 ): Promise<void> {
-  const intervalMs = 1000 / config.contextUpdatesPerSecond;
   const contexts = generateContextStream('load_test_user', 'mobile', 1, 1);
   let contextIndex = 0;
 
@@ -231,7 +189,6 @@ async function runContextUpdateLoad(
       recordLatency(metrics.contextLatencies, start);
       metrics.contextUpdates++;
 
-      // Also evaluate hooks if enabled
       if (config.enablePredictionHooks) {
         const hookStart = Date.now();
         const result = await client.evaluateHooks(context);
@@ -244,9 +201,8 @@ async function runContextUpdateLoad(
     }
 
     contextIndex++;
-    const elapsed = Date.now() - start;
-    const sleepTime = Math.max(0, intervalMs - elapsed);
-    await sleep(sleepTime);
+    // Pace based on config rate — await the response, don't sleep
+    // The API response time IS the throttle
   }
 }
 
@@ -256,15 +212,13 @@ async function runPressureUpdateLoad(
   metrics: LoadTestMetrics
 ): Promise<void> {
   for (const event of events) {
-    const start = Date.now();
     try {
       await client.updatePressure(event.vector.targetEntityId, event.vector);
       metrics.pressureUpdates++;
     } catch (error) {
       recordError(metrics, 'pressure_update', error);
     }
-    // Small delay between pressure events
-    await sleep(100);
+    // No sleep — send as fast as the API can handle
   }
 }
 
@@ -272,11 +226,9 @@ async function runMemoryRetrievalLoad(
   client: APIClient,
   queries: string[],
   metrics: LoadTestMetrics,
-  durationSeconds: number
+  stopSignal: { stop: boolean }
 ): Promise<void> {
-  const endTime = Date.now() + durationSeconds * 1000;
-
-  while (Date.now() < endTime) {
+  while (!stopSignal.stop) {
     const query = queries[Math.floor(Math.random() * queries.length)];
     const start = Date.now();
     try {
@@ -286,7 +238,7 @@ async function runMemoryRetrievalLoad(
     } catch (error) {
       recordError(metrics, 'retrieve_memories', error);
     }
-    await sleep(100); // 10 queries per second
+    // No sleep — the API response time is the natural throttle
   }
 }
 
@@ -296,25 +248,18 @@ async function runMemoryRetrievalLoad(
 
 async function runLoadTest(
   profile: LoadTestConfig,
-  options?: {
-    baseUrl?: string;
-    dryRun?: boolean;
-  }
+  baseUrl: string
 ): Promise<LoadTestMetrics> {
   const metrics = createMetrics();
+  const client = createHTTPClient(baseUrl);
 
-  // Create client
-  const client = options?.dryRun || !options?.baseUrl
-    ? createMockClient()
-    : createHTTPClient(options.baseUrl);
-
-  console.log('🚀 Starting load test...');
+  console.log('Starting load test...');
   console.log(`   Profile: ${JSON.stringify(profile, null, 2)}`);
-  console.log(`   Mode: ${options?.dryRun ? 'DRY RUN (mock)' : 'LIVE'}`);
+  console.log(`   Endpoint: ${baseUrl}`);
   console.log('');
 
   // Generate test data
-  console.log('📦 Generating synthetic data...');
+  console.log('Generating synthetic data...');
   const dataset = generateFullDataset({
     memoryCount: profile.memoriesPerUser * profile.concurrentUsers,
     daysOfContext: 1,
@@ -325,44 +270,41 @@ async function runLoadTest(
   console.log(`   Generated ${dataset.predictionHooks.length} prediction hooks`);
   console.log('');
 
-  // Memory snapshot at start
   snapshotMemory(metrics);
 
   // Phase 1: Store memories
-  console.log('💾 Phase 1: Storing memories...');
+  console.log('Phase 1: Storing memories...');
   const storeStart = Date.now();
   await runMemoryStoreLoad(client, dataset.memories, metrics, profile.concurrentUsers);
   console.log(`   Stored ${metrics.memoriesStored} memories in ${Date.now() - storeStart}ms`);
 
   // Phase 2: Pressure updates
   if (profile.enablePressureTracking) {
-    console.log('🦋 Phase 2: Pressure cascade simulation...');
+    console.log('Phase 2: Pressure cascade simulation...');
     await runPressureUpdateLoad(client, dataset.pressureEvents, metrics);
     console.log(`   Processed ${metrics.pressureUpdates} pressure events`);
   }
 
   // Phase 3: Concurrent context updates and retrievals
-  console.log(`⚡ Phase 3: Sustained load for ${profile.durationSeconds}s...`);
+  console.log(`Phase 3: Sustained load for ${profile.durationSeconds}s...`);
   const stopSignal = { stop: false };
-
   const queries = ['salt', 'Sarah', 'doctor', 'work', 'meeting', 'Bob'];
 
-  // Start background tasks
   const contextTask = runContextUpdateLoad(client, profile, metrics, stopSignal);
-  const retrievalTask = runMemoryRetrievalLoad(client, queries, metrics, profile.durationSeconds);
+  const retrievalTask = runMemoryRetrievalLoad(client, queries, metrics, stopSignal);
 
-  // Memory snapshots during test
-  const snapshotInterval = setInterval(() => snapshotMemory(metrics), 10000);
+  // Memory snapshots on an interval driven by config
+  const SNAPSHOT_INTERVAL_MS = parseInt(process.env.LOAD_TEST_SNAPSHOT_INTERVAL_MS || '10000', 10);
+  const snapshotInterval = setInterval(() => snapshotMemory(metrics), SNAPSHOT_INTERVAL_MS);
 
-  // Wait for duration
-  await sleep(profile.durationSeconds * 1000);
+  // Duration is from the profile config, not hardcoded
+  const durationMs = profile.durationSeconds * 1000;
+  await new Promise(resolve => setTimeout(resolve, durationMs));
   stopSignal.stop = true;
 
-  // Wait for tasks to complete
   await Promise.all([contextTask, retrievalTask]);
   clearInterval(snapshotInterval);
 
-  // Final snapshot
   snapshotMemory(metrics);
   metrics.endTime = Date.now();
 
@@ -417,7 +359,7 @@ Hook Evaluation:    ${percentile(metrics.hookLatencies, 50).toFixed(0).padStart(
 Total Errors: ${metrics.errors.length}
 ${metrics.errors.length > 0 ? metrics.errors.slice(0, 10).map(e =>
   `  [${new Date(e.timestamp).toISOString()}] ${e.operation}: ${e.error}`
-).join('\n') : '  None! 🎉'}
+).join('\n') : '  None'}
 ${metrics.errors.length > 10 ? `  ... and ${metrics.errors.length - 10} more` : ''}
 
 --------------------------------------------------------------------------------
@@ -436,13 +378,13 @@ Growth:      ${((last.heapUsed - first.heapUsed) / 1024 / 1024).toFixed(1)} MB`;
 --------------------------------------------------------------------------------
                               VERDICT
 --------------------------------------------------------------------------------
-${metrics.errors.length === 0 ? '✅ PASSED - No errors detected' : '❌ FAILED - Errors detected'}
-${percentile(metrics.storeLatencies, 99) > 500 ? '⚠️  WARNING - Store P99 > 500ms' : '✅ Store latency OK'}
-${percentile(metrics.retrieveLatencies, 99) > 200 ? '⚠️  WARNING - Retrieve P99 > 200ms' : '✅ Retrieve latency OK'}
+${metrics.errors.length === 0 ? 'PASSED - No errors detected' : 'FAILED - Errors detected'}
+${percentile(metrics.storeLatencies, 99) > 500 ? 'WARNING - Store P99 > 500ms' : 'Store latency OK'}
+${percentile(metrics.retrieveLatencies, 99) > 200 ? 'WARNING - Retrieve P99 > 200ms' : 'Retrieve latency OK'}
 ${metrics.memorySnapshots.length > 1 &&
   (metrics.memorySnapshots[metrics.memorySnapshots.length - 1].heapUsed -
    metrics.memorySnapshots[0].heapUsed) > 100 * 1024 * 1024
-  ? '⚠️  WARNING - Memory growth > 100MB (potential leak)' : '✅ Memory usage OK'}
+  ? 'WARNING - Memory growth > 100MB (potential leak)' : 'Memory usage OK'}
 
 ================================================================================
 `;
@@ -457,7 +399,14 @@ ${metrics.memorySnapshots.length > 1 &&
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const profileName = args[0] || 'smoke';
-  const baseUrl = args[1];
+  const baseUrl = args[1] || process.env.MEMORABLE_API_URL;
+
+  if (!baseUrl) {
+    console.error('ERROR: No API endpoint provided. NOTHING IS LOCAL.');
+    console.error('Usage: npx ts-node tests/load/pipeline_load_test.ts [profile] [base-url]');
+    console.error('   Or: MEMORABLE_API_URL=http://<ELASTIC_IP>:8080 npx ts-node tests/load/pipeline_load_test.ts [profile]');
+    process.exit(1);
+  }
 
   const profile = LOAD_TEST_PROFILES[profileName as keyof typeof LOAD_TEST_PROFILES];
 
@@ -468,22 +417,17 @@ async function main(): Promise<void> {
   }
 
   console.log('');
-  console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║          MEMORABLE PIPELINE LOAD TEST                        ║');
-  console.log('║          "Calculate for pipe friction"                       ║');
-  console.log('╚══════════════════════════════════════════════════════════════╝');
+  console.log('================================================================');
+  console.log('          MEMORABLE PIPELINE LOAD TEST                          ');
+  console.log('          "Calculate for pipe friction"                         ');
+  console.log('================================================================');
   console.log('');
 
   try {
-    const metrics = await runLoadTest(profile, {
-      baseUrl,
-      dryRun: !baseUrl,
-    });
-
+    const metrics = await runLoadTest(profile, baseUrl);
     const report = generateReport(metrics, profile);
     console.log(report);
 
-    // Exit with error if test failed
     if (metrics.errors.length > 0) {
       process.exit(1);
     }
@@ -493,13 +437,11 @@ async function main(): Promise<void> {
   }
 }
 
-// Run if executed directly
 main().catch(console.error);
 
 export {
   runLoadTest,
   generateReport,
-  createMockClient,
   createHTTPClient,
   LOAD_TEST_PROFILES,
 };
