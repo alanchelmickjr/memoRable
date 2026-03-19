@@ -36,6 +36,15 @@
             "command": ".claude/hooks/guard-overwrites.cjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-destructive.cjs"
+          }
+        ]
       }
     ],
     "PreCompact": [
