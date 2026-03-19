@@ -19,13 +19,13 @@
       "mcp__e068f6d3-e30c-4e36-b9c8-88ff27d629f7__*"
     ],
     "deny": [
-      "Bash(rm -rf *)",
       "Bash(git push * main)",
       "Bash(git push * master)",
+      "Bash(git push --force *)",
       "Bash(git reset --hard *)",
-      "Bash(curl * memorable *)",
-      "Bash(curl * 8080 *)",
-      "Bash(curl * 3000 *)"
+      "Bash(curl * 8080*)",
+      "Bash(curl * 3000*)",
+      "Bash(wget *)"
     ]
   },
   "hooks": {

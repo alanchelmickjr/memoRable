@@ -163,13 +163,31 @@ const CONTEXT_PATTERNS = [
   },
 ];
 
+// Strip quoted strings and heredocs so we only scan command structure,
+// not message payloads like commit messages or echo content.
+function stripPayloads(command) {
+  let stripped = command;
+  // Remove heredoc blocks: <<'EOF' ... EOF or <<"EOF" ... EOF
+  stripped = stripped.replace(/<<['"]?(\w+)['"]?[\s\S]*?\n\1\b/g, ' __HEREDOC__ ');
+  // Remove $(...) subshells containing heredocs (commit messages)
+  stripped = stripped.replace(/\$\(cat\s+<<[\s\S]*?\)\s*"/g, ' "__MSG__"');
+  // Remove double-quoted strings (but keep the command around them)
+  stripped = stripped.replace(/"[^"]*"/g, '"__STR__"');
+  // Remove single-quoted strings
+  stripped = stripped.replace(/'[^']*'/g, "'__STR__'");
+  return stripped;
+}
+
 function checkCommand(command) {
   const blocks = [];
   const warnings = [];
   const context = [];
 
+  // Scan the COMMAND STRUCTURE, not string payloads
+  const commandOnly = stripPayloads(command);
+
   for (const rule of DESTRUCTIVE_PATTERNS) {
-    if (rule.pattern.test(command)) {
+    if (rule.pattern.test(commandOnly)) {
       if (rule.block) {
         blocks.push(`BLOCKED [${rule.rule}]: ${rule.reason}`);
       } else {
@@ -179,7 +197,7 @@ function checkCommand(command) {
   }
 
   for (const ctx of CONTEXT_PATTERNS) {
-    if (ctx.pattern.test(command)) {
+    if (ctx.pattern.test(commandOnly)) {
       context.push(ctx.context);
     }
   }
