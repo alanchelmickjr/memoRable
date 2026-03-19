@@ -1,52 +1,41 @@
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
+
+// All config from environment — no hardcoded values
+const RAMP_UP = __ENV.K6_RAMP_UP || '30s';
+const SUSTAIN = __ENV.K6_SUSTAIN || '1m';
+const RAMP_DOWN = __ENV.K6_RAMP_DOWN || '30s';
+const TARGET_VUS = parseInt(__ENV.K6_TARGET_VUS || '10', 10);
+const P95_THRESHOLD = __ENV.K6_P95_THRESHOLD || 'p(95)<2000';
+const FAIL_RATE_THRESHOLD = __ENV.K6_FAIL_RATE_THRESHOLD || 'rate<0.05';
+
+// Cloud endpoints — NOTHING IS LOCAL
+const BASE_URL = __ENV.MEMORABLE_API_URL;
+if (!BASE_URL) {
+  throw new Error(
+    'MEMORABLE_API_URL is required. Set it to the cloud endpoint (Elastic IP:8080). NOTHING IS LOCAL.'
+  );
+}
 
 export const options = {
   stages: [
-    { duration: '30s', target: 10 }, // Ramp up to 10 users
-    { duration: '1m', target: 10 },  // Stay at 10 users
-    { duration: '30s', target: 0 },  // Ramp down to 0 users
+    { duration: RAMP_UP, target: TARGET_VUS },
+    { duration: SUSTAIN, target: TARGET_VUS },
+    { duration: RAMP_DOWN, target: 0 },
   ],
   thresholds: {
-    http_req_duration: ['p(95)<2000'], // 95% of requests must complete below 2s
-    http_req_failed: ['rate<0.05'],    // Less than 5% of requests can fail
+    http_req_duration: [P95_THRESHOLD],
+    http_req_failed: [FAIL_RATE_THRESHOLD],
   },
 };
 
-const INGESTION_URL = 'http://localhost:8001';
-const EMBEDDING_URL = 'http://localhost:3003';
-const RETRIEVAL_URL = 'http://localhost:3004';
-const WEAVIATE_URL = 'http://localhost:8080';
-// Note: NNNA service (port 3005) was deprecated - all processing now happens at ingest time
-
 export default function () {
-  const headers = {
-    'Content-Type': 'application/json',
-  };
+  const headers = { 'Content-Type': 'application/json' };
 
-  // Test Weaviate health
-  const weaviateHealth = http.get(`${WEAVIATE_URL}/v1/.well-known/ready`);
-  check(weaviateHealth, {
-    'weaviate is healthy': (r) => r.status === 200,
-  });
-
-  // Test Ingestion service health
-  const ingestionHealth = http.get(`${INGESTION_URL}/api/ingest/health`);
-  check(ingestionHealth, {
-    'ingestion service is healthy': (r) => r.status === 200,
-    'ingestion status is UP': (r) => r.body.includes('UP'),
-  });
-
-  // Test Embedding service health
-  const embeddingHealth = http.get(`${EMBEDDING_URL}/health`);
-  check(embeddingHealth, {
-    'embedding service is healthy': (r) => r.status === 200,
-  });
-
-  // Test Retrieval service health
-  const retrievalHealth = http.get(`${RETRIEVAL_URL}/health`);
-  check(retrievalHealth, {
-    'retrieval service is healthy': (r) => r.status === 200,
+  // Health check
+  const health = http.get(`${BASE_URL}/health`);
+  check(health, {
+    'api is healthy': (r) => r.status === 200,
   });
 
   // Test memory ingestion
@@ -59,48 +48,31 @@ export default function () {
   });
 
   const ingestResponse = http.post(
-    `${INGESTION_URL}/api/ingest`,
+    `${BASE_URL}/memory`,
     ingestPayload,
     { headers }
   );
 
   check(ingestResponse, {
-    'ingestion returns 202': (r) => r.status === 202,
-    'ingestion accepted': (r) => r.body.includes('accepted'),
-  });
-
-  // Test embedding generation
-  const embedPayload = JSON.stringify({
-    text: `Load test embedding content ${Date.now()}`,
-  });
-
-  const embedResponse = http.post(
-    `${EMBEDDING_URL}/embed`,
-    embedPayload,
-    { headers }
-  );
-
-  check(embedResponse, {
-    'embedding returns 200': (r) => r.status === 200,
-    'embedding has vector': (r) => r.body.includes('embedding'),
+    'ingestion returns 200 or 202': (r) => r.status === 200 || r.status === 202,
+    'ingestion accepted': (r) => r.body.includes('accepted') || r.body.includes('success'),
   });
 
   // Test retrieval
   const retrievePayload = JSON.stringify({
-    userId: `load-test-user-${__VU}`,
     query: 'test query',
+    userId: `load-test-user-${__VU}`,
+    limit: 10,
   });
 
   const retrieveResponse = http.post(
-    `${RETRIEVAL_URL}/retrieve`,
+    `${BASE_URL}/memory/search`,
     retrievePayload,
     { headers }
   );
 
   check(retrieveResponse, {
     'retrieval returns 200': (r) => r.status === 200,
-    'retrieval has results': (r) => r.body.includes('results'),
+    'retrieval has results': (r) => r.body.includes('results') || r.body.includes('memories'),
   });
-
-  sleep(1);
 }
