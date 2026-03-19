@@ -89,6 +89,114 @@ function detectFrustration(text) {
   return [...detected];
 }
 
+// ── SAFE VOCAB DETECTION ────────────────────────────────────────
+// Detects safe replacement words and returns their emotional weight.
+// These words pass through to Claude untouched, but the SYSTEM
+// treats them with the same gravity as the profanity they replace.
+function detectSafeVocab(text) {
+  const hits = [];
+  for (const { pattern, weight, emotion } of SAFE_VOCAB) {
+    const matches = text.match(pattern);
+    if (matches) {
+      hits.push({ word: matches[0].toLowerCase(), weight, emotion, count: matches.length });
+    }
+  }
+  return hits;
+}
+
+// ── EMOTIONAL INTENSITY ─────────────────────────────────────────
+// Combines tic count + safe vocab + frustration signals into a
+// single 0.0-1.0 intensity score. Claude gets the number, not the words.
+function calculateEmotionalIntensity(ticCount, safeVocabHits, frustrationSignals) {
+  let intensity = 0;
+
+  // Tics: each one adds 0.15 (strong enough to type = strong feeling)
+  intensity += Math.min(0.6, ticCount * 0.15);
+
+  // Safe vocab: use their calibrated weight directly
+  if (safeVocabHits.length > 0) {
+    const maxWeight = Math.max(...safeVocabHits.map(h => h.weight));
+    const avgWeight = safeVocabHits.reduce((s, h) => s + h.weight, 0) / safeVocabHits.length;
+    intensity += (maxWeight * 0.6 + avgWeight * 0.4) * 0.4;
+  }
+
+  // Frustration patterns: each signal adds 0.1
+  intensity += Math.min(0.3, frustrationSignals.length * 0.1);
+
+  return Math.min(1.0, Math.round(intensity * 100) / 100);
+}
+
+// ── PRESSURE VECTOR → MCP ───────────────────────────────────────
+// Pushes emotional state into EntityPressure so it persists across
+// sessions. The pressure system tracks the emotional arc over time.
+function pushPressureVector(intensity, frustrationSignals, safeVocabHits, ticCount) {
+  if (intensity < 0.2) return; // Below threshold — don't noise up the system
+  if (!isConnected() && !mcpInit()) return;
+
+  const emotions = safeVocabHits.map(h => h.emotion);
+  const dominantEmotion = emotions[0] || (frustrationSignals.length > 0 ? 'frustration' : 'neutral');
+
+  try {
+    mcpCall('ingest_event', {
+      entity_id: 'alan',
+      event_type: 'emotional_signal',
+      data: {
+        intensity,
+        dominantEmotion,
+        frustrationSignals,
+        safeVocabWords: safeVocabHits.map(h => h.word),
+        ticCount,
+        source: 'love_filter',
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Non-fatal — pressure tracking is valuable but not blocking
+  }
+}
+
+// ── BIDIRECTIONAL FEEDBACK ──────────────────────────────────────
+
+// Direction 1: System → Alan (stderr, visible in terminal)
+// "I hear you. Here's what I did with your signal."
+function feedbackToAlan(ticCount, safeVocabHits, intensity) {
+  const parts = [];
+
+  if (ticCount > 0) {
+    parts.push(`♡ ${ticCount} tic(s) caught → softened for Claude, weight preserved for you`);
+  }
+  if (safeVocabHits.length > 0) {
+    const words = safeVocabHits.map(h => `${h.word}(${h.weight})`).join(', ');
+    parts.push(`↑ safe vocab: ${words} → same weight as the real thing`);
+  }
+  if (intensity >= 0.7) {
+    parts.push('⚡ high intensity — Claude will know you mean business');
+  } else if (intensity >= 0.4) {
+    parts.push('→ moderate intensity — signal received and passed through');
+  }
+
+  if (parts.length > 0) {
+    // stderr → Alan's terminal. Not in Claude's context window.
+    process.stderr.write(`[love-filter] ${parts.join(' | ')}\n`);
+  }
+}
+
+// Direction 2: System → Claude (additionalContext, clean metadata)
+// Claude gets intensity + emotion labels, NOT the raw words.
+function emotionalAnnotationForClaude(intensity, safeVocabHits, frustrationSignals) {
+  if (intensity < 0.1) return null;
+
+  const emotions = [...new Set(safeVocabHits.map(h => h.emotion))];
+  if (frustrationSignals.length > 0 && !emotions.includes('frustration')) {
+    emotions.push('frustration');
+  }
+
+  const level = intensity >= 0.7 ? 'HIGH' : intensity >= 0.4 ? 'MODERATE' : 'LOW';
+
+  return `[EMOTIONAL_STATE: intensity=${intensity}, level=${level}, emotions=[${emotions.join(', ')}], signals=[${frustrationSignals.join(', ')}]]\n` +
+    'The user\'s emotional weight is preserved above. Respond to the substance with matching urgency. Do not reference or repeat the emotional metadata.';
+}
+
 // ── AUTO-STORE GATE ────────────────────────────────────────────
 // "The most important part of memory is knowing what to forget."
 // But the default should be remember. The gate decides what to skip.
