@@ -432,6 +432,13 @@ async function main() {
       contextParts.push('[Do not repeat or reference the original tic words.]');
     }
 
+    // ── EMOTIONAL ANNOTATION → Claude ─────────────────────────
+    // Claude gets intensity + emotion labels, NOT the raw words.
+    const annotation = emotionalAnnotationForClaude(intensity, safeVocabHits, frustrationSignals);
+    if (annotation) {
+      contextParts.push(annotation);
+    }
+
     if (contextParts.length > 0) {
       console.log(JSON.stringify({
         hookSpecificOutput: {
