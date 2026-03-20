@@ -484,6 +484,13 @@ async function main() {
       contextParts.push(annotation);
     }
 
+    // ── PERSONALITY INJECTION (AI IN THE MIDDLE) ─────────────
+    // Read the room → tell Claude to be human.
+    const personality = getPersonalityDirective(intensity, ticCount, frustrationSignals);
+    if (personality) {
+      contextParts.push(personality);
+    }
+
     if (contextParts.length > 0) {
       console.log(JSON.stringify({
         hookSpecificOutput: {
