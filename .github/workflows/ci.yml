@@ -111,7 +111,7 @@ jobs:
     - name: Run load tests against cloud
       run: k6 run tests/load/main.js
       env:
-        MEMORABLE_API_URL: http://52.9.62.72:8080
+        MEMORABLE_API_URL: https://api.memorable.chat
 
   smoke-test:
     needs: integration
