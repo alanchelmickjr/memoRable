@@ -815,7 +815,7 @@ PRESSURE_THRESHOLD_URGENT=70     # Immediate notification
 
 ---
 
-## MCP Tools Reference (35 Tools)
+## MCP Tools Reference (38 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
