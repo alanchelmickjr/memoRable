@@ -894,6 +894,16 @@ MemoRable computes relationships on-demand from shared memories rather than stor
 | `record_prediction_feedback` | Teach the system what predictions are useful |
 | `set_care_circle` | Set who gets alerted when distress is detected (SMS/Email/Push/Webhook) |
 
+### Real-Time Internalization ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora))
+
+Internalize documents directly into model weights via the [doc-to-lora hypernetwork](https://github.com/alanchelmickjr/doc-to-lora). No context window limits. The model *knows* it.
+
+| Tool | Description |
+|------|-------------|
+| `internalize_document` | Feed a document to the hypernetwork, receive LoRA weights. The model now "knows" the document. |
+
+**GPU Service** ([`src/services/lora_service/`](src/services/lora_service/)): FastAPI wrapper exposing `/internalize`, `/generate`, `/reset` endpoints. Runs on cloud GPU, [Chloe's AGX Orin](https://developer.nvidia.com/embedded/jetson-agx-orin), or any CUDA box. Storage backends: S3 (cloud) or local disk (robots).
+
 ### Behavioral Identity
 | Tool | Description |
 |------|-------------|
