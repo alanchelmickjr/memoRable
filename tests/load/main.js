@@ -1,6 +1,6 @@
 /* global __ENV, __VU */
 import http from "k6/http";
-import { check } from "k6";
+import { check, sleep } from "k6";
 
 // All config from environment — no hardcoded values
 const RAMP_UP = __ENV.K6_RAMP_UP || "30s";
@@ -18,10 +18,6 @@ if (!BASE_URL) {
   );
 }
 
-// Dev passphrase — production overrides via K6_PASSPHRASE env var
-const PASSPHRASE =
-  __ENV.K6_PASSPHRASE || "I remember what I have learned from you.";
-
 export const options = {
   stages: [
     { duration: RAMP_UP, target: TARGET_VUS },
@@ -34,92 +30,93 @@ export const options = {
   },
 };
 
-// Authenticate once before all VUs start — THE ONE GATE
+// Verify server is reachable before VUs start
 export function setup() {
-  const headers = { "Content-Type": "application/json" };
-
-  // Step 1: Knock to get a challenge
-  const knockRes = http.post(
-    `${BASE_URL}/auth/knock`,
-    JSON.stringify({ device: { type: "terminal", name: "k6-load-test" } }),
-    { headers }
-  );
-
-  const challenge = knockRes.json("challenge");
-  if (!challenge) {
-    throw new Error(`Auth knock failed: ${knockRes.status} ${knockRes.body}`);
+  const health = http.get(`${BASE_URL}/health`);
+  if (health.status !== 200) {
+    throw new Error(`Health check failed: ${health.status} ${health.body}`);
   }
-
-  // Step 2: Exchange passphrase for API key
-  const exchangeRes = http.post(
-    `${BASE_URL}/auth/exchange`,
-    JSON.stringify({
-      challenge,
-      passphrase: PASSPHRASE,
-      device: { type: "terminal", name: "k6-load-test" },
-    }),
-    { headers }
-  );
-
-  const apiKey = exchangeRes.json("api_key");
-  if (!apiKey) {
-    throw new Error(
-      `Auth exchange failed: ${exchangeRes.status} ${exchangeRes.body}`
-    );
-  }
-
-  return { apiKey };
+  return { baseUrl: BASE_URL };
 }
 
 export default function (data) {
-  const headers = {
-    "Content-Type": "application/json",
-    "X-API-Key": data.apiKey,
-  };
+  const headers = { "Content-Type": "application/json" };
 
-  // Health check (public, no auth needed)
-  const health = http.get(`${BASE_URL}/health`);
+  // 1. Health check
+  const health = http.get(`${data.baseUrl}/health`);
   check(health, {
-    "api is healthy": (r) => r.status === 200,
+    "health returns 200": (r) => r.status === 200,
+    "health status is healthy": (r) => {
+      try {
+        return r.json("status") === "healthy";
+      } catch (e) {
+        return false;
+      }
+    },
   });
 
-  // Test memory ingestion — POST /memory expects { content, entity }
-  const ingestPayload = JSON.stringify({
-    content: `Load test memory entry at ${new Date().toISOString()}`,
-    entity: `load-test-user-${__VU}`,
-    entityType: "test",
-    metadata: { source: "k6-load-test" },
+  // 2. OAuth discovery — tests the deployed MCP server's OAuth endpoints
+  const discovery = http.get(
+    `${data.baseUrl}/.well-known/oauth-authorization-server`
+  );
+  check(discovery, {
+    "oauth discovery returns 200": (r) => r.status === 200,
+    "oauth has token endpoint": (r) => {
+      try {
+        return r.body.includes("token_endpoint");
+      } catch (e) {
+        return false;
+      }
+    },
   });
 
-  const ingestResponse = http.post(`${BASE_URL}/memory`, ingestPayload, {
+  // 3. OAuth protected resource metadata
+  const resource = http.get(
+    `${data.baseUrl}/.well-known/oauth-protected-resource`
+  );
+  check(resource, {
+    "protected resource returns 200": (r) => r.status === 200,
+    "resource references mcp": (r) => {
+      try {
+        return r.body.includes("/mcp");
+      } catch (e) {
+        return false;
+      }
+    },
+  });
+
+  // 4. Dynamic client registration
+  const regPayload = JSON.stringify({
+    redirect_uris: [`${data.baseUrl}/oauth/callback`],
+    client_name: `k6-load-test-vu-${__VU}`,
+    grant_types: ["authorization_code"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none",
+  });
+  const regResponse = http.post(`${data.baseUrl}/register`, regPayload, {
     headers,
   });
-
-  check(ingestResponse, {
-    "ingestion returns 200 or 201": (r) => r.status === 200 || r.status === 201,
-    "ingestion accepted": (r) => {
+  check(regResponse, {
+    "registration returns 200 or 201": (r) =>
+      r.status === 200 || r.status === 201,
+    "registration returns client_id": (r) => {
       try {
-        return r.body.includes("success") || r.body.includes("stored");
+        return r.body.includes("client_id");
       } catch (e) {
         return false;
       }
     },
   });
 
-  // Test retrieval — GET /memory/search (not POST)
-  const retrieveResponse = http.get(
-    `${BASE_URL}/memory/search?query=test+query&limit=10`,
-    { headers: { "X-API-Key": data.apiKey } }
+  // 5. MCP endpoint responds (JSON-RPC needs valid request, but we check it's alive)
+  const mcpRes = http.post(
+    `${data.baseUrl}/mcp`,
+    JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
+    { headers }
   );
-
-  check(retrieveResponse, {
-    "retrieval returns 200": (r) => r.status === 200,
-    "retrieval has results": (r) => {
-      try {
-        return r.body.includes("memories");
-      } catch (e) {
-        return false;
-      }
-    },
+  check(mcpRes, {
+    "mcp endpoint responds": (r) => r.status !== 0 && r.status < 500,
   });
+
+  sleep(1);
 }
