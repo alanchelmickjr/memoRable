@@ -7516,16 +7516,15 @@ function createServer(): Server {
             // Dynamic import — only loaded when tool is called
             const loraClient = await import('./lora_service_client.js');
 
-            // Check if LoRA service is reachable
-            const available = await loraClient.isAvailable();
+            // Auto-wake GPU if needed, wait for service to be ready
+            const available = await loraClient.ensureAvailable();
             if (!available) {
               return {
                 content: [{
                   type: 'text',
                   text: JSON.stringify({
-                    error: 'LoRA service not available',
-                    hint: 'Ensure GPU LoRA service is running (LORA_SERVICE_URL env var)',
-                    lora_service_url: process.env.LORA_SERVICE_URL || 'http://localhost:8090',
+                    error: 'LoRA service not available and GPU auto-wake failed',
+                    gpu_stack: process.env.MEMORABLE_GPU_STACK || 'memorable-gpu',
                   }, null, 2),
                 }],
               };
