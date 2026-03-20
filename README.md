@@ -1740,6 +1740,12 @@ memorable/
 │   │   ├── adaptive_learning.ts
 │   │   ├── metrics.ts           # Prometheus metrics
 │   │   └── startup.ts           # Health checks
+│   ├── lora_service/             # GPU LoRA service (FastAPI)
+│   │   ├── app.py               # /internalize, /generate, /reset
+│   │   ├── engine.py            # TextToLoRA lifecycle wrapper
+│   │   ├── storage.py           # S3 + local weight storage
+│   │   ├── Dockerfile           # CUDA container
+│   │   └── requirements.txt     # Python deps
 │   ├── ingestion_service/       # Memory ingestion API
 │   └── embedding_service/       # Vector embeddings
 ├── scripts/
