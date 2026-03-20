@@ -243,6 +243,46 @@ services:
       timeout: 10s
       retries: 3
 
+  memorable_lora_service: # GPU LoRA service — doc-to-lora hypernetwork
+    build:
+      context: ./src/services/lora_service
+      dockerfile: Dockerfile
+    container_name: memorable_lora_service
+    ports:
+      - "${LORA_SERVICE_PORT:-8090}:8090"
+    environment:
+      - LORA_DEVICE=${LORA_DEVICE:-cpu}
+      - LORA_STORAGE_BACKEND=${LORA_STORAGE_BACKEND:-local}
+      - LORA_WEIGHTS_DIR=/data/weights
+      - LORA_CHECKPOINT_DIR=/app/vendors/doc-to-lora/trained_t2l/gemma_2b_t2l
+      - LORA_S3_BUCKET=${LORA_S3_BUCKET:-memorable-lora}
+    volumes:
+      - memorable_lora_weights:/data/weights
+      - ./vendors/doc-to-lora:/app/vendors/doc-to-lora:ro
+    networks:
+      - memorable_net
+    deploy:
+      resources:
+        limits:
+          cpus: ${LORA_CPU_LIMIT:-2}
+          memory: ${LORA_MEMORY_LIMIT:-6G}
+        reservations:
+          memory: ${LORA_MEMORY_RESERVATION:-4G}
+          # GPU — uncomment when running on a GPU box
+          # devices:
+          #   - driver: nvidia
+          #     count: 1
+          #     capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - gpu
+    restart: unless-stopped
+
   memorable_mcp_server: # MCP Server for Claude Code / VS Code integration
     build:
       context: .
