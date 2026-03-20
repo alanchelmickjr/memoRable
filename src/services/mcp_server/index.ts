@@ -3038,6 +3038,41 @@ function createServer(): Server {
         },
       },
       // ============================================
+      // LORA INTERNALIZATION - Deep Knowledge
+      // ============================================
+      {
+        name: 'internalize_document',
+        description:
+          'Internalize a document into LoRA weights via the doc-to-lora hypernetwork. The model will "know" the document — not just retrieve it, but have it baked into weights. Returns a weights_key for future generation. Requires GPU LoRA service running.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            document: {
+              type: 'string',
+              description: 'Full text of the document to internalize',
+            },
+            model: {
+              type: 'string',
+              enum: ['gemma-2-2b', 'gemma-2-9b'],
+              description: 'Base model to generate weights for (default: gemma-2-2b)',
+              default: 'gemma-2-2b',
+            },
+            entity: {
+              type: 'string',
+              description: 'Entity to associate this knowledge with (for memory linking)',
+            },
+          },
+          required: ['document'],
+        },
+        annotations: {
+          title: 'Internalize Document (LoRA)',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      // ============================================
       // DEV ONLY - Remove before production
       // ============================================
       {

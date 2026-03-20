@@ -1,0 +1,11 @@
+# MemoRable LoRA Service dependencies
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.0
+torch>=2.5.0
+transformers>=4.47.0
+peft>=0.14.0
+safetensors>=0.4.0
+accelerate>=1.2.0
+boto3>=1.35.0
+sentencepiece>=0.2.0
