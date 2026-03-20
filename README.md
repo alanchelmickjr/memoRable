@@ -68,7 +68,7 @@ Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks 
 | | **Pressure Tracking** — [Hume.ai](https://hume.ai) emotion detection for early warning (voice prosody, facial expressions, text sentiment) |
 | | **Multi-Device Synchronization** — Unified context across endpoints |
 | | **Tiered Security** — Granular encryption and LLM access controls |
-| | **35 MCP Tools** — Native Claude Code integration |
+| | **38 MCP Tools** — Native Claude Code integration |
 
 ```bash
 # Integration with existing Mem0 infrastructure
