@@ -168,7 +168,99 @@ export async function health(): Promise<HealthResponse> {
 }
 
 /**
- * Check if the LoRA service is reachable.
+ * Wake the GPU instance via AWS CLI.
+ * Returns true if the instance was started (or already running).
+ */
+async function wakeGpu(): Promise<boolean> {
+  try {
+    // Get instance ID from CloudFormation stack
+    const instanceId = execSync(
+      `aws cloudformation describe-stacks --stack-name ${GPU_STACK_NAME} --region ${AWS_REGION} --query 'Stacks[0].Outputs[?OutputKey==\`InstanceId\`].OutputValue' --output text`,
+      { encoding: 'utf-8', timeout: 15000 }
+    ).trim();
+
+    if (!instanceId || instanceId === 'None') {
+      logger.warn('[LoRA] No GPU stack found — cannot auto-wake');
+      return false;
+    }
+
+    // Check current state
+    const state = execSync(
+      `aws ec2 describe-instances --instance-ids ${instanceId} --region ${AWS_REGION} --query 'Reservations[0].Instances[0].State.Name' --output text`,
+      { encoding: 'utf-8', timeout: 15000 }
+    ).trim();
+
+    if (state === 'running') {
+      logger.info('[LoRA] GPU already running');
+      return true;
+    }
+
+    if (state === 'stopped') {
+      logger.info('[LoRA] Waking GPU instance...');
+      execSync(
+        `aws ec2 start-instances --instance-ids ${instanceId} --region ${AWS_REGION}`,
+        { encoding: 'utf-8', timeout: 15000 }
+      );
+      return true;
+    }
+
+    logger.warn(`[LoRA] GPU instance in state '${state}' — cannot wake`);
+    return false;
+  } catch (err) {
+    logger.warn(`[LoRA] GPU auto-wake failed: ${err instanceof Error ? err.message : err}`);
+    return false;
+  }
+}
+
+/**
+ * Wait for the LoRA service to become healthy after GPU wake.
+ */
+async function waitForService(): Promise<boolean> {
+  const start = Date.now();
+  const interval = 5000; // check every 5s
+
+  while (Date.now() - start < GPU_WAKE_TIMEOUT_MS) {
+    try {
+      await health();
+      return true;
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, interval));
+    }
+  }
+  return false;
+}
+
+/**
+ * Ensure the LoRA service is available — auto-wakes GPU if needed.
+ * This is the only function callers need. It handles everything.
+ */
+export async function ensureAvailable(): Promise<boolean> {
+  // Fast path: already up
+  try {
+    await health();
+    return true;
+  } catch {
+    // Not up — try to wake it
+  }
+
+  logger.info('[LoRA] Service not available — attempting GPU auto-wake');
+  const woke = await wakeGpu();
+  if (!woke) {
+    return false;
+  }
+
+  logger.info('[LoRA] Waiting for service to come online...');
+  const ready = await waitForService();
+  if (ready) {
+    logger.info('[LoRA] GPU service is ready');
+  } else {
+    logger.error('[LoRA] GPU service failed to come online within timeout');
+  }
+  return ready;
+}
+
+/**
+ * Check if the LoRA service is reachable (no auto-wake).
  */
 export async function isAvailable(): Promise<boolean> {
   try {
