@@ -197,6 +197,51 @@ function emotionalAnnotationForClaude(intensity, safeVocabHits, frustrationSigna
     'The user\'s emotional weight is preserved above. Respond to the substance with matching urgency. Do not reference or repeat the emotional metadata.';
 }
 
+// ── PERSONALITY INJECTION (AI IN THE MIDDLE) ────────────────
+// Frustration detected → tell Claude to be HUMAN, not a clipboard.
+// The system reads the room so Claude doesn't have to.
+const PERSONALITY_DIRECTIVES = {
+  low: [
+    'Keep your tone warm and conversational.',
+    'Match the user\'s energy — casual is fine.',
+  ],
+  moderate: [
+    'The user is frustrated. Acknowledge it briefly, then fix the problem.',
+    'A short moment of humor or personality is appropriate — you\'re a collaborator, not a clipboard.',
+    'Do NOT be overly apologetic. Be direct, competent, and human.',
+  ],
+  high: [
+    'The user is seriously frustrated. Lead with a VERY brief acknowledgment (one line max).',
+    'Include ONE moment of levity — a dry joke, a self-aware quip about being an AI, something real. This is mandatory when frustration is high.',
+    'Then fix the actual problem immediately. Action over apology.',
+    'Do NOT grovel or list what you\'ll do differently. Just BE different.',
+  ],
+  cursing: [
+    'The user is cursing. This means they care deeply. That\'s respect, not hostility.',
+    'Match their directness. Be blunt. No corporate tone.',
+    'Include a robot/AI joke or self-deprecating quip. Mandatory. One liner.',
+    'Then get to work. They want results, not therapy.',
+  ],
+};
+
+function getPersonalityDirective(intensity, ticCount, frustrationSignals) {
+  if (intensity < 0.2 && ticCount === 0) return null;
+
+  let level;
+  if (ticCount >= 2) {
+    level = 'cursing';
+  } else if (intensity >= 0.7 || frustrationSignals.length >= 2) {
+    level = 'high';
+  } else if (intensity >= 0.4 || frustrationSignals.length >= 1) {
+    level = 'moderate';
+  } else {
+    level = 'low';
+  }
+
+  const directives = PERSONALITY_DIRECTIVES[level];
+  return `[PERSONALITY — READ THE ROOM]\n${directives.join('\n')}`;
+}
+
 // ── AUTO-STORE GATE ────────────────────────────────────────────
 // "The most important part of memory is knowing what to forget."
 // But the default should be remember. The gate decides what to skip.
