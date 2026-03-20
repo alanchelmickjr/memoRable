@@ -68,9 +68,9 @@ These are non-negotiable. Alan has asked Claude to remember this across every se
 Region: us-west-2
 Stack: memorable-lambda-stack.yaml (EC2 + Elastic IP, no ALB)
 Port: 8080
-Endpoint: http://<ELASTIC_IP>:8080
-MCP: http://<ELASTIC_IP>:8080/mcp
-Health: http://<ELASTIC_IP>:8080/health
+Endpoint: https://<ELASTIC_IP>:8080
+MCP: https://<ELASTIC_IP>:8080/mcp
+Health: https://<ELASTIC_IP>:8080/health
 ```
 
 > **To get the Elastic IP**: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
@@ -302,7 +302,7 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 ```
 # Set via environment variable (get IP from CloudFormation stack outputs):
 # aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'
-export MEMORABLE_API_URL=http://<ELASTIC_IP>:8080
+export MEMORABLE_API_URL=https://<ELASTIC_IP>:8080
 
 # Custom domain (may be blocked by proxy egress allowlists)
 # export MEMORABLE_API_URL=https://api.memorable.chat
@@ -339,7 +339,7 @@ If `api.memorable.chat` or other custom domains are blocked in Claude Code remot
 
 ```bash
 # First: set the endpoint (get from CloudFormation stack outputs)
-BASE_URL="${MEMORABLE_API_URL:-http://<ELASTIC_IP>:8080}"
+BASE_URL="${MEMORABLE_API_URL:-https://<ELASTIC_IP>:8080}"
 
 # Step 1: Knock to get a challenge (5 min TTL)
 CHALLENGE=$(curl -s -X POST "${BASE_URL}/auth/knock" \
