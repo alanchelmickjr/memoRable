@@ -380,7 +380,8 @@ MemoRable's tiered security makes it suitable for:
 | Multi-device context sync | ✅ | ❌ | ✅ |
 | Predictive memory (21-day learning) | ✅ | ❌ | ✅ |
 | **Behavioral identity** | ✅ | ❌ | ✅ |
-| MCP protocol support (35 tools) | ✅ | ❌ | ✅ |
+| **Real-time internalization ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora))** | ✅ | ❌ | ✅ |
+| MCP protocol support (37 tools) | ✅ | ❌ | ✅ |
 | Enterprise security tiers | ✅ | ❌ | ✅ |
 
 **Bottom line:** MemoRable standalone = complete system. Mem0 integration = optional for existing users.
