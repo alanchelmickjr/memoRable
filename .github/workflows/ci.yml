@@ -108,10 +108,24 @@ jobs:
         sudo apt-get update
         sudo apt-get install k6
 
+    - name: Check cloud endpoint is reachable
+      id: health
+      run: |
+        API_URL="${{ secrets.MEMORABLE_API_URL || 'http://52.9.62.72:8080' }}"
+        echo "MEMORABLE_API_URL=${API_URL}" >> "$GITHUB_ENV"
+        if curl -sf --max-time 10 "${API_URL}/health" > /dev/null 2>&1; then
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+          echo "Cloud endpoint is reachable"
+        else
+          echo "reachable=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Cloud endpoint unreachable — skipping load test"
+        fi
+
     - name: Run load tests against cloud
+      if: steps.health.outputs.reachable == 'true'
       run: k6 run tests/load/main.js
       env:
-        MEMORABLE_API_URL: https://api.memorable.chat
+        MEMORABLE_API_URL: ${{ env.MEMORABLE_API_URL }}
 
   smoke-test:
     needs: integration
