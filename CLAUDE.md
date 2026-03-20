@@ -74,7 +74,7 @@ Health: https://<ELASTIC_IP>:8080/health
 ```
 
 > **To get the Elastic IP**: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
-> Then set: `export MEMORABLE_API_URL=http://<IP>:8080`
+> Then set: `export MEMORABLE_API_URL=https://<IP>:8080`
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
@@ -329,7 +329,7 @@ If `api.memorable.chat` or other custom domains are blocked in Claude Code remot
 
 2. **Workaround**: Use the Elastic IP directly (port 8080)
    - Get IP: `aws cloudformation describe-stacks --stack-name memorable --query 'Stacks[0].Outputs'`
-   - Set: `export MEMORABLE_API_URL=http://<IP>:8080`
+   - Set: `export MEMORABLE_API_URL=https://<IP>:8080`
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
