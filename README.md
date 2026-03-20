@@ -1,18 +1,23 @@
 # MemoRable
 
-> **PRE-RELEASE SOFTWARE** - This project is under active development and not yet ready for production use. APIs may change, features may be incomplete, and data migrations are not guaranteed. Star the repo and watch for v1.0 release.
+> **Better than memory. Better than prompt engineering.** Real-time memory internalization for AI.
 
-### Context-Aware Memory System for AI Agents, Humans, Robots & all Devices
+### Context for Life — Memory System for AI Agents, Humans, Robots & all Devices
 
-**Works standalone OR extends Mem0** — Your choice. Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
+Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks and hopes. MemoRable **internalizes knowledge into model weights in real-time** via [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) hypernetwork LoRA generation. No context limits. No retrieval latency. The model *knows* it.
+
+**Works standalone OR extends Mem0** — Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
 
 [![Standalone System](https://img.shields.io/badge/Mode-Standalone-00d4aa?style=for-the-badge)](./docs/deployment-guide.md)
 [![Mem0 Extension](https://img.shields.io/badge/Mode-Mem0_Extension-purple?style=for-the-badge)](https://mem0.ai)
 [![Enterprise Security](https://img.shields.io/badge/Security-Enterprise_Grade-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
+[![doc-to-lora](https://img.shields.io/badge/doc--to--lora-Real_Time_LoRA-FF6600?style=for-the-badge)](https://github.com/alanchelmickjr/doc-to-lora)
 
-**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/)
+**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/) [![Gemma](https://img.shields.io/badge/Gemma_2-4285F4?style=flat&logo=google&logoColor=white)](https://ai.google.dev/gemma)
+
+> **PRE-RELEASE SOFTWARE** - Under active development. APIs may change, features may be incomplete. Star the repo and watch for v1.0 release.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -63,7 +68,7 @@
 | | **Pressure Tracking** — [Hume.ai](https://hume.ai) emotion detection for early warning (voice prosody, facial expressions, text sentiment) |
 | | **Multi-Device Synchronization** — Unified context across endpoints |
 | | **Tiered Security** — Granular encryption and LLM access controls |
-| | **35 MCP Tools** — Native Claude Code integration |
+| | **38 MCP Tools** — Native Claude Code integration |
 
 ```bash
 # Integration with existing Mem0 infrastructure
@@ -111,7 +116,7 @@ MemoRable + Mem0: Here's what you need to know:
 |-----|---------------------|
 | **Mem0 Users** | Adds salience scoring, commitment tracking, relationships, predictions to your existing vectors |
 | **AI Assistants** | Gives us persistent memory so we actually remember you between conversations |
-| **Developers** | 35 MCP tools + Python/TypeScript SDKs for context-aware apps |
+| **Developers** | 38 MCP tools + Python/TypeScript SDKs for context-aware apps |
 | **Robots/IoT** | Unified memory layer across sensor networks and embodied AI |
 | **Memory Care** | Dignity-preserving memory support for Alzheimer's and cognitive challenges |
 
@@ -132,7 +137,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
 | **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
-| **Claude Code** | 35 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
+| **Claude Code** | 38 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
 | **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
 | **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
 
@@ -233,6 +238,36 @@ curl -H "X-API-Key: $KEY" "$API/memory?entity=my_project_entity&query=authentica
 ```
 
 See [ENGINE Layer Design](./docs/ENGINE_LAYER_DESIGN.md) for the full vision.
+
+---
+
+## Real-Time Memory Internalization (doc-to-lora)
+
+**The end of the context window.** Instead of stuffing documents into prompts or retrieving chunks at query time, MemoRable generates LoRA adapter weights from documents in real-time using a hypernetwork. The knowledge lives in the model's parameters — not in a prompt, not in a retrieval index.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     THREE APPROACHES TO MEMORY                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   Prompt Engineering          RAG                      MemoRable            │
+│   ──────────────────          ───                      ─────────            │
+│   Stuff context in prompt     Retrieve chunks          Internalize into     │
+│   ✗ Window limits             ✗ Retrieval latency      model weights        │
+│   ✗ Loses old context         ✗ Chunk boundaries       ✓ No limits          │
+│   ✗ Expensive per-call        ✗ Relevance guessing     ✓ Zero latency       │
+│                                                        ✓ Model *knows* it   │
+│                                                                             │
+│   Powered by doc-to-lora hypernetwork LoRA generation (Gemma 2)            │
+│   github.com/alanchelmickjr/doc-to-lora                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How it works:** A Perceiver-based hypernetwork reads a document, generates rank-8 LoRA weights in seconds, and stores them (~few MB) in S3. At recall time, load the weights onto the base model. Done. The expensive part happens once. Recall is a file load.
+
+**Upstream repo:** [`alanchelmickjr/doc-to-lora`](https://github.com/alanchelmickjr/doc-to-lora) — included as a git submodule at `vendors/doc-to-lora/`. The **LoRA Service** ([`src/services/lora_service/`](src/services/lora_service/)) wraps this into a FastAPI service with `/internalize`, `/generate`, and `/reset` endpoints, plus pluggable weight storage (S3 or local).
+
+See [doc-to-lora Integration](./docs/DOC_TO_LORA_INTEGRATION.md) for architecture, API, and deployment details.
 
 ---
 
@@ -347,7 +382,8 @@ MemoRable's tiered security makes it suitable for:
 | Multi-device context sync | ✅ | ❌ | ✅ |
 | Predictive memory (21-day learning) | ✅ | ❌ | ✅ |
 | **Behavioral identity** | ✅ | ❌ | ✅ |
-| MCP protocol support (35 tools) | ✅ | ❌ | ✅ |
+| **Real-time internalization ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora))** | ✅ | ❌ | ✅ |
+| MCP protocol support (37 tools) | ✅ | ❌ | ✅ |
 | Enterprise security tiers | ✅ | ❌ | ✅ |
 
 **Bottom line:** MemoRable standalone = complete system. Mem0 integration = optional for existing users.
@@ -781,7 +817,7 @@ PRESSURE_THRESHOLD_URGENT=70     # Immediate notification
 
 ---
 
-## MCP Tools Reference (35 Tools)
+## MCP Tools Reference (38 Tools)
 
 ### Context Management (Multi-Device)
 | Tool | Description |
@@ -859,6 +895,16 @@ MemoRable computes relationships on-demand from shared memories rather than stor
 | `get_predictions` | Surface memories BEFORE you ask based on context |
 | `record_prediction_feedback` | Teach the system what predictions are useful |
 | `set_care_circle` | Set who gets alerted when distress is detected (SMS/Email/Push/Webhook) |
+
+### Real-Time Internalization ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora))
+
+Internalize documents directly into model weights via the [doc-to-lora hypernetwork](https://github.com/alanchelmickjr/doc-to-lora). No context window limits. The model *knows* it.
+
+| Tool | Description |
+|------|-------------|
+| `internalize_document` | Feed a document to the hypernetwork, receive LoRA weights. The model now "knows" the document. |
+
+**GPU Service** ([`src/services/lora_service/`](src/services/lora_service/)): FastAPI wrapper exposing `/internalize`, `/generate`, `/reset` endpoints. Runs on cloud GPU, [Chloe's AGX Orin](https://developer.nvidia.com/embedded/jetson-agx-orin), or any CUDA box. Storage backends: S3 (cloud) or local disk (robots).
 
 ### Behavioral Identity
 | Tool | Description |
@@ -1561,6 +1607,7 @@ https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateU
 | `memorable_ingestion_service` | 8001 | Memory ingestion API |
 | `memorable_mongo` | 27017 | Document storage + vectors |
 | `memorable_redis` | 6379 | Context frames, caching |
+| `memorable_lora_service` | 8090 | GPU LoRA service ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora)) |
 
 ---
 
@@ -1677,7 +1724,8 @@ npx tsx scripts/test_salience.ts
 memorable/
 ├── src/services/
 │   ├── mcp_server/              # MCP server for Claude Code
-│   │   └── index.ts             # 35 MCP tools
+│   │   ├── index.ts             # 38 MCP tools
+│   │   └── lora_service_client.ts # GPU LoRA service bridge
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
 │   │   ├── anticipation_service.ts  # Predictive memory (21-day learning)
@@ -1696,6 +1744,12 @@ memorable/
 │   │   ├── adaptive_learning.ts
 │   │   ├── metrics.ts           # Prometheus metrics
 │   │   └── startup.ts           # Health checks
+│   ├── lora_service/             # GPU LoRA service (FastAPI)
+│   │   ├── app.py               # /internalize, /generate, /reset
+│   │   ├── engine.py            # TextToLoRA lifecycle wrapper
+│   │   ├── storage.py           # S3 + local weight storage
+│   │   ├── Dockerfile           # CUDA container
+│   │   └── requirements.txt     # Python deps
 │   ├── ingestion_service/       # Memory ingestion API
 │   └── embedding_service/       # Vector embeddings
 ├── scripts/

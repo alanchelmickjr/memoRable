@@ -3038,6 +3038,41 @@ function createServer(): Server {
         },
       },
       // ============================================
+      // LORA INTERNALIZATION - Deep Knowledge
+      // ============================================
+      {
+        name: 'internalize_document',
+        description:
+          'Internalize a document into LoRA weights via the doc-to-lora hypernetwork. The model will "know" the document — not just retrieve it, but have it baked into weights. Returns a weights_key for future generation. Requires GPU LoRA service running.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            document: {
+              type: 'string',
+              description: 'Full text of the document to internalize',
+            },
+            model: {
+              type: 'string',
+              enum: ['gemma-2-2b', 'gemma-2-9b'],
+              description: 'Base model to generate weights for (default: gemma-2-2b)',
+              default: 'gemma-2-2b',
+            },
+            entity: {
+              type: 'string',
+              description: 'Entity to associate this knowledge with (for memory linking)',
+            },
+          },
+          required: ['document'],
+        },
+        annotations: {
+          title: 'Internalize Document (LoRA)',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: true,
+        },
+      },
+      // ============================================
       // DEV ONLY - Remove before production
       // ============================================
       {
@@ -7457,6 +7492,86 @@ function createServer(): Server {
               }, null, 2),
             }],
           };
+        }
+
+        // ============================================
+        // LORA INTERNALIZATION HANDLER
+        // ============================================
+        case 'internalize_document': {
+          const {
+            document,
+            model = 'gemma-2-2b',
+            entity,
+          } = args as {
+            document: string;
+            model?: string;
+            entity?: string;
+          };
+
+          if (!document || document.trim().length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, 'document is required and must not be empty');
+          }
+
+          try {
+            // Dynamic import — only loaded when tool is called
+            const loraClient = await import('./lora_service_client.js');
+
+            // Check if LoRA service is reachable
+            const available = await loraClient.isAvailable();
+            if (!available) {
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    error: 'LoRA service not available',
+                    hint: 'Ensure GPU LoRA service is running (LORA_SERVICE_URL env var)',
+                    lora_service_url: process.env.LORA_SERVICE_URL || 'http://localhost:8090',
+                  }, null, 2),
+                }],
+              };
+            }
+
+            const result = await loraClient.internalize(document, model);
+
+            // If entity provided, store a memory linking to the weights
+            if (entity && connectionMode === 'rest' && apiClient) {
+              try {
+                await apiClient.storeMemory({
+                  content: `Internalized document into LoRA weights: ${result.weights_key}`,
+                  entities: [entity],
+                  metadata: {
+                    type: 'lora_internalization',
+                    weights_key: result.weights_key,
+                    weights_uri: result.weights_uri,
+                    model,
+                    document_length: document.length,
+                  },
+                });
+              } catch (linkErr) {
+                logger.warn(`Failed to link LoRA weights to memory: ${linkErr}`);
+              }
+            }
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  status: 'ok',
+                  weights_key: result.weights_key,
+                  weights_uri: result.weights_uri,
+                  model,
+                  document_chars: document.length,
+                  entity: entity || null,
+                  message: 'Document internalized into LoRA weights. Use weights_key with /generate for inference.',
+                }, null, 2),
+              }],
+            };
+          } catch (err) {
+            throw new McpError(
+              ErrorCode.InternalError,
+              `LoRA internalization failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+            );
+          }
         }
 
         default:

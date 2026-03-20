@@ -139,7 +139,7 @@ what matters.
 
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, real-time memory internalization via [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora), and seamless cross-device context. It provides 38 MCP tools for Claude Code integration.
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
@@ -218,6 +218,7 @@ git checkout -b claude/<intent>   # Bounded scope
 - **salience_service/**: Core memory intelligence - salience scoring (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%), open loop tracking, relationship health, briefing generation, anticipation (21-day pattern learning), context frames, adaptive learning, **Real-Time Relevance Engine** (all processing at ingest time, no batch)
 - **mcp_server/**: 37 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, handoff_device, get_session_continuity, etc.)
 - **ingestion_service/**: Memory ingestion API (port 8001)
+- **lora_service/**: GPU LoRA service — FastAPI wrapper for [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) hypernetwork (port 8090). Endpoints: `/internalize`, `/generate`, `/reset`. Vendor submodule at `vendors/doc-to-lora/`.
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)
 
@@ -277,7 +278,12 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 - `src/services/salience_service/salience_calculator.ts`: Core salience scoring algorithm
 - `src/services/salience_service/open_loop_tracker.ts`: Commitment tracking
 - `src/services/salience_service/session_continuity.ts`: Cross-device context handoff
-- `src/services/mcp_server/index.ts`: MCP server with all 37 tools
+- `src/services/mcp_server/index.ts`: MCP server with all 38 tools
+- `src/services/mcp_server/lora_service_client.ts`: GPU LoRA service bridge (TypeScript)
+- `src/services/lora_service/app.py`: FastAPI wrapper — /internalize, /generate, /reset
+- `src/services/lora_service/engine.py`: TextToLoRA lifecycle wrapper
+- `src/services/lora_service/storage.py`: S3 + local weight storage abstraction
+- `vendors/doc-to-lora/`: Upstream [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) submodule
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
 
