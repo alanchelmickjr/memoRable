@@ -1721,7 +1721,8 @@ npx tsx scripts/test_salience.ts
 memorable/
 ├── src/services/
 │   ├── mcp_server/              # MCP server for Claude Code
-│   │   └── index.ts             # 35 MCP tools
+│   │   ├── index.ts             # 38 MCP tools
+│   │   └── lora_service_client.ts # GPU LoRA service bridge
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
 │   │   ├── anticipation_service.ts  # Predictive memory (21-day learning)
