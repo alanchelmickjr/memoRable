@@ -278,7 +278,12 @@ AR glasses are NOT robots, but they're on the same sensor net. Security is param
 - `src/services/salience_service/salience_calculator.ts`: Core salience scoring algorithm
 - `src/services/salience_service/open_loop_tracker.ts`: Commitment tracking
 - `src/services/salience_service/session_continuity.ts`: Cross-device context handoff
-- `src/services/mcp_server/index.ts`: MCP server with all 37 tools
+- `src/services/mcp_server/index.ts`: MCP server with all 38 tools
+- `src/services/mcp_server/lora_service_client.ts`: GPU LoRA service bridge (TypeScript)
+- `src/services/lora_service/app.py`: FastAPI wrapper — /internalize, /generate, /reset
+- `src/services/lora_service/engine.py`: TextToLoRA lifecycle wrapper
+- `src/services/lora_service/storage.py`: S3 + local weight storage abstraction
+- `vendors/doc-to-lora/`: Upstream [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) submodule
 - `docker-compose.yml`: Full local stack configuration
 - `.env.example`: All configuration options with defaults
 
