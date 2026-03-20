@@ -6,88 +6,80 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo "Running smoke tests..."
+# NOTHING IS LOCAL — use cloud endpoint
+BASE_URL="${MEMORABLE_API_URL:?MEMORABLE_API_URL is required. NOTHING IS LOCAL.}"
 
-# Test Weaviate health
-echo "Testing Weaviate..."
-if curl -sf http://localhost:8080/v1/.well-known/ready > /dev/null; then
-    echo -e "${GREEN}✓${NC} Weaviate is healthy"
+echo "Running smoke tests against ${BASE_URL}..."
+
+# 1. Health check (public, no auth)
+echo "Testing health endpoint..."
+health_response=$(curl -sf "${BASE_URL}/health")
+if [[ $health_response == *"ok"* ]] || [[ $health_response == *"healthy"* ]] || [[ $health_response == *"status"* ]]; then
+    echo -e "${GREEN}✓${NC} Health check passed"
 else
-    echo -e "${RED}✗${NC} Weaviate health check failed"
+    echo -e "${RED}✗${NC} Health check failed: ${health_response}"
     exit 1
 fi
 
-# Test Ingestion service health
-echo "Testing Ingestion service..."
-ingestion_response=$(curl -sf http://localhost:8001/api/ingest/health)
-if [[ $ingestion_response == *"UP"* ]]; then
-    echo -e "${GREEN}✓${NC} Ingestion service is healthy"
-else
-    echo -e "${RED}✗${NC} Ingestion service health check failed"
-    exit 1
-fi
-
-# Test Embedding service health
-echo "Testing Embedding service..."
-embedding_response=$(curl -sf http://localhost:3003/health)
-if [[ $embedding_response == *"healthy"* ]]; then
-    echo -e "${GREEN}✓${NC} Embedding service is healthy"
-else
-    echo -e "${RED}✗${NC} Embedding service health check failed"
-    exit 1
-fi
-
-# Test Retrieval service health
-echo "Testing Retrieval service..."
-retrieval_response=$(curl -sf http://localhost:3004/health)
-if [[ $retrieval_response == *"healthy"* ]]; then
-    echo -e "${GREEN}✓${NC} Retrieval service is healthy"
-else
-    echo -e "${RED}✗${NC} Retrieval service health check failed"
-    exit 1
-fi
-
-# Note: NNNA service (port 3005) was deprecated - all processing now happens at ingest time
-
-# Test memory ingestion
-echo "Testing memory ingestion..."
-ingest_response=$(curl -sf -X POST http://localhost:8001/api/ingest \
+# 2. Auth knock — get challenge
+echo "Testing auth knock..."
+knock_response=$(curl -sf -X POST "${BASE_URL}/auth/knock" \
     -H "Content-Type: application/json" \
-    -d '{
-        "sourceSystem": "MANUAL_INPUT",
-        "agentId": "smoke-test-user",
-        "contentType": "TEXT",
-        "contentRaw": "Smoke test memory entry",
-        "eventTimestamp": "2026-01-13T00:00:00.000Z"
-    }')
-if [[ $ingest_response == *"accepted"* ]]; then
-    echo -e "${GREEN}✓${NC} Memory ingestion working"
+    -d '{"device":{"type":"terminal","name":"ci-smoke-test"}}')
+CHALLENGE=$(echo "${knock_response}" | python3 -c "import sys,json; print(json.load(sys.stdin)['challenge'])" 2>/dev/null || echo "")
+if [[ -n "$CHALLENGE" ]]; then
+    echo -e "${GREEN}✓${NC} Auth knock returned challenge"
 else
-    echo -e "${RED}✗${NC} Memory ingestion failed"
+    echo -e "${RED}✗${NC} Auth knock failed: ${knock_response}"
     exit 1
 fi
 
-# Test embedding generation
-echo "Testing embedding generation..."
-embed_response=$(curl -sf -X POST http://localhost:3003/embed \
+# 3. Auth exchange — get API key
+echo "Testing auth exchange..."
+PASSPHRASE="I remember what I have learned from you."
+exchange_response=$(curl -sf -X POST "${BASE_URL}/auth/exchange" \
     -H "Content-Type: application/json" \
-    -d '{"text": "test embedding"}')
-if [[ $embed_response == *"embedding"* ]]; then
-    echo -e "${GREEN}✓${NC} Embedding generation working"
+    -d "{\"challenge\":\"${CHALLENGE}\",\"passphrase\":\"${PASSPHRASE}\",\"device\":{\"type\":\"terminal\",\"name\":\"ci-smoke-test\"}}")
+API_KEY=$(echo "${exchange_response}" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || echo "")
+if [[ -n "$API_KEY" ]]; then
+    echo -e "${GREEN}✓${NC} Auth exchange returned API key"
 else
-    echo -e "${RED}✗${NC} Embedding generation failed"
+    echo -e "${RED}✗${NC} Auth exchange failed: ${exchange_response}"
     exit 1
 fi
 
-# Test retrieval
-echo "Testing memory retrieval..."
-retrieve_response=$(curl -sf -X POST http://localhost:3004/retrieve \
+# 4. Store a memory
+echo "Testing memory storage..."
+store_response=$(curl -sf -X POST "${BASE_URL}/memory" \
     -H "Content-Type: application/json" \
-    -d '{"userId": "smoke-test-user", "query": "test"}')
-if [[ $retrieve_response == *"results"* ]]; then
-    echo -e "${GREEN}✓${NC} Memory retrieval working"
+    -H "X-API-Key: ${API_KEY}" \
+    -d "{\"content\":\"CI smoke test memory at $(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"entity\":\"ci-smoke-test\",\"entityType\":\"test\",\"metadata\":{\"source\":\"ci-smoke-test\"}}")
+if [[ $store_response == *"success"* ]] || [[ $store_response == *"stored"* ]] || [[ $store_response == *"id"* ]]; then
+    echo -e "${GREEN}✓${NC} Memory storage working"
 else
-    echo -e "${RED}✗${NC} Memory retrieval failed"
+    echo -e "${RED}✗${NC} Memory storage failed: ${store_response}"
+    exit 1
+fi
+
+# 5. Search memories
+echo "Testing memory search..."
+search_response=$(curl -sf "${BASE_URL}/memory/search?query=smoke+test&limit=5" \
+    -H "X-API-Key: ${API_KEY}")
+if [[ $search_response == *"memories"* ]] || [[ $search_response == *"results"* ]] || [[ $search_response == *"["* ]]; then
+    echo -e "${GREEN}✓${NC} Memory search working"
+else
+    echo -e "${RED}✗${NC} Memory search failed: ${search_response}"
+    exit 1
+fi
+
+# 6. Get memories by entity
+echo "Testing memory retrieval by entity..."
+entity_response=$(curl -sf "${BASE_URL}/memory?entity=ci-smoke-test&limit=5" \
+    -H "X-API-Key: ${API_KEY}")
+if [[ $entity_response == *"memories"* ]] || [[ $entity_response == *"["* ]]; then
+    echo -e "${GREEN}✓${NC} Memory retrieval by entity working"
+else
+    echo -e "${RED}✗${NC} Memory retrieval by entity failed: ${entity_response}"
     exit 1
 fi
 

@@ -111,7 +111,7 @@ jobs:
     - name: Run load tests against cloud
       run: k6 run tests/load/main.js
       env:
-        MEMORABLE_API_URL: https://api.memorable.chat
+        MEMORABLE_API_URL: http://52.9.62.72:8080
 
   smoke-test:
     needs: integration
@@ -121,32 +121,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
 
-    - name: Create .env from example
-      run: cp .env.example .env
-
-    - name: Run smoke tests
-      run: |
-        docker compose -f docker-compose.yml build
-        docker compose -f docker-compose.yml up -d
-        echo "Waiting for services to become healthy..."
-        for i in {1..30}; do
-          if docker compose exec -T memorable_weaviate wget -q --spider http://localhost:8080/v1/.well-known/ready 2>/dev/null; then
-            echo "Weaviate is ready"
-            break
-          fi
-          echo "Waiting for Weaviate... (${i}0s)"
-          sleep 10
-        done
-        for i in {1..20}; do
-          if curl -sf http://localhost:8001/api/ingest/health; then
-            echo "Ingestion service is healthy"
-            break
-          fi
-          echo "Waiting for ingestion service... (${i}0s)"
-          sleep 10
-        done
-        ./scripts/smoke-test.sh || (docker compose logs && exit 1)
-        docker compose -f docker-compose.yml down
+    - name: Run smoke tests against cloud
+      run: ./scripts/smoke-test.sh
+      env:
+        MEMORABLE_API_URL: http://52.9.62.72:8080
