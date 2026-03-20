@@ -467,6 +467,8 @@ volumes:
     driver: local
   memorable_ollama_data: # Renamed
     driver: local
+  memorable_lora_weights:
+    driver: local
   memorable_prometheus_data: # Renamed
     driver: local
   memorable_grafana_data: # Renamed
