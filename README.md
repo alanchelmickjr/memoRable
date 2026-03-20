@@ -1605,6 +1605,7 @@ https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateU
 | `memorable_ingestion_service` | 8001 | Memory ingestion API |
 | `memorable_mongo` | 27017 | Document storage + vectors |
 | `memorable_redis` | 6379 | Context frames, caching |
+| `memorable_lora_service` | 8090 | GPU LoRA service ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora)) |
 
 ---
 
