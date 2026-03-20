@@ -170,7 +170,7 @@ npm run docker:clean            # Remove volumes
 npm run docker:rebuild          # Force rebuild
 
 # Health check
-curl http://localhost:3000/health
+curl https://<ELASTIC_IP>:8080/health
 ```
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
