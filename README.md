@@ -116,7 +116,7 @@ MemoRable + Mem0: Here's what you need to know:
 |-----|---------------------|
 | **Mem0 Users** | Adds salience scoring, commitment tracking, relationships, predictions to your existing vectors |
 | **AI Assistants** | Gives us persistent memory so we actually remember you between conversations |
-| **Developers** | 35 MCP tools + Python/TypeScript SDKs for context-aware apps |
+| **Developers** | 38 MCP tools + Python/TypeScript SDKs for context-aware apps |
 | **Robots/IoT** | Unified memory layer across sensor networks and embodied AI |
 | **Memory Care** | Dignity-preserving memory support for Alzheimer's and cognitive challenges |
 
