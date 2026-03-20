@@ -137,7 +137,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
 | **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
-| **Claude Code** | 35 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
+| **Claude Code** | 38 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
 | **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
 | **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
 
