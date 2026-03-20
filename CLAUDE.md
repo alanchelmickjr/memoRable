@@ -218,6 +218,7 @@ git checkout -b claude/<intent>   # Bounded scope
 - **salience_service/**: Core memory intelligence - salience scoring (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%), open loop tracking, relationship health, briefing generation, anticipation (21-day pattern learning), context frames, adaptive learning, **Real-Time Relevance Engine** (all processing at ingest time, no batch)
 - **mcp_server/**: 37 MCP tools for Claude Code (store_memory, recall, get_briefing, list_loops, close_loop, set_context, whats_relevant, anticipate, get_relationship, get_predictions, handoff_device, get_session_continuity, etc.)
 - **ingestion_service/**: Memory ingestion API (port 8001)
+- **lora_service/**: GPU LoRA service — FastAPI wrapper for [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) hypernetwork (port 8090). Endpoints: `/internalize`, `/generate`, `/reset`. Vendor submodule at `vendors/doc-to-lora/`.
 - **embedding_service/**: Vector embeddings generation (port 3003)
 - **retrieval_service/**: Memory retrieval and real-time relevance ranking (port 3004)
 
