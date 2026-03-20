@@ -129,6 +129,8 @@ jobs:
 
     - name: Run load tests
       run: k6 run tests/load/main.js
+      env:
+        MEMORABLE_API_URL: http://localhost:3000
 
     - name: Stop services
       if: always()
