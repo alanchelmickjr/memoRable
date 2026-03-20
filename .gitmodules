@@ -1,0 +1,3 @@
+[submodule "vendors/doc-to-lora"]
+	path = vendors/doc-to-lora
+	url = https://github.com/alanchelmickjr/doc-to-lora.git

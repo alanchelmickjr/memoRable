@@ -1,18 +1,23 @@
 # MemoRable
 
-> **PRE-RELEASE SOFTWARE** - This project is under active development and not yet ready for production use. APIs may change, features may be incomplete, and data migrations are not guaranteed. Star the repo and watch for v1.0 release.
+> **Better than memory. Better than prompt engineering.** Real-time memory internalization for AI.
 
-### Context-Aware Memory System for AI Agents, Humans, Robots & all Devices
+### Context for Life — Memory System for AI Agents, Humans, Robots & all Devices
 
-**Works standalone OR extends Mem0** — Your choice. Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
+Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks and hopes. MemoRable **internalizes knowledge into model weights in real-time** via [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora) hypernetwork LoRA generation. No context limits. No retrieval latency. The model *knows* it.
+
+**Works standalone OR extends Mem0** — Full memory system out of the box, or add intelligence to your existing Mem0 deployment.
 
 [![Standalone System](https://img.shields.io/badge/Mode-Standalone-00d4aa?style=for-the-badge)](./docs/deployment-guide.md)
 [![Mem0 Extension](https://img.shields.io/badge/Mode-Mem0_Extension-purple?style=for-the-badge)](https://mem0.ai)
 [![Enterprise Security](https://img.shields.io/badge/Security-Enterprise_Grade-gold?style=for-the-badge)](./docs/SECURITY_ARCHITECTURE.md)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-blue?style=for-the-badge)](https://modelcontextprotocol.io)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Integrated-191919?style=for-the-badge&logo=anthropic)](https://claude.ai)
+[![doc-to-lora](https://img.shields.io/badge/doc--to--lora-Real_Time_LoRA-FF6600?style=for-the-badge)](https://github.com/alanchelmickjr/doc-to-lora)
 
-**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/)
+**Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/) [![Gemma](https://img.shields.io/badge/Gemma_2-4285F4?style=flat&logo=google&logoColor=white)](https://ai.google.dev/gemma)
+
+> **PRE-RELEASE SOFTWARE** - Under active development. APIs may change, features may be incomplete. Star the repo and watch for v1.0 release.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
