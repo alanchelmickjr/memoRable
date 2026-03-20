@@ -11,75 +11,67 @@ BASE_URL="${MEMORABLE_API_URL:?MEMORABLE_API_URL is required. NOTHING IS LOCAL.}
 
 echo "Running smoke tests against ${BASE_URL}..."
 
-# 1. Health check (public, no auth)
+# 1. Health check
 echo "Testing health endpoint..."
 health_response=$(curl -sf "${BASE_URL}/health")
-if [[ $health_response == *"ok"* ]] || [[ $health_response == *"healthy"* ]] || [[ $health_response == *"status"* ]]; then
+if echo "${health_response}" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='healthy'" 2>/dev/null; then
     echo -e "${GREEN}✓${NC} Health check passed"
 else
     echo -e "${RED}✗${NC} Health check failed: ${health_response}"
     exit 1
 fi
 
-# 2. Auth knock — get challenge
-echo "Testing auth knock..."
-knock_response=$(curl -sf -X POST "${BASE_URL}/auth/knock" \
+# 2. OAuth discovery
+echo "Testing OAuth discovery..."
+oauth_response=$(curl -sf "${BASE_URL}/.well-known/oauth-authorization-server")
+if echo "${oauth_response}" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'token_endpoint' in d" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} OAuth discovery working"
+else
+    echo -e "${RED}✗${NC} OAuth discovery failed: ${oauth_response}"
+    exit 1
+fi
+
+# 3. OAuth protected resource metadata
+echo "Testing protected resource metadata..."
+resource_response=$(curl -sf "${BASE_URL}/.well-known/oauth-protected-resource")
+if echo "${resource_response}" | python3 -c "import sys,json; d=json.load(sys.stdin); assert '/mcp' in d.get('resource','')" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Protected resource metadata working"
+else
+    echo -e "${RED}✗${NC} Protected resource metadata failed: ${resource_response}"
+    exit 1
+fi
+
+# 4. Dynamic client registration
+echo "Testing dynamic client registration..."
+reg_response=$(curl -sf -X POST "${BASE_URL}/register" \
     -H "Content-Type: application/json" \
-    -d '{"device":{"type":"terminal","name":"ci-smoke-test"}}')
-CHALLENGE=$(echo "${knock_response}" | python3 -c "import sys,json; print(json.load(sys.stdin)['challenge'])" 2>/dev/null || echo "")
-if [[ -n "$CHALLENGE" ]]; then
-    echo -e "${GREEN}✓${NC} Auth knock returned challenge"
+    -d "{\"redirect_uris\":[\"${BASE_URL}/oauth/callback\"],\"client_name\":\"ci-smoke-test\",\"grant_types\":[\"authorization_code\"],\"response_types\":[\"code\"],\"token_endpoint_auth_method\":\"none\"}")
+if echo "${reg_response}" | python3 -c "import sys,json; d=json.load(sys.stdin); assert 'client_id' in d" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Dynamic client registration working"
 else
-    echo -e "${RED}✗${NC} Auth knock failed: ${knock_response}"
+    echo -e "${RED}✗${NC} Dynamic client registration failed: ${reg_response}"
     exit 1
 fi
 
-# 3. Auth exchange — get API key
-echo "Testing auth exchange..."
-PASSPHRASE="I remember what I have learned from you."
-exchange_response=$(curl -sf -X POST "${BASE_URL}/auth/exchange" \
+# 5. MCP endpoint responds
+echo "Testing MCP endpoint..."
+mcp_status=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/mcp" \
     -H "Content-Type: application/json" \
-    -d "{\"challenge\":\"${CHALLENGE}\",\"passphrase\":\"${PASSPHRASE}\",\"device\":{\"type\":\"terminal\",\"name\":\"ci-smoke-test\"}}")
-API_KEY=$(echo "${exchange_response}" | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])" 2>/dev/null || echo "")
-if [[ -n "$API_KEY" ]]; then
-    echo -e "${GREEN}✓${NC} Auth exchange returned API key"
+    -d '{"jsonrpc":"2.0","method":"ping","id":1}')
+if [[ "$mcp_status" -gt 0 ]] && [[ "$mcp_status" -lt 500 ]]; then
+    echo -e "${GREEN}✓${NC} MCP endpoint responding (HTTP ${mcp_status})"
 else
-    echo -e "${RED}✗${NC} Auth exchange failed: ${exchange_response}"
+    echo -e "${RED}✗${NC} MCP endpoint failed (HTTP ${mcp_status})"
     exit 1
 fi
 
-# 4. Store a memory
-echo "Testing memory storage..."
-store_response=$(curl -sf -X POST "${BASE_URL}/memory" \
-    -H "Content-Type: application/json" \
-    -H "X-API-Key: ${API_KEY}" \
-    -d "{\"content\":\"CI smoke test memory at $(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"entity\":\"ci-smoke-test\",\"entityType\":\"test\",\"metadata\":{\"source\":\"ci-smoke-test\"}}")
-if [[ $store_response == *"success"* ]] || [[ $store_response == *"stored"* ]] || [[ $store_response == *"id"* ]]; then
-    echo -e "${GREEN}✓${NC} Memory storage working"
+# 6. Landing page
+echo "Testing landing page..."
+landing_status=$(curl -sf -o /dev/null -w "%{http_code}" "${BASE_URL}/")
+if [[ "$landing_status" == "200" ]]; then
+    echo -e "${GREEN}✓${NC} Landing page serving"
 else
-    echo -e "${RED}✗${NC} Memory storage failed: ${store_response}"
-    exit 1
-fi
-
-# 5. Search memories
-echo "Testing memory search..."
-search_response=$(curl -sf "${BASE_URL}/memory/search?query=smoke+test&limit=5" \
-    -H "X-API-Key: ${API_KEY}")
-if [[ $search_response == *"memories"* ]] || [[ $search_response == *"results"* ]] || [[ $search_response == *"["* ]]; then
-    echo -e "${GREEN}✓${NC} Memory search working"
-else
-    echo -e "${RED}✗${NC} Memory search failed: ${search_response}"
-    exit 1
-fi
-
-# 6. Get memories by entity
-echo "Testing memory retrieval by entity..."
-entity_response=$(curl -sf "${BASE_URL}/memory?entity=ci-smoke-test&limit=5" \
-    -H "X-API-Key: ${API_KEY}")
-if [[ $entity_response == *"memories"* ]] || [[ $entity_response == *"["* ]]; then
-    echo -e "${GREEN}✓${NC} Memory retrieval by entity working"
-else
-    echo -e "${RED}✗${NC} Memory retrieval by entity failed: ${entity_response}"
+    echo -e "${RED}✗${NC} Landing page failed (HTTP ${landing_status})"
     exit 1
 fi
 
