@@ -241,6 +241,34 @@ See [ENGINE Layer Design](./docs/ENGINE_LAYER_DESIGN.md) for the full vision.
 
 ---
 
+## Real-Time Memory Internalization (doc-to-lora)
+
+**The end of the context window.** Instead of stuffing documents into prompts or retrieving chunks at query time, MemoRable generates LoRA adapter weights from documents in real-time using a hypernetwork. The knowledge lives in the model's parameters — not in a prompt, not in a retrieval index.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     THREE APPROACHES TO MEMORY                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   Prompt Engineering          RAG                      MemoRable            │
+│   ──────────────────          ───                      ─────────            │
+│   Stuff context in prompt     Retrieve chunks          Internalize into     │
+│   ✗ Window limits             ✗ Retrieval latency      model weights        │
+│   ✗ Loses old context         ✗ Chunk boundaries       ✓ No limits          │
+│   ✗ Expensive per-call        ✗ Relevance guessing     ✓ Zero latency       │
+│                                                        ✓ Model *knows* it   │
+│                                                                             │
+│   Powered by doc-to-lora hypernetwork LoRA generation (Gemma 2)            │
+│   github.com/alanchelmickjr/doc-to-lora                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How it works:** A Perceiver-based hypernetwork reads a document, generates rank-8 LoRA weights in seconds, and stores them (~few MB) in S3. At recall time, load the weights onto the base model. Done. The expensive part happens once. Recall is a file load.
+
+See [doc-to-lora Integration](./docs/DOC_TO_LORA_INTEGRATION.md) for architecture, API, and deployment details.
+
+---
+
 ## Fort Knox Security: Your Data, Your Rules
 
 **Grandma's credit card number stays on grandma's RFID bracelet.** MemoRable implements military-grade, tiered security so sensitive data never leaves your control.
