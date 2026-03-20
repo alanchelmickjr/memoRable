@@ -1,19 +1,27 @@
 /**
  * LoRA Service Client — MCP server → GPU LoRA service bridge.
  *
+ * Auto-wakes the GPU when needed. You just call internalize().
+ * The client handles: wake GPU → wait for health → do the work → GPU auto-sleeps.
+ *
  * Same client works whether the LoRA service is:
  * - Cloud GPU (g4dn/g5 on AWS)
  * - Chloe's AGX Orin 64
  * - A laptop with a GPU
- *
- * Just set LORA_SERVICE_URL and go.
  */
 
+import { execSync } from 'child_process';
 import { logger } from '../../utils/logger.js';
 
 const LORA_SERVICE_URL = process.env.LORA_SERVICE_URL || 'http://localhost:8090';
 const LORA_SERVICE_TIMEOUT_MS = parseInt(
   process.env.LORA_SERVICE_TIMEOUT_MS || '120000',
+  10
+);
+const GPU_STACK_NAME = process.env.MEMORABLE_GPU_STACK || 'memorable-gpu';
+const AWS_REGION = process.env.AWS_REGION || 'us-west-2';
+const GPU_WAKE_TIMEOUT_MS = parseInt(
+  process.env.GPU_WAKE_TIMEOUT_MS || '300000',  // 5 min for cold start
   10
 );
 
