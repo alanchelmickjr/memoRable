@@ -139,7 +139,7 @@ what matters.
 
 ## Project Overview
 
-MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, and seamless cross-device context. It provides 37 MCP tools for Claude Code integration.
+MemoRable is a context-aware memory system for AI agents that extends Mem0 with salience scoring, commitment tracking, relationship intelligence, predictive memory, real-time memory internalization via [doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora), and seamless cross-device context. It provides 38 MCP tools for Claude Code integration.
 
 > **NOTHING IS LOCAL. No local dev, no localhost, no local Docker. Cloud only.**
 
