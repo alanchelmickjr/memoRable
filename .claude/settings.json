@@ -62,6 +62,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/guard-overwrites.cjs"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/guard-cloud-only.cjs"
           }
         ]
       },
