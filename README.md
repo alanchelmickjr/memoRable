@@ -265,6 +265,8 @@ See [ENGINE Layer Design](./docs/ENGINE_LAYER_DESIGN.md) for the full vision.
 
 **How it works:** A Perceiver-based hypernetwork reads a document, generates rank-8 LoRA weights in seconds, and stores them (~few MB) in S3. At recall time, load the weights onto the base model. Done. The expensive part happens once. Recall is a file load.
 
+**Upstream repo:** [`alanchelmickjr/doc-to-lora`](https://github.com/alanchelmickjr/doc-to-lora) — included as a git submodule at `vendors/doc-to-lora/`. The **LoRA Service** ([`src/services/lora_service/`](src/services/lora_service/)) wraps this into a FastAPI service with `/internalize`, `/generate`, and `/reset` endpoints, plus pluggable weight storage (S3 or local).
+
 See [doc-to-lora Integration](./docs/DOC_TO_LORA_INTEGRATION.md) for architecture, API, and deployment details.
 
 ---
