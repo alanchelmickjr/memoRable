@@ -111,7 +111,7 @@ jobs:
     - name: Check cloud endpoint is reachable
       id: health
       run: |
-        API_URL="${{ secrets.MEMORABLE_API_URL || 'http://52.9.62.72:8080' }}"
+        API_URL="${{ secrets.MEMORABLE_API_URL || 'https://52.9.62.72:8080' }}"
         echo "MEMORABLE_API_URL=${API_URL}" >> "$GITHUB_ENV"
         if curl -sf --max-time 10 "${API_URL}/health" > /dev/null 2>&1; then
           echo "reachable=true" >> "$GITHUB_OUTPUT"
