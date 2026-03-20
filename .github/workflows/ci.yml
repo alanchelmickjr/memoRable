@@ -97,29 +97,9 @@ jobs:
     needs: integration
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    permissions:
-      id-token: write
-      contents: read
 
     steps:
     - uses: actions/checkout@v4
-
-    - name: Configure AWS credentials (OIDC)
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/memorable-github-actions-memoRable
-        role-session-name: github-actions-loadtest-${{ github.run_id }}
-        aws-region: us-west-2
-
-    - name: Get Elastic IP from CloudFormation
-      id: get-endpoint
-      run: |
-        ELASTIC_IP=$(aws cloudformation describe-stacks \
-          --stack-name memorable \
-          --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' \
-          --output text)
-        echo "api_url=http://${ELASTIC_IP}:8080" >> $GITHUB_OUTPUT
-        echo "Load test target: http://${ELASTIC_IP}:8080"
 
     - name: Setup k6
       run: |
@@ -131,7 +111,7 @@ jobs:
     - name: Run load tests against cloud
       run: k6 run tests/load/main.js
       env:
-        MEMORABLE_API_URL: ${{ steps.get-endpoint.outputs.api_url }}
+        MEMORABLE_API_URL: http://52.9.62.72:8080
 
   smoke-test:
     needs: integration
