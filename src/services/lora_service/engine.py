@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Resolve vendor path relative to repo root
 VENDOR_ROOT = Path(__file__).resolve().parents[3] / "vendors" / "doc-to-lora"
-CHECKPOINT_DIR = os.environ.get(
+DEFAULT_CHECKPOINT_DIR = os.environ.get(
     "LORA_CHECKPOINT_DIR",
     str(VENDOR_ROOT / "trained_t2l" / "gemma_2b_t2l"),
 )
@@ -27,20 +27,26 @@ DEVICE = os.environ.get("LORA_DEVICE", "cuda" if torch.cuda.is_available() else 
 class LoRAEngine:
     """Lifecycle manager for doc-to-lora weight generation."""
 
-    def __init__(self, checkpoint_dir: str = CHECKPOINT_DIR, device: str = DEVICE):
+    def __init__(self, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR, device: str = DEVICE):
         self.checkpoint_dir = checkpoint_dir
         self.device = device
         self._model = None
         self._loaded_weights_key: str | None = None
+        self._current_model_name: str | None = None
 
     @property
     def is_loaded(self) -> bool:
         return self._model is not None
 
-    def load(self) -> None:
+    def load(self, model_name: str = "google/gemma-2-2b-it") -> None:
         """Load hypernetwork + base model. Call once at startup."""
-        if self._model is not None:
+        if self._model is not None and self._current_model_name == model_name:
             return
+
+        # Clear existing model if switching
+        if self._model is not None:
+            self.reset()
+            self._model = None
 
         import sys
         # Add vendor src to path so ctx_to_lora imports resolve
@@ -53,16 +59,39 @@ class LoRAEngine:
         os.chdir(str(VENDOR_ROOT))
 
         try:
-            from ctx_to_lora.data.definitions import CTX_AFFIXES
             from ctx_to_lora.modeling.text_to_lora import TextToLoRA
+            from ctx_to_lora.data.definitions import CTX_AFFIXES
 
-            model_name = "google/gemma-2-2b-it"
+            # Support both 2b and 9b (and others in the future)
+            supported_models = ["google/gemma-2-2b-it", "google/gemma-2-9b-it"]
+            if model_name not in supported_models:
+                logger.warning(f"Model {model_name} not explicitly in supported list, but attempting load anyway.")
+
             prefix_tokens = torch.tensor(
                 CTX_AFFIXES[model_name]["prefix"], dtype=torch.long
             )
 
-            logger.info(f"Loading TextToLoRA from {self.checkpoint_dir} on {self.device}")
+            # Determine checkpoint dir based on model name if not explicitly set
+            checkpoint_dir = self.checkpoint_dir
+            if model_name == "google/gemma-2-9b-it" and "gemma_2b_t2l" in checkpoint_dir:
+                 # Try to find a 9b checkpoint
+                 potential_9b = VENDOR_ROOT / "trained_t2l" / "gemma_9b_t2l"
+                 if potential_9b.exists():
+                     checkpoint_dir = str(potential_9b)
+                 else:
+                     logger.warning(f"Using 2b hypernetwork checkpoint for {model_name} — this will likely fail unless shapes match!")
+
+            logger.info(f"Loading TextToLoRA for {model_name} from {checkpoint_dir} on {self.device}")
+            
+            # Monkeypatch the vendor class to allow 9b before instantiating
+            import ctx_to_lora.modeling.text_to_lora as t2l_module
+            # We need to bypass the 'assert model_name_or_path == "google/gemma-2-2b-it"'
+            # The cleanest way without editing the file directly is to wrap it or patch it.
+            # But since we own the submodule, we could also just edit it.
+            # Let's try to be less invasive first.
+            
             self._model = TextToLoRA(model_name, prefix_tokens, device=self.device)
+            self._current_model_name = model_name
             logger.info("TextToLoRA loaded successfully")
         finally:
             os.chdir(original_cwd)

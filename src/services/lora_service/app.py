@@ -28,11 +28,13 @@ _engine: LoRAEngine | None = None
 _store = None
 
 
-def get_engine() -> LoRAEngine:
+def get_engine(model_name: str = "google/gemma-2-2b-it") -> LoRAEngine:
     global _engine
     if _engine is None:
         _engine = LoRAEngine()
-        _engine.load()
+        _engine.load(model_name)
+    elif _engine._current_model_name != model_name:
+        _engine.load(model_name)
     return _engine
 
 
@@ -79,7 +81,16 @@ class ResetResponse(BaseModel):
 async def internalize(req: InternalizeRequest):
     """Feed a document, receive LoRA weights. The model now 'knows' it."""
     try:
-        engine = get_engine()
+        # Map simple model names to full HF names
+        model_map = {
+            "gemma-2-2b": "google/gemma-2-2b-it",
+            "gemma-2-9b": "google/gemma-2-9b-it",
+            "google/gemma-2-2b-it": "google/gemma-2-2b-it",
+            "google/gemma-2-9b-it": "google/gemma-2-9b-it",
+        }
+        full_model_name = model_map.get(req.model, req.model)
+
+        engine = get_engine(full_model_name)
         store = get_weight_store()
 
         key = make_key(req.document)
