@@ -21,7 +21,15 @@ DEFAULT_CHECKPOINT_DIR = os.environ.get(
     "LORA_CHECKPOINT_DIR",
     str(VENDOR_ROOT / "trained_t2l" / "gemma_2b_t2l"),
 )
-DEVICE = os.environ.get("LORA_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+
+def detect_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+DEVICE = os.environ.get("LORA_DEVICE", detect_device())
 
 
 class LoRAEngine:
@@ -33,6 +41,10 @@ class LoRAEngine:
         self._model = None
         self._loaded_weights_key: str | None = None
         self._current_model_name: str | None = None
+        
+        # Orin and Cloud usually want Int4. MacBook might prefer Float16 if enough RAM,
+        # but 9B always wants Int4 on consumer hardware.
+        self.load_in_4bit = os.environ.get("LORA_LOAD_IN_4BIT", "true").lower() == "true"
 
     @property
     def is_loaded(self) -> bool:
@@ -81,16 +93,10 @@ class LoRAEngine:
                  else:
                      logger.warning(f"Using 2b hypernetwork checkpoint for {model_name} — this will likely fail unless shapes match!")
 
-            logger.info(f"Loading TextToLoRA for {model_name} from {checkpoint_dir} on {self.device}")
+            logger.info(f"Loading TextToLoRA for {model_name} from {checkpoint_dir} on {self.device} (4bit={self.load_in_4bit})")
             
-            # Monkeypatch the vendor class to allow 9b before instantiating
-            import ctx_to_lora.modeling.text_to_lora as t2l_module
-            # We need to bypass the 'assert model_name_or_path == "google/gemma-2-2b-it"'
-            # The cleanest way without editing the file directly is to wrap it or patch it.
-            # But since we own the submodule, we could also just edit it.
-            # Let's try to be less invasive first.
-            
-            self._model = TextToLoRA(model_name, prefix_tokens, device=self.device)
+            # TextToLoRA now accepts the load_in_4bit flag
+            self._model = TextToLoRA(model_name, prefix_tokens, device=self.device, load_in_4bit=self.load_in_4bit)
             self._current_model_name = model_name
             logger.info("TextToLoRA loaded successfully")
         finally:

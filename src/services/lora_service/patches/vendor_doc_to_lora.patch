@@ -1,12 +1,14 @@
 diff --git a/src/ctx_to_lora/modeling/text_to_lora.py b/src/ctx_to_lora/modeling/text_to_lora.py
-index 6acb8be..62651c1 100644
+index 6acb8be..2c875c5 100644
 --- a/src/ctx_to_lora/modeling/text_to_lora.py
 +++ b/src/ctx_to_lora/modeling/text_to_lora.py
-@@ -16,9 +16,13 @@ from ctx_to_lora.utils import get_peft_modules
+@@ -15,10 +15,14 @@ from ctx_to_lora.utils import get_peft_modules
+ 
  
  class TextToLoRA(nn.Module):
-     def __init__(self, model_name_or_path, prefix_tokens, device):
+-    def __init__(self, model_name_or_path, prefix_tokens, device):
 -        assert model_name_or_path == "google/gemma-2-2b-it"
++    def __init__(self, model_name_or_path, prefix_tokens, device, load_in_4bit=True):
          super().__init__()
 -        hypermod_dir = "trained_t2l/gemma_2b_t2l"
 +        # Determine hypermod_dir from model name
@@ -18,18 +20,15 @@ index 6acb8be..62651c1 100644
          peft_config = get_peft_config(
              PeftConfig.from_json_file(f"{hypermod_dir}/adapter_config.json")
          )
-@@ -27,6 +31,10 @@ class TextToLoRA(nn.Module):
+@@ -27,6 +31,7 @@ class TextToLoRA(nn.Module):
          peft_config.lora_alpha = peft_config.lora_alpha / peft_config.r
          self.prefix_tokens = prefix_tokens
          self.device = device
 +        
-+        # Enable 4-bit loading by default for memory efficiency
-+        load_in_4bit = True
-+        
          (
              _,
              self.t2l_model,
-@@ -36,7 +44,7 @@ class TextToLoRA(nn.Module):
+@@ -36,7 +41,7 @@ class TextToLoRA(nn.Module):
              self.emb_tokenizer,
              self.task_desc_format_fn,
              self.pooling_fn,
