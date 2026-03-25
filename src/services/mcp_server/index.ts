@@ -7658,21 +7658,6 @@ function createServer(): Server {
             }
 
             const loraClient = await import('./lora_service_client.js');
-            const available = await loraClient.isAvailable();
-            if (!available) {
-              return {
-                content: [{
-                  type: 'text',
-                  text: JSON.stringify({
-                    entity,
-                    error: 'LoRA service not available',
-                    memories_found: loraMemories.length,
-                    weights_keys: loraMemories.map((m: any) => m.lora.weights_key),
-                  }, null, 2),
-                }],
-              };
-            }
-
             const composed = await loraClient.compose(
               loraMemories.map((m: any) => m.lora.weights_key),
               loraMemories.map((m: any) => ((m as any).salienceScore || 50) / 100),
