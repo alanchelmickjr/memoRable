@@ -3777,7 +3777,7 @@ function createServer(): Server {
           const memories = await retrieveMemoriesByQuery(
             CONFIG.defaultUserId,
             query,
-            { limit: limit * 2, minSalience } // Fetch extra for post-filtering
+            { limit: limit * 2, minSalience, sortBy: sort === 'recency' ? 'recency' : 'salience' }
           );
 
           // Filter by person if specified
