@@ -1,3 +1,5 @@
+> **SUPERSEDED (Mar 2026):** This doc is replaced by `CHLOE_MEMORABLE_INTEGRATION.md`. Kept for historical reference.
+
 # Chloe: memoRable Memory Module — Modular Attention & Thread Integration
 
 > She looks at you when she talks to you. She remembers what you said when she comes back. That's the whole trick.

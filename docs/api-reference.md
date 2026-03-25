@@ -13,7 +13,11 @@ MemoRable provides two API surfaces:
 
 ---
 
-## MCP Tools (35 Tools)
+## MCP Tools (51 Tools)
+
+> **Note:** This reference covers the original 35 tools documented in Jan 2026.
+> 16 additional tools (event daemon, behavioral identity, care circle, LoRA, session continuity)
+> were added Feb-Mar 2026. See `WIRING_STATUS.md` for the complete 51-tool inventory.
 
 ### Context Management
 

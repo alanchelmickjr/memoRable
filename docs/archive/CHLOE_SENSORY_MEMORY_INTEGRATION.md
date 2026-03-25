@@ -1,3 +1,5 @@
+> **SUPERSEDED (Mar 2026):** This doc is replaced by `CHLOE_MEMORABLE_INTEGRATION.md`. Kept for historical reference.
+
 # Chloe: Full-Time Awareness Memory & Sensory Conjunction
 
 > "Number 5 is alive!" - and she remembers.
