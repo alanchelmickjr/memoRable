@@ -169,6 +169,20 @@ const SALIENCE_COLLECTIONS: CollectionConfig[] = [
       { spec: { userId: 1, 'metadata.email': 1 }, options: { sparse: true } },
     ],
   },
+  // ========================================================================
+  // TIME MACHINE — Append-only event log for memory mutations
+  // ========================================================================
+  {
+    name: 'memory_events',
+    indexes: [
+      // Get history for a specific memory (most recent first)
+      { spec: { memoryId: 1, timestamp: -1 } },
+      // Point-in-time queries across all memories for a user
+      { spec: { userId: 1, timestamp: -1 } },
+      // Action-specific queries (e.g., find all deletes)
+      { spec: { userId: 1, action: 1, timestamp: -1 } },
+    ],
+  },
 ];
 
 /**
