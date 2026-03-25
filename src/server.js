@@ -10288,12 +10288,19 @@ app.get("/memory", (req, res) => {
     // This adjusts salience based on how time changes perception
     memories = memories.map(applyTemporalPerspective);
 
-    // Sort by adjusted salience (highest first) - this is the "current" importance
-    memories.sort(
-      (a, b) =>
-        (b.adjusted_salience || b.salience) -
-        (a.adjusted_salience || a.salience)
-    );
+    // Sort: recency (createdAt desc) or default salience ranking
+    if (sort === "createdAt") {
+      memories.sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+    } else {
+      // Sort by adjusted salience (highest first) - this is the "current" importance
+      memories.sort(
+        (a, b) =>
+          (b.adjusted_salience || b.salience) -
+          (a.adjusted_salience || a.salience)
+      );
+    }
 
     // Limit results
     memories = memories.slice(0, parseInt(limit));
