@@ -3730,11 +3730,12 @@ function createServer(): Server {
         }
 
         case 'recall': {
-          const { query, limit = 10, person, minSalience = 0 } = args as {
+          const { query, limit = 10, person, minSalience = 0, sort = 'salience' } = args as {
             query: string;
             limit?: number;
             person?: string;
             minSalience?: number;
+            sort?: 'salience' | 'recency';
           };
 
           // FOUNDATION MODE: Route to HTTP API
@@ -3744,6 +3745,7 @@ function createServer(): Server {
                 limit,
                 entity: person,
                 minSalience,
+                sort: sort === 'recency' ? 'createdAt' : undefined,
               });
               return {
                 content: [{
