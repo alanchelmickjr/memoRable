@@ -4391,6 +4391,144 @@ function createServer(): Server {
           };
         }
 
+        // ==================================================================
+        // TIME MACHINE HANDLERS
+        // ==================================================================
+        case 'memory_history': {
+          const { memoryId, limit: histLimit = 50 } = args as { memoryId: string; limit?: number };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ events: unknown[] }>('GET', `/memory/${memoryId}/history`, undefined, { limit: histLimit });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST memory_history failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          const events = await collections.memoryEvents()
+            .find({ memoryId })
+            .sort({ timestamp: -1 })
+            .limit(histLimit)
+            .toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                memoryId,
+                eventCount: events.length,
+                events: events.map((e: any) => ({
+                  eventId: e.eventId,
+                  action: e.action,
+                  timestamp: e.timestamp,
+                  metadata: e.metadata,
+                  snapshotKeys: Object.keys(e.snapshot || {}),
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'memories_at': {
+          const { timestamp, limit: atLimit = 20 } = args as { timestamp: string; limit?: number };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ memories: unknown[] }>('GET', '/memories/at', undefined, { timestamp, limit: atLimit });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST memories_at failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          // Aggregate: for each memoryId, get the latest event before the given timestamp
+          const pipeline = [
+            { $match: { userId: CONFIG.defaultUserId, timestamp: { $lte: timestamp } } },
+            { $sort: { timestamp: -1 as const } },
+            { $group: { _id: '$memoryId', latestEvent: { $first: '$$ROOT' } } },
+            { $replaceRoot: { newRoot: '$latestEvent' } },
+            // Exclude memories that were deleted before the timestamp
+            { $match: { action: { $ne: 'delete' } } },
+            { $sort: { timestamp: -1 as const } },
+            { $limit: atLimit },
+          ];
+
+          const snapshots = await collections.memoryEvents().aggregate(pipeline).toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                asOf: timestamp,
+                count: snapshots.length,
+                memories: snapshots.map((s: any) => ({
+                  memoryId: s.memoryId,
+                  action: s.action,
+                  timestamp: s.timestamp,
+                  text: s.snapshot?.text || s.snapshot?.content,
+                  salienceScore: s.snapshot?.salienceScore,
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'rollback_memory': {
+          const { memoryId, eventId, reason } = args as { memoryId: string; eventId: string; reason?: string };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ restored: boolean }>('POST', `/memory/${memoryId}/rollback`, { eventId, reason });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST rollback_memory failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          // Find the target event
+          const targetEvent = await collections.memoryEvents().findOne({ eventId, memoryId } as any);
+          if (!targetEvent) {
+            throw new McpError(ErrorCode.InvalidParams, `Event ${eventId} not found for memory ${memoryId}`);
+          }
+
+          const snapshot = (targetEvent as any).snapshot;
+          if (!snapshot) {
+            throw new McpError(ErrorCode.InvalidParams, `Event ${eventId} has no snapshot to restore`);
+          }
+
+          // Restore the memory to the snapshot state
+          const { _id, ...restoreData } = snapshot;
+          restoreData.updatedAt = new Date().toISOString();
+          restoreData.state = restoreData.state || 'active';
+
+          await collections.memories().replaceOne(
+            { memoryId } as any,
+            restoreData as any,
+            { upsert: true }
+          );
+
+          // Log the restore event
+          await logMemoryEvent(memoryId, CONFIG.defaultUserId, 'restore', restoreData, {
+            reason: reason || `Rolled back to event ${eventId}`,
+            previousEventId: eventId,
+            sessionId: getSessionId(),
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                restored: true,
+                memoryId,
+                restoredToEvent: eventId,
+                restoredTimestamp: (targetEvent as any).timestamp,
+                reason,
+              }, null, 2),
+            }],
+          };
+        }
+
         case 'get_status': {
           // REST MODE: Get status from remote API
           if (connectionMode === 'rest' && apiClient) {
