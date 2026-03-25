@@ -8205,14 +8205,19 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 <div style="text-align:center;color:#666;font-size:0.8rem">Powered by <a href="https://github.com/alanchelmickjr/doc-to-lora" style="color:#bf00ff;text-decoration:none">doc-to-lora</a> hypernetwork — 52 MCP tools — Gemma 2 — CUDA/MPS/CPU</div>
 </div>
 <div class="links">
+<a href="${baseUrl}/docs">MCP Tools (52)</a>
 <a href="${baseUrl}/health">Health</a>
-<a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth Discovery</a>
+<a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth</a>
 <a href="${baseUrl}/mcp">MCP Endpoint</a>
 <a href="https://github.com/alanchelmickjr/memoRable">GitHub</a>
 <a href="https://memorable.chat">Home</a>
 </div>
+<div style="display:flex;gap:1.5rem;justify-content:center;margin-top:1.5rem;font-size:0.75rem">
+<a href="${baseUrl}/privacy" style="color:#555;text-decoration:none">Privacy</a>
+<a href="${baseUrl}/terms" style="color:#555;text-decoration:none">Terms</a>
+</div>
 <div class="status"><span class="live">●</span> System Online — MCP v2.0.0 — OAuth Enabled — LoRA Composition Active</div>
-<div class="version">Perfect memory is about knowing what to forget.</div>
+<div class="version">Memorable is context for life.</div>
 </div></body></html>`);
   });
 
