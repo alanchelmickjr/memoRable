@@ -1455,6 +1455,11 @@ function createServer(): Server {
               type: 'number',
               description: 'Minimum salience score 0-100 (default: 0)',
             },
+            sort: {
+              type: 'string',
+              enum: ['salience', 'recency'],
+              description: 'Sort order: "salience" (default) ranks by relevance+salience, "recency" sorts by createdAt descending',
+            },
           },
           required: ['query'],
         },
