@@ -403,6 +403,19 @@ async function main() {
         parts.push('');
       }
     } catch {}
+
+    // ── STARTUP MEMORIES: Protocols, instructions, critical context ──
+    try {
+      const startupMemories = getStartupMemories();
+      if (startupMemories.length > 0) {
+        parts.push('## Startup Protocols');
+        for (const mem of startupMemories) {
+          const text = (mem.text || mem.content || '').substring(0, 200);
+          if (text) parts.push(`- ${text}`);
+        }
+        parts.push('');
+      }
+    } catch {}
   }
 
   parts.push('## Connector');
