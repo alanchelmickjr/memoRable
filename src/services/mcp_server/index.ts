@@ -143,7 +143,7 @@ import { eventDaemon, type ExternalEvent, type EventType } from '../event_daemon
 
 // Tier manager - Zipfian cache hierarchy (Hot/Warm/Cold)
 import { getTierManager, createMemoryDocument, type TierManager } from '../salience_service/tier_manager.js';
-import type { PredictiveMemoryDocument, StorageTier, NormalizedSalience } from '../salience_service/models.js';
+import type { PredictiveMemoryDocument, StorageTier, NormalizedSalience, MemoryEvent } from '../salience_service/models.js';
 
 // Configuration
 const CONFIG = {
