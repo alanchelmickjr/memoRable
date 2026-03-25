@@ -8221,6 +8221,220 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 </div></body></html>`);
   });
 
+  // ─── MCP Tools Documentation ───────────────────────────────────────
+  app.get('/docs', (_req: Request, res: Response) => {
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemoRable — MCP Tools Reference</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.6}
+h1{font-family:'Orbitron',sans-serif;font-size:2rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:0.5rem}
+h2{color:#00f0ff;font-size:1.2rem;margin:2rem 0 1rem;padding-bottom:0.5rem;border-bottom:1px solid #1a1a2e}
+h3{color:#bf00ff;font-size:0.95rem;margin:1.5rem 0 0.5rem}
+.container{max-width:900px;margin:0 auto}
+.tagline{color:#666;margin-bottom:2rem}
+.tool{padding:0.75rem 1rem;margin:0.5rem 0;border-left:3px solid #333;background:#0d0d15;border-radius:0 8px 8px 0;font-size:0.85rem}
+.tool:hover{border-left-color:#00f0ff;background:#0f0f1a}
+.tool .name{color:#00ff88;font-weight:bold}
+.tool .desc{color:#888;margin-top:0.25rem}
+.badge{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.7rem;margin-left:0.5rem}
+.badge-new{background:rgba(191,0,255,0.2);color:#bf00ff;border:1px solid rgba(191,0,255,0.3)}
+.badge-lora{background:rgba(0,240,255,0.1);color:#00f0ff;border:1px solid rgba(0,240,255,0.2)}
+.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}
+.back:hover{text-decoration:underline}
+.comparison{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin:2rem 0;font-size:0.85rem}
+.comparison>div{padding:1.5rem;border:1px solid #1a1a2e;border-radius:8px}
+.comparison .mem0{border-color:#ff4444}
+.comparison .memorable{border-color:#00f0ff}
+.comparison h4{margin-bottom:0.75rem}
+.comparison .mem0 h4{color:#ff4444}
+.comparison .memorable h4{color:#00f0ff}
+code{background:#1a1a2e;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.8rem}
+</style></head><body>
+<div class="container">
+<a href="${baseUrl}/" class="back">← Back to MemoRable</a>
+<h1>MCP Tools Reference</h1>
+<p class="tagline">52 tools. Memorable is context for life.</p>
+
+<div class="comparison">
+<div class="mem0">
+<h4>mem0 / RAG / ChatGPT Memory</h4>
+<p>Store text → Search text → Return text</p>
+<p style="color:#666;margin-top:0.5rem">Ask "What's going on with Betty?"</p>
+<p style="color:#888;margin-top:0.5rem">→ "Betty mentioned forgetting medication"<br>→ "Betty's daughter called worried"<br>→ "Betty seemed confused about the day"<br><em style="color:#555">5 separate chunks. You connect the dots.</em></p>
+</div>
+<div class="memorable">
+<h4>MemoRable + LoRA</h4>
+<p>Store → Internalize into weights → Compose understanding → Synthesize</p>
+<p style="color:#666;margin-top:0.5rem">Ask "What's going on with Betty?"</p>
+<p style="color:#00ff88;margin-top:0.5rem">→ "Betty is showing early signs of cognitive decline — medication non-compliance, temporal confusion, loss of financial independence. Her daughter is concerned. Her doctor flagged it. Alert the care circle."</p>
+<p style="color:#666;margin-top:0.5rem"><em>That's not retrieval. That's understanding.</em></p>
+</div>
+</div>
+
+<h2>Core Memory (9 tools)</h2>
+<div class="tool"><span class="name">store_memory</span> — Store with automatic salience scoring, LoRA internalization, emotion detection, open loop tracking<span class="badge badge-lora">auto-LoRA</span><div class="desc">High-salience memories auto-internalize into LoRA weights. The model learns, not just stores.</div></div>
+<div class="tool"><span class="name">recall</span> — Search memories with salience ranking, context gating, and LoRA-enhanced synthesis<span class="badge badge-lora">LoRA synthesis</span><div class="desc">Returns memories + optional LoRA-composed understanding. O(1) at inference.</div></div>
+<div class="tool"><span class="name">forget</span> — Suppress, archive, or delete a memory<div class="desc">The power to forget. Pillar #1.</div></div>
+<div class="tool"><span class="name">restore</span> — Bring back a forgotten memory</div>
+<div class="tool"><span class="name">reassociate</span> — Re-link memory to different people, tags, or projects</div>
+<div class="tool"><span class="name">export_memories</span> — Portable backup with optional encryption</div>
+<div class="tool"><span class="name">import_memories</span> — Restore from backup</div>
+<div class="tool"><span class="name">search_memories</span> — Full-text search across all memories</div>
+<div class="tool"><span class="name">resolve_open_loop</span> — Close a commitment with resolution note</div>
+
+<h2>Context Management (4 tools)</h2>
+<div class="tool"><span class="name">set_context</span> — Set current context (location, people, activity, device)<div class="desc">Context gates what memories surface. At the park with Judy? You get Judy memories, not work emails.</div></div>
+<div class="tool"><span class="name">whats_relevant</span> — What matters RIGHT NOW based on current context</div>
+<div class="tool"><span class="name">clear_context</span> — Clear context when leaving or ending</div>
+<div class="tool"><span class="name">list_devices</span> — All active devices and their context status</div>
+
+<h2>Briefings & Commitments (3 tools)</h2>
+<div class="tool"><span class="name">get_briefing</span> — Pre-conversation briefing about a person<div class="desc">Open loops, relationship state, recent sentiment, upcoming events. Know before you talk.</div></div>
+<div class="tool"><span class="name">list_loops</span> — Open commitments (you owe, they owe, mutual)</div>
+<div class="tool"><span class="name">close_loop</span> — Mark a commitment as done</div>
+
+<h2>Predictions & Patterns (6 tools)</h2>
+<div class="tool"><span class="name">anticipate</span> — What will you need before you ask?<div class="desc">21-day pattern learning. The system predicts your needs from observed behavior.</div></div>
+<div class="tool"><span class="name">day_outlook</span> — Morning briefing: what's coming today</div>
+<div class="tool"><span class="name">pattern_stats</span> — Pattern learning status and confidence</div>
+<div class="tool"><span class="name">get_predictions</span> — Surface memories BEFORE you ask</div>
+<div class="tool"><span class="name">record_prediction_feedback</span> — Teach the system what predictions are useful</div>
+<div class="tool"><span class="name">get_anticipated_context</span> — Predicted context for upcoming events</div>
+
+<h2>Emotions & Prosody (10 tools)</h2>
+<div class="tool"><span class="name">analyze_emotion</span> — Detect emotion via Hume.ai (voice, face, text)<div class="desc">57 emotion types. Voice prosody + facial expression + text sentiment fusion.</div></div>
+<div class="tool"><span class="name">get_emotional_context</span> — Real-time emotion state from active streams</div>
+<div class="tool"><span class="name">set_emotion_filter</span> — Configure emotion-based content filtering</div>
+<div class="tool"><span class="name">get_emotion_filters</span> — View active filters</div>
+<div class="tool"><span class="name">get_memories_by_emotion</span> — Search by emotional content</div>
+<div class="tool"><span class="name">correct_emotion</span> — Override when detection got it wrong (sarcasm ≠ anger)</div>
+<div class="tool"><span class="name">clarify_intent</span> — What was meant vs what was said</div>
+<div class="tool"><span class="name">start_emotional_session</span> — Begin multi-modal emotion tracking</div>
+<div class="tool"><span class="name">stop_emotional_session</span> — End tracking session</div>
+<div class="tool"><span class="name">list_emotional_sessions</span> — View all sessions</div>
+
+<h2>Relationships & Pressure (5 tools)</h2>
+<div class="tool"><span class="name">get_relationship</span> — Synthesize relationship from shared memories<div class="desc">No stored graph — computed on demand via LLM. Always fresh.</div></div>
+<div class="tool"><span class="name">get_entity_pressure</span> — Butterfly → Hurricane early warning<div class="desc">Track emotional pressure per entity. Detect escalation before crisis.</div></div>
+<div class="tool"><span class="name">set_care_circle</span> — Who gets alerted when pressure is concerning</div>
+<div class="tool"><span class="name">get_tier_stats</span> — Hot/warm/cold memory tier statistics</div>
+<div class="tool"><span class="name">get_pattern_stats</span> — Pattern detection statistics</div>
+
+<h2>Behavioral Identity (3 tools)</h2>
+<div class="tool"><span class="name">identify_user</span> — Identify user from behavioral patterns</div>
+<div class="tool"><span class="name">behavioral_metrics</span> — User behavior analytics</div>
+<div class="tool"><span class="name">behavioral_feedback</span> — Teach the identity model</div>
+
+<h2>Event Daemon — The Guardian (4 tools)</h2>
+<div class="tool"><span class="name">ingest_event</span> — Real-time external event processing<div class="desc">Phone calls, doorbells, sensors. Scam detection (6 patterns). No user request needed — the system ACTS.</div></div>
+<div class="tool"><span class="name">schedule_check</span> — Schedule a timed check (medication, meals)</div>
+<div class="tool"><span class="name">get_daemon_status</span> — Guardian system status</div>
+<div class="tool"><span class="name">set_entity_vulnerability</span> — Set vulnerability level for an entity</div>
+
+<h2>LoRA Internalization (3 tools)<span class="badge badge-new">NEW</span></h2>
+<div class="tool"><span class="name">internalize_document</span> — Feed a document, get LoRA weights<span class="badge badge-lora">LoRA</span><div class="desc">Perceiver hypernetwork generates rank-8 weights in seconds. The model now <em>knows</em> it.</div></div>
+<div class="tool"><span class="name">compose_context</span> — Compose LoRA weights from entity's memories<span class="badge badge-lora">LoRA</span><div class="desc">Salience-weighted rank concatenation. ~40 docs → effective rank 320. O(1) understanding.</div></div>
+<div class="tool"><span class="name">recall_vote</span> — Rate recalled memories (hot/warm/cold/wrong/spark)</div>
+
+<h2>Session & Device (4 tools)</h2>
+<div class="tool"><span class="name">get_session_continuity</span> — Load context from previous session</div>
+<div class="tool"><span class="name">get_continuity</span> — Quick continuity check</div>
+<div class="tool"><span class="name">handoff_device</span> — Transfer context between devices<div class="desc">Phone → laptop → robot. Context follows you.</div></div>
+<div class="tool"><span class="name">get_status</span> — System status and metrics</div>
+
+<h2>System (2 tools)</h2>
+<div class="tool"><span class="name">recall_startup</span> — Load startup context</div>
+<div class="tool"><span class="name">dev_clear_collection</span> — DEV ONLY: Clear test data</div>
+
+<div style="margin-top:3rem;padding:1.5rem;border:1px solid #1a1a2e;border-radius:8px;text-align:center">
+<p style="color:#888;font-size:0.85rem">52 tools. Real-time LoRA internalization. Salience scoring. Emotion detection. The Guardian.</p>
+<p style="color:#00f0ff;font-size:1rem;margin-top:0.5rem">Memorable is context for life.</p>
+<p style="color:#444;font-size:0.75rem;margin-top:1rem"><a href="https://github.com/alanchelmickjr/memoRable" style="color:#555">GitHub</a> · <a href="${baseUrl}/privacy" style="color:#555">Privacy</a> · <a href="${baseUrl}/terms" style="color:#555">Terms</a></p>
+</div>
+</div></body></html>`);
+  });
+
+  // ─── Privacy Policy ───────────────────────────────────────────────
+  app.get('/privacy', (_req: Request, res: Response) => {
+    const baseUrl = \`\${_req.protocol}://\${_req.get('host')}\`;
+    res.send(\`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemoRable — Privacy Policy</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.8}h1{font-family:'Orbitron',sans-serif;font-size:2rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1rem}h2{color:#00f0ff;margin:1.5rem 0 0.5rem}.container{max-width:700px;margin:0 auto}a{color:#00f0ff}.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}</style></head><body>
+<div class="container">
+<a href="\${baseUrl}/" class="back">← Back to MemoRable</a>
+<h1>Privacy Policy</h1>
+<p style="color:#666">Last updated: March 2026</p>
+
+<h2>Your Memory, Your Data</h2>
+<p>MemoRable is built on a fundamental principle: <strong>your data belongs to you</strong>. We are a memory system, not an advertising platform. We do not sell, share, or monetize your data.</p>
+
+<h2>Three Pillars</h2>
+<p><strong>1. Temporal Control</strong> — You decide what to remember and what to forget. The <code>forget</code> tool permanently removes memories. No "soft delete" tricks.</p>
+<p><strong>2. Individual Privacy</strong> — TOP SECRET by default. Three security tiers ensure sensitive data (Tier 3: Vault) never touches any LLM, never gets vectorized, and is encrypted at rest with AES-256-GCM.</p>
+<p><strong>3. Relevance</strong> — We surface what matters now, not everything ever. Salience scoring means your data works for you, not against you.</p>
+
+<h2>Data Storage</h2>
+<p>Each user gets their own instance. Your memories are stored in MongoDB Atlas (encrypted at rest). LoRA weights are stored in S3 or local storage. Redis cache is ephemeral and local to your instance.</p>
+
+<h2>LLM Processing</h2>
+<p>Tier 1 (General): May be processed by external LLMs for feature extraction.<br>
+Tier 2 (Personal): Local LLM only — your data never leaves your instance.<br>
+Tier 3 (Vault): NO LLM processing ever. Heuristic extraction only. Encrypted, not vectorized.</p>
+
+<h2>No Tracking</h2>
+<p>No cookies. No analytics. No tracking pixels. No advertising. The landing page doesn't even load external scripts.</p>
+
+<h2>Data Portability</h2>
+<p>Use <code>export_memories</code> to get a complete, encrypted backup of all your data at any time. Use <code>import_memories</code> to restore. Your data, your control.</p>
+
+<h2>Contact</h2>
+<p>Questions? <a href="https://github.com/alanchelmickjr/memoRable/issues">GitHub Issues</a></p>
+
+<p style="color:#444;margin-top:2rem;font-size:0.85rem">Memorable is context for life.</p>
+</div></body></html>\`);
+  });
+
+  // ─── Terms of Service ─────────────────────────────────────────────
+  app.get('/terms', (_req: Request, res: Response) => {
+    const baseUrl = \`\${_req.protocol}://\${_req.get('host')}\`;
+    res.send(\`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MemoRable — Terms of Service</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.8}h1{font-family:'Orbitron',sans-serif;font-size:2rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1rem}h2{color:#00f0ff;margin:1.5rem 0 0.5rem}.container{max-width:700px;margin:0 auto}a{color:#00f0ff}.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}</style></head><body>
+<div class="container">
+<a href="\${baseUrl}/" class="back">← Back to MemoRable</a>
+<h1>Terms of Service</h1>
+<p style="color:#666">Last updated: March 2026</p>
+
+<h2>Pre-Release Software</h2>
+<p>MemoRable is under active development. APIs may change. Features may be incomplete. Use at your own risk during the pre-release period.</p>
+
+<h2>Your Data</h2>
+<p>You own your data. We store it on your behalf. You can export or delete it at any time. We do not claim ownership of your memories, LoRA weights, or any content you store.</p>
+
+<h2>Per-User Instances</h2>
+<p>Each user operates on their own infrastructure instance. Your data is isolated from other users by architecture, not just by access control.</p>
+
+<h2>Acceptable Use</h2>
+<p>MemoRable is designed for memory care, personal assistance, robotics, and AI agent memory. Do not use it to store content that is illegal, harmful, or violates others' privacy without consent.</p>
+
+<h2>No Warranty</h2>
+<p>Pre-release software is provided "as is" without warranty of any kind. We are not liable for data loss during the pre-release period. Use <code>export_memories</code> for backups.</p>
+
+<h2>Open Source</h2>
+<p>MemoRable is MIT licensed. The source code is available at <a href="https://github.com/alanchelmickjr/memoRable">GitHub</a>.</p>
+
+<p style="color:#444;margin-top:2rem;font-size:0.85rem">Memorable is context for life.</p>
+</div></body></html>\`);
+  });
+
   // Health check endpoint
   app.get('/health', (_req: Request, res: Response) => {
     res.json({
