@@ -55,7 +55,7 @@ fi
 
 # 5. MCP endpoint responds
 echo "Testing MCP endpoint..."
-mcp_status=$(curl -sf -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/mcp" \
+mcp_status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/mcp" \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","method":"ping","id":1}')
 if [[ "$mcp_status" -gt 0 ]] && [[ "$mcp_status" -lt 500 ]]; then
