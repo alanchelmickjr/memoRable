@@ -26,11 +26,14 @@ Usage:
 
 import asyncio
 import aiohttp
+import hashlib
 import json
 import os
+import secrets
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 
 MCP_URL = os.environ.get("MEMORABLE_MCP_URL", "http://52.9.62.72:8080/mcp")
@@ -107,6 +110,7 @@ class MemoRableClient:
         self.device_type = device_type
         self._session: Optional[aiohttp.ClientSession] = None
         self._mcp_session_id: Optional[str] = None
+        self._api_key: Optional[str] = None
         self._request_id = 0
         self._initialized = False
 
@@ -136,6 +140,8 @@ class MemoRableClient:
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
         if self._mcp_session_id:
             headers["Mcp-Session-Id"] = self._mcp_session_id
 
@@ -194,9 +200,70 @@ class MemoRableClient:
     # Connection
     # =========================================================================
 
-    async def connect(self) -> bool:
-        """Initialize MCP session."""
+    async def _authenticate(self) -> bool:
+        """OAuth 2.1 PKCE flow — register client, authorize, get Bearer token."""
+        session = await self._get_session()
+        base_url = self.mcp_url.replace("/mcp", "")
+        redirect_uri = "http://localhost:9999/callback"
         try:
+            # Step 1: Dynamic client registration
+            async with session.post(f"{base_url}/register", json={
+                "client_name": f"chloe-{self.device_id}",
+                "redirect_uris": [redirect_uri],
+                "grant_types": ["authorization_code"],
+                "response_types": ["code"],
+                "token_endpoint_auth_method": "none",
+            }) as resp:
+                reg = await resp.json()
+                client_id = reg["client_id"]
+
+            # Step 2: PKCE challenge
+            code_verifier = secrets.token_urlsafe(43)
+            code_challenge = hashlib.sha256(code_verifier.encode()).digest()
+            import base64
+            code_challenge_b64 = base64.urlsafe_b64encode(code_challenge).rstrip(b"=").decode()
+
+            # Step 3: Authorize — auto-approves, redirects with code
+            auth_url = (
+                f"{base_url}/authorize?client_id={client_id}"
+                f"&redirect_uri={redirect_uri}"
+                f"&response_type=code&scope=read+write+mcp"
+                f"&code_challenge={code_challenge_b64}"
+                f"&code_challenge_method=S256"
+            )
+            async with session.get(auth_url, allow_redirects=False) as resp:
+                location = resp.headers.get("Location", "")
+                parsed = urlparse(location)
+                code = parse_qs(parsed.query).get("code", [None])[0]
+                if not code:
+                    print(f"MemoRable auth: no code in redirect ({location})")
+                    return False
+
+            # Step 4: Exchange code for token
+            async with session.post(f"{base_url}/token", json={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "code_verifier": code_verifier,
+            }) as resp:
+                token_data = await resp.json()
+                self._api_key = token_data.get("access_token")
+                if not self._api_key:
+                    print(f"MemoRable auth: no access_token ({token_data})")
+                    return False
+                return True
+        except Exception as e:
+            print(f"MemoRable auth failed: {e}")
+            return False
+
+    async def connect(self) -> bool:
+        """Authenticate and initialize MCP session."""
+        try:
+            # Auth first — get API key
+            if not self._api_key:
+                if not await self._authenticate():
+                    return False
+
             result = await self._mcp_request("initialize", {
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {},
