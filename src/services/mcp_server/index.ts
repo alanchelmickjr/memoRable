@@ -7924,15 +7924,37 @@ function createServer(): Server {
       }
 
       case 'memory://contacts': {
-        // REST MODE: Not available without direct DB
-        if (connectionMode === 'rest') {
-          return {
-            contents: [{
-              uri,
-              mimeType: 'application/json',
-              text: JSON.stringify({ mode: 'rest', message: 'Contacts resource not available in REST mode' }),
-            }],
-          };
+        // REST MODE: Get contacts via recall of people-related memories
+        if (connectionMode === 'rest' && apiClient) {
+          try {
+            const result = await apiClient.recall('people contacts relationships', { limit: 30 });
+            const peopleSet = new Set<string>();
+            for (const m of (result.memories || [])) {
+              const people = m.people || m.entities || [];
+              for (const p of people) {
+                if (p && p !== CONFIG.defaultUserId) peopleSet.add(p);
+              }
+            }
+            return {
+              contents: [{
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify({
+                  contacts: [...peopleSet].map(name => ({ name })),
+                  count: peopleSet.size,
+                  source: 'extracted from memories',
+                }, null, 2),
+              }],
+            };
+          } catch (err) {
+            return {
+              contents: [{
+                uri,
+                mimeType: 'application/json',
+                text: JSON.stringify({ contacts: [], error: 'Could not load contacts' }),
+              }],
+            };
+          }
         }
 
         const [active, cold] = await Promise.all([
