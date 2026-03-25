@@ -3381,6 +3381,10 @@ function createServer(): Server {
           try {
             await collections.memories().insertOne(memoryDoc as any);
             logger.info(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
+            // TIME MACHINE: Log create event
+            await logMemoryEvent(memoryId, CONFIG.defaultUserId, 'create', memoryDoc as any, {
+              sessionId: getSessionId(),
+            });
           } catch (storageError) {
             logger.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
             throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
