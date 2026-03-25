@@ -8183,7 +8183,27 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 </style></head><body>
 <div class="container">
 <h1>MemoRable</h1>
-<p class="tagline">AI that knows you like a friend, every time you talk to it.</p>
+<p class="tagline">Context for life. Stop telling your AI what to remember — teach it what to forget.</p>
+<div style="margin:2rem 0;padding:1.5rem;border:1px solid #1a1a2e;border-radius:12px;text-align:left;font-size:0.9rem;line-height:1.8">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem">
+<div style="padding:1rem;border:1px solid #222;border-radius:8px">
+<div style="color:#666;font-size:0.75rem;margin-bottom:0.5rem">PROMPT ENGINEERING</div>
+<div style="color:#ff4444">O(n) per call</div>
+<div style="color:#555;font-size:0.8rem">Stuff context in window.<br>Loses old context.<br>Expensive every time.</div>
+</div>
+<div style="padding:1rem;border:1px solid #222;border-radius:8px">
+<div style="color:#666;font-size:0.75rem;margin-bottom:0.5rem">RAG</div>
+<div style="color:#ffaa44">O(n) per query</div>
+<div style="color:#555;font-size:0.8rem">Retrieve chunks + hope.<br>Chunk boundaries break meaning.<br>Finds text, not understanding.</div>
+</div>
+<div style="padding:1rem;border:1px solid #00f0ff;border-radius:8px;background:rgba(0,240,255,0.03)">
+<div style="color:#00f0ff;font-size:0.75rem;margin-bottom:0.5rem">MEMORABLE + LoRA</div>
+<div style="color:#00ff88">O(1) at inference</div>
+<div style="color:#aaa;font-size:0.8rem">Knowledge in weights.<br>Compose per-user understanding.<br>The model <em>knows</em> you.</div>
+</div>
+</div>
+<div style="text-align:center;color:#666;font-size:0.8rem">Powered by <a href="https://github.com/alanchelmickjr/doc-to-lora" style="color:#bf00ff;text-decoration:none">doc-to-lora</a> hypernetwork — 52 MCP tools — Gemma 2 — CUDA/MPS/CPU</div>
+</div>
 <div class="links">
 <a href="${baseUrl}/health">Health</a>
 <a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth Discovery</a>
@@ -8191,7 +8211,7 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 <a href="https://github.com/alanchelmickjr/memoRable">GitHub</a>
 <a href="https://memorable.chat">Home</a>
 </div>
-<div class="status"><span class="live">●</span> System Online — MCP v2.0.0 — OAuth Enabled</div>
+<div class="status"><span class="live">●</span> System Online — MCP v2.0.0 — OAuth Enabled — LoRA Composition Active</div>
 <div class="version">Perfect memory is about knowing what to forget.</div>
 </div></body></html>`);
   });
