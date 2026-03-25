@@ -2587,12 +2587,10 @@ app.post("/auth/verify-stylometry", async (req, res) => {
     const fingerprints = await behavioralCollection.find({}).toArray();
 
     if (fingerprints.length === 0) {
-      return res
-        .status(404)
-        .json({
-          error: "No behavioral data available for verification",
-          verified: false,
-        });
+      return res.status(404).json({
+        error: "No behavioral data available for verification",
+        verified: false,
+      });
     }
 
     // Simple stylometry: analyze writing patterns
@@ -10244,7 +10242,7 @@ app.get("/memory", (req, res) => {
     } else if (!Array.isArray(excludeEntities)) {
       excludeEntities = [excludeEntities];
     }
-    const { entityType, limit = 10, query } = req.query;
+    const { entityType, limit = 10, query, sort } = req.query;
 
     let memories = Array.from(memoryStore.values());
 
@@ -10555,11 +10553,9 @@ app.post("/memory/verbatim", async (req, res) => {
       return;
     }
     if (!source) {
-      res
-        .status(400)
-        .json({
-          error: "source is required for verbatim memories (who said this?)",
-        });
+      res.status(400).json({
+        error: "source is required for verbatim memories (who said this?)",
+      });
       return;
     }
 
@@ -10613,13 +10609,11 @@ app.post("/memory/verbatim", async (req, res) => {
     metrics.inc("memory_verbatim_total", {});
 
     console.log(`[Memory] Verbatim stored from ${source}: [REDACTED]`);
-    res
-      .status(201)
-      .json({
-        success: true,
-        memory,
-        note: "Stored as verbatim - exact quote preserved",
-      });
+    res.status(201).json({
+      success: true,
+      memory,
+      note: "Stored as verbatim - exact quote preserved",
+    });
   } catch (error) {
     metrics.inc("memory_store_errors", {});
     console.error("[Memory] Verbatim store error:", error);
@@ -10671,12 +10665,10 @@ app.post("/memory/interpretation", async (req, res) => {
       return;
     }
     if (!source_memory_id) {
-      res
-        .status(400)
-        .json({
-          error:
-            "source_memory_id is required - interpretations must link to verbatim source",
-        });
+      res.status(400).json({
+        error:
+          "source_memory_id is required - interpretations must link to verbatim source",
+      });
       return;
     }
 
@@ -10701,12 +10693,10 @@ app.post("/memory/interpretation", async (req, res) => {
     // Verify source exists
     const sourceMemory = memoryStore.get(source_memory_id);
     if (!sourceMemory) {
-      res
-        .status(404)
-        .json({
-          error:
-            "Source memory not found - interpretation must link to existing memory",
-        });
+      res.status(404).json({
+        error:
+          "Source memory not found - interpretation must link to existing memory",
+      });
       return;
     }
 
@@ -11070,11 +11060,9 @@ app.post("/project/:id/state", (req, res) => {
     ];
 
     if (!validStates.includes(state)) {
-      res
-        .status(400)
-        .json({
-          error: `Invalid state. Must be one of: ${validStates.join(", ")}`,
-        });
+      res.status(400).json({
+        error: `Invalid state. Must be one of: ${validStates.join(", ")}`,
+      });
       return;
     }
 
@@ -11651,13 +11639,11 @@ app.get("/loops", async (req, res) => {
       "[/loops] Error querying open_loops collection:",
       error.message
     );
-    res
-      .status(503)
-      .json({
-        loops: [],
-        count: 0,
-        error: error.message || "Database unavailable",
-      });
+    res.status(503).json({
+      loops: [],
+      count: 0,
+      error: error.message || "Database unavailable",
+    });
   }
 });
 

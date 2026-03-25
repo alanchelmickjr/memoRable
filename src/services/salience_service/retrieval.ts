@@ -537,6 +537,11 @@ export async function retrieveMemoriesByQuery(
       };
     });
 
+    // Recency sort: skip salience re-ranking, return DB order (createdAt desc)
+    if (sortBy === 'recency') {
+      return candidates.slice(0, limit);
+    }
+
     return retrieveWithSalience(candidates, {
       query,
       userId,
