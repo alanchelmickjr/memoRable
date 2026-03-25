@@ -4045,30 +4045,29 @@ function createServer(): Server {
           // LORA-ENHANCED RECALL — compose internalized memories for synthesis
           // If retrieved memories have LoRA weights, compose and generate
           // an enhanced understanding beyond raw text retrieval.
+          // LoRA service is infrastructure — CUDA/MPS/CPU, always available.
           // =================================================================
           try {
             const loraMemories = decrypted.filter((m: any) => m.lora?.weights_key);
             if (loraMemories.length >= 2) {
               const loraClient = await import('./lora_service_client.js');
-              if (await loraClient.isAvailable()) {
-                const composed = await loraClient.compose(
-                  loraMemories.map((m: any) => m.lora.weights_key),
-                  loraMemories.map((m: any) => (m.salience || 50) / 100)
-                );
-                const enhanced = await loraClient.generate(
-                  `Based on what you know, answer concisely: ${query}`,
-                  composed.weights_key,
-                );
-                recallResult.loraEnhanced = {
-                  synthesis: enhanced.response,
-                  composedFrom: loraMemories.length,
-                  effectiveRank: composed.effective_rank,
-                  weightsKey: composed.weights_key,
-                };
-              }
+              const composed = await loraClient.compose(
+                loraMemories.map((m: any) => m.lora.weights_key),
+                loraMemories.map((m: any) => (m.salience || 50) / 100)
+              );
+              const enhanced = await loraClient.generate(
+                `Based on what you know, answer concisely: ${query}`,
+                composed.weights_key,
+              );
+              recallResult.loraEnhanced = {
+                synthesis: enhanced.response,
+                composedFrom: loraMemories.length,
+                effectiveRank: composed.effective_rank,
+                weightsKey: composed.weights_key,
+              };
             }
           } catch (loraRecallErr) {
-            logger.warn('[MCP] LoRA-enhanced recall failed (returning raw):', loraRecallErr);
+            logger.error('[MCP] LoRA-enhanced recall failed:', loraRecallErr);
           }
 
           return {
