@@ -71,27 +71,36 @@ Pattern learning requires **21 days** to form and **63 days** to stabilize. With
 | Tier3 (Vault) | Implemented, E2EE, no LLM, encrypted at rest |
 | No secrets in git | Enforced by .gitignore + CLAUDE.md rules |
 
-## Test Coverage
+## Test Coverage (Updated Mar 2026)
 
-- **293 passing tests** (as of LAUNCH_READINESS.md audit)
-- **0 pattern formation tests** (critical gap)
-- **0 pipeline throughput tests** (unknown ceiling)
-- **0 memory leak tests** (unknown stability under load)
+- **1,586 passing tests** across 46 suites (was 293 in Jan)
+- Load tests: k6, pointed at cloud Elastic IP
+- Smoke tests: endpoint verification against cloud
+- Leak detector: tests/load/leak_detector.js
+- Synthetic data generators: tests/fixtures/, tests/synthetic/
+- 36 untracked test files not yet committed
+- **0 pattern formation tests** (critical gap — 66-day window)
 
-## Production Blockers
+## Production Blockers (Updated Mar 2026)
 
-1. **No synthetic data pipeline** - can't validate pattern learning works
-2. **MCP HTTP transport** - just fixed, needs deployment verification
-3. **No load testing** - don't know throughput limits
-4. **Tool count mismatch** - docs say 35, reality is 43 (cosmetic but confusing)
+1. ~~MCP HTTP transport~~ — RESOLVED (StreamableHTTP + OAuth, PRs #50, #58-#63)
+2. ~~Tool count mismatch~~ — RESOLVED (docs updated to 51)
+3. ~~No load testing~~ — RESOLVED (k6 + smoke tests in CI)
+4. **No synthetic data pipeline for cold start** — can't validate pattern learning for new users
+5. **Anger/toxicity filtering not wired** — detection exists, action missing (CRITICAL for safety)
+6. **Relevance scorer not connected to context frame** — salience can't see active context
 
-## Production Ready (No Blockers)
+## Production Ready
 
-1. Auth flow
-2. Memory CRUD
-3. MCP stdio transport
+1. Auth flow (knock/exchange + OAuth/PKCE)
+2. Memory CRUD (51 MCP tools)
+3. MCP stdio + StreamableHTTP transport
 4. Session hooks
-5. CI/CD pipeline
-6. MongoDB persistence
-7. Salience scoring (heuristic)
-8. Multi-project support
+5. CI/CD pipeline (lint -> test -> integration -> load -> smoke)
+6. MongoDB Atlas persistence
+7. Salience scoring (real-time at ingest, 5 components)
+8. HTTPS (api.memorable.chat, auto-renewing cert)
+9. Bedrock LLM (IAM role, no API keys)
+10. Event daemon (guardian, 6 scam patterns)
+11. Care circle + distress scoring
+12. E2EE + mTLS device auth
