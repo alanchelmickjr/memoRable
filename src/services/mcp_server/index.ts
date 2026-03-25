@@ -8024,18 +8024,62 @@ function createServer(): Server {
 
     switch (name) {
       case 'daily_briefing': {
-        // REST MODE: Simplified briefing
+        // REST MODE: Full briefing via API
         if (connectionMode === 'rest' && apiClient) {
-          const healthy = await apiClient.healthCheck();
-          return {
-            messages: [{
-              role: 'user',
-              content: {
-                type: 'text',
-                text: `Daily briefing (REST mode):\n\nAPI Status: ${healthy ? 'Connected' : 'Unreachable'}\nMode: Cloud API\n\nUse recall and store_memory tools to interact with memories.`,
-              },
-            }],
-          };
+          try {
+            const [outlook, loops, recent] = await Promise.all([
+              apiClient.dayOutlook().catch(() => null),
+              apiClient.listLoops().catch(() => []),
+              apiClient.recall('recent important', { limit: 10 }).catch(() => ({ memories: [] })),
+            ]);
+
+            const overdueLoops = (loops || []).filter((l: any) => l.isOverdue);
+            const openLoops = (loops || []).filter((l: any) => !l.isOverdue && l.status === 'open');
+            const recentMemories = (recent.memories || []).slice(0, 5);
+
+            let briefing = `Daily Briefing\n\n`;
+
+            if (overdueLoops.length > 0) {
+              briefing += `OVERDUE COMMITMENTS (${overdueLoops.length}):\n`;
+              for (const l of overdueLoops) {
+                briefing += `  - ${l.description || 'Unknown'} (owed to: ${l.otherParty || '?'})\n`;
+              }
+              briefing += '\n';
+            }
+
+            if (openLoops.length > 0) {
+              briefing += `OPEN COMMITMENTS (${openLoops.length}):\n`;
+              for (const l of openLoops.slice(0, 5)) {
+                briefing += `  - ${l.description || 'Unknown'}${l.dueDate ? ' (due: ' + l.dueDate + ')' : ''}\n`;
+              }
+              briefing += '\n';
+            }
+
+            if (outlook) {
+              briefing += `OUTLOOK:\n${JSON.stringify(outlook, null, 2)}\n\n`;
+            }
+
+            if (recentMemories.length > 0) {
+              briefing += `RECENT (${recentMemories.length}):\n`;
+              for (const m of recentMemories) {
+                briefing += `  - ${(m.content || m.text || '').slice(0, 100)}\n`;
+              }
+            }
+
+            return {
+              messages: [{
+                role: 'user',
+                content: { type: 'text', text: briefing },
+              }],
+            };
+          } catch (err) {
+            return {
+              messages: [{
+                role: 'user',
+                content: { type: 'text', text: 'Daily briefing unavailable. Use recall and list_loops tools directly.' },
+              }],
+            };
+          }
         }
 
         const [status, loops] = await Promise.all([
