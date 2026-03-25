@@ -1,7 +1,12 @@
 # MemoRable Readiness Analysis
 
 **Date**: 2026-01-23
-**Status**: Pre-Production (Staging on us-west-2 ALB)
+**Updated**: 2026-03-24
+**Status**: Production (EC2 + Elastic IP, api.memorable.chat)
+
+> **NOTE (Mar 2026):** Original doc referenced ALB stack (`memorable-alb-*.us-west-2.elb.amazonaws.com`)
+> which was decommissioned Feb 2026. Infrastructure now runs on EC2 + Elastic IP (~$11/mo vs $122/mo).
+> See `PROJECT_STATUS.md` for current state and `deployment-guide.md` for current stack.
 
 ---
 
@@ -9,23 +14,27 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| ALB (us-west-2) | LIVE | `memorable-alb-1679440696.us-west-2.elb.amazonaws.com` |
+| EC2 + Elastic IP (us-west-1) | LIVE | 52.9.62.72:8080 (t4g.micro, ~$11/mo) |
+| ~~ALB (us-west-2)~~ | DEAD | Decommissioned Feb 2026 |
+| HTTPS (api.memorable.chat) | LIVE | nginx + Let's Encrypt, cert expires 2026-05-17 |
 | Auth (knock/exchange) | WORKING | Passphrase-based, 5min challenge TTL |
-| MongoDB | CONNECTED | Atlas, memories persisting |
+| MongoDB Atlas | CONNECTED | Cloud, encrypted at rest |
 | REST API (/memory, /auth) | WORKING | Store, recall, vote all functional |
-| MCP Server (stdio) | WORKING | 43 tools, REST mode to ALB |
-| MCP Server (HTTP) | FIXED (pending deploy) | Per-session isolation, was broken (stale sessions) |
+| MCP Server (stdio + HTTP) | WORKING | 51 tools, StreamableHTTP on port 8080 |
+| MCP OAuth (PKCE) | WORKING | Claude.ai public client support (PRs #58-#63) |
 | CI/CD | ACTIVE | Push to main triggers deploy |
 | Session-start hook | WORKING | Auth + context loading on Claude Code start |
 
 ## What Works Today
 
-- **Memory storage**: Store via MCP, persists to MongoDB, word-based recall search
-- **Authentication**: Knock/exchange flow, per-device API keys
-- **MCP tools**: 43 tools available via stdio transport
+- **Memory storage**: Store via MCP, persists to MongoDB Atlas, word-based recall + vector search
+- **Authentication**: Knock/exchange flow, per-device API keys, OAuth/PKCE for Claude.ai
+- **MCP tools**: 51 tools available via stdio + StreamableHTTP
 - **Session context**: Hook loads project context, docs, open loops on start
-- **Salience scoring**: Heuristic mode (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%)
-- **Multi-project**: memorable + android-bot both configured
+- **Salience scoring**: Real-time at ingest (emotion 30%, novelty 20%, relevance 20%, social 15%, consequential 15%)
+- **HTTPS**: api.memorable.chat with auto-renewing cert
+- **Bedrock LLM**: AWS IAM role, no API keys needed
+- **Tests**: 46 suites, 1,586 passing (was 293 in Jan)
 
 ## What's Deployed But Untested
 
