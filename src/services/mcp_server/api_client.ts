@@ -367,6 +367,7 @@ export class ApiClient {
     entity?: string;
     minSalience?: number;
     excludeEntities?: string | string[];
+    sort?: string;
   }): Promise<RecallResult> {
     return this.request<RecallResult>('GET', '/memory', undefined, {
       query,
@@ -374,6 +375,7 @@ export class ApiClient {
       entity: options?.entity,
       minSalience: options?.minSalience,
       excludeEntities: options?.excludeEntities,
+      sort: options?.sort,
     });
   }
 
