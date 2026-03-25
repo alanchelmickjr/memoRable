@@ -21,7 +21,15 @@ CHECKPOINT_DIR = os.environ.get(
     "LORA_CHECKPOINT_DIR",
     str(VENDOR_ROOT / "trained_t2l" / "gemma_2b_t2l"),
 )
-DEVICE = os.environ.get("LORA_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+def detect_device() -> str:
+    """Detect compute device. CUDA (cloud/Jetson), MPS (Mac), CPU (everything else)."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+DEVICE = os.environ.get("LORA_DEVICE", detect_device())
 
 
 class LoRAEngine:

@@ -3656,31 +3656,28 @@ function createServer(): Server {
           }
 
           // =================================================================
-          // LORA AUTO-INTERNALIZATION — fire-and-forget for high-salience memories
+          // LORA AUTO-INTERNALIZATION — every high-salience memory gets weights
           // Each memory becomes a LoRA weight set, composable at recall time.
-          // ~40 docs at rank 8 = effective rank 320, fits on Orin or cloud GPU.
+          // ~40 docs at rank 8 = effective rank 320. CUDA/MPS/CPU — always runs.
           // =================================================================
           const LORA_SALIENCE_THRESHOLD = parseFloat(process.env.LORA_SALIENCE_THRESHOLD || '0.6');
           if (effectiveScore / 100 > LORA_SALIENCE_THRESHOLD && tier !== 'Tier3_Vault') {
             setImmediate(async () => {
               try {
                 const loraClient = await import('./lora_service_client.js');
-                const available = await loraClient.isAvailable();
-                if (available) {
-                  const loraResult = await loraClient.internalize(text, 'gemma-2-2b');
-                  await collections.memories().updateOne(
-                    { memoryId },
-                    { $set: {
-                      'lora.weights_key': loraResult.weights_key,
-                      'lora.weights_uri': loraResult.weights_uri,
-                      'lora.model': 'gemma-2-2b',
-                      'lora.internalizedAt': new Date().toISOString(),
-                    } }
-                  );
-                  logger.info(`[MCP] Auto-internalized memory ${memoryId} → ${loraResult.weights_key}`);
-                }
+                const loraResult = await loraClient.internalize(text, 'gemma-2-2b');
+                await collections.memories().updateOne(
+                  { memoryId },
+                  { $set: {
+                    'lora.weights_key': loraResult.weights_key,
+                    'lora.weights_uri': loraResult.weights_uri,
+                    'lora.model': 'gemma-2-2b',
+                    'lora.internalizedAt': new Date().toISOString(),
+                  } }
+                );
+                logger.info(`[MCP] Auto-internalized memory ${memoryId} → ${loraResult.weights_key}`);
               } catch (loraErr) {
-                logger.warn(`[MCP] Auto-internalization failed for ${memoryId} (non-blocking):`, loraErr);
+                logger.error(`[MCP] Auto-internalization failed for ${memoryId}:`, loraErr);
               }
             });
           }
