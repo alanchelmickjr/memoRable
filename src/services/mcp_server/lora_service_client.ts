@@ -48,6 +48,19 @@ interface GenerateResponse {
   status: string;
 }
 
+interface ComposeRequest {
+  weights_keys: string[];
+  scalers?: number[];
+}
+
+interface ComposeResponse {
+  weights_key: string;
+  weights_uri: string;
+  num_composed: number;
+  effective_rank: number;
+  status: string;
+}
+
 interface ResetResponse {
   status: string;
   message: string;

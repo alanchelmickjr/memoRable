@@ -146,6 +146,66 @@ async def generate(req: GenerateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/compose", response_model=ComposeResponse)
+async def compose(req: ComposeRequest):
+    """Compose multiple LoRA weights into one, weighted by salience.
+
+    Takes N document LoRAs and merges via rank concatenation.
+    Result: single LoRA with effective rank = (N+1) * 8.
+    ~40 documents composes cleanly on Gemma 2B.
+    """
+    try:
+        engine = get_engine()
+        store = get_weight_store()
+
+        if req.scalers is not None and len(req.scalers) != len(req.weights_keys):
+            raise HTTPException(status_code=400, detail="scalers length must match weights_keys length")
+
+        # Load each set of weights from storage
+        lora_dicts = []
+        tmp_paths = []
+        try:
+            for wk in req.weights_keys:
+                f = tempfile.NamedTemporaryFile(suffix=".safetensors", delete=False)
+                tmp_paths.append(f.name)
+                f.close()
+                store.load(wk, f.name)
+                lora_dicts.append(engine.load_weights_from_file(f.name))
+        finally:
+            for p in tmp_paths:
+                if os.path.exists(p):
+                    os.unlink(p)
+
+        # Compose via D2L's combine_lora
+        with tempfile.NamedTemporaryFile(suffix=".safetensors", delete=False) as f:
+            tmp_out = f.name
+
+        try:
+            engine.compose_weights_to_file(lora_dicts, tmp_out, scalers=req.scalers)
+            composed_key = make_key("|".join(req.weights_keys))
+            uri = store.save(tmp_out, composed_key)
+        finally:
+            if os.path.exists(tmp_out):
+                os.unlink(tmp_out)
+
+        effective_rank = (len(req.weights_keys) + 1) * 8
+
+        return ComposeResponse(
+            weights_key=composed_key,
+            weights_uri=uri,
+            num_composed=len(req.weights_keys),
+            effective_rank=effective_rank,
+        )
+
+    except HTTPException:
+        raise
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Compose failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/reset", response_model=ResetResponse)
 async def reset():
     """Clear loaded weights. Back to base model. No residue."""
