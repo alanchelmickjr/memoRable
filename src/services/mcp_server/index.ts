@@ -1626,6 +1626,88 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ====================================================================
+      // TIME MACHINE TOOLS — Forward and backward through memory state
+      // ====================================================================
+      {
+        name: 'memory_history',
+        description: 'Get the complete event history for a memory. Shows every mutation (create, update, delete, archive, restore) with timestamps and snapshots.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'The memory ID to get history for',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum events to return (default: 50)',
+            },
+          },
+          required: ['memoryId'],
+        },
+        annotations: {
+          title: 'Memory History',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'memories_at',
+        description: 'Query memory state as it existed at a specific point in time. Returns the most recent snapshot for each memory before the given timestamp.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            timestamp: {
+              type: 'string',
+              description: 'ISO8601 timestamp — show memory state as of this moment',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum memories to return (default: 20)',
+            },
+          },
+          required: ['timestamp'],
+        },
+        annotations: {
+          title: 'Memories At Time',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'rollback_memory',
+        description: 'Restore a memory to a prior state from the event log. Specify a memory ID and an event ID to restore to. Creates a new "restore" event — never destroys history.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'The memory to rollback',
+            },
+            eventId: {
+              type: 'string',
+              description: 'The event ID to restore to (get from memory_history)',
+            },
+            reason: {
+              type: 'string',
+              description: 'Why this rollback is being performed',
+            },
+          },
+          required: ['memoryId', 'eventId'],
+        },
+        annotations: {
+          title: 'Rollback Memory',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
       // Context Frame Tools (Multi-Device Aware)
       {
         name: 'set_context',
