@@ -170,6 +170,35 @@ export async function reset(): Promise<ResetResponse> {
 }
 
 /**
+ * Compose multiple LoRA weights into one, weighted by salience.
+ * Uses D2L's rank concatenation — ~40 docs at rank 8 composes cleanly.
+ */
+export async function compose(
+  weightsKeys: string[],
+  scalers?: number[]
+): Promise<ComposeResponse> {
+  logger.info(`[LoRA] Composing ${weightsKeys.length} LoRA weights`);
+
+  const body: ComposeRequest = { weights_keys: weightsKeys };
+  if (scalers) {
+    body.scalers = scalers;
+  }
+  const response = await loraFetch('/compose', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`LoRA compose failed (${response.status}): ${detail}`);
+  }
+
+  const result = await response.json() as ComposeResponse;
+  logger.info(`[LoRA] Composed → ${result.weights_key} (rank ${result.effective_rank})`);
+  return result;
+}
+
+/**
  * Health check — is the LoRA service up?
  */
 export async function health(): Promise<HealthResponse> {
