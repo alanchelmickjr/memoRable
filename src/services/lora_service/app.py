@@ -68,6 +68,19 @@ class GenerateResponse(BaseModel):
     status: str = "ok"
 
 
+class ComposeRequest(BaseModel):
+    weights_keys: list[str] = Field(..., min_length=1, description="List of weights keys to compose")
+    scalers: list[float] | None = Field(default=None, description="Per-document salience weights (0-1)")
+
+
+class ComposeResponse(BaseModel):
+    weights_key: str
+    weights_uri: str
+    num_composed: int
+    effective_rank: int
+    status: str = "ok"
+
+
 class ResetResponse(BaseModel):
     status: str = "ok"
     message: str = "Weights cleared, base model restored"
