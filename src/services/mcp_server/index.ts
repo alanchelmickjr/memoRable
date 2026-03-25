@@ -1338,6 +1338,33 @@ async function initializeDb(): Promise<void> {
 }
 
 /**
+ * TIME MACHINE: Log a memory mutation event (append-only).
+ * Every create, update, delete, archive, restore is recorded.
+ */
+async function logMemoryEvent(
+  memoryId: string,
+  userId: string,
+  action: MemoryEvent['action'],
+  snapshot: Record<string, unknown>,
+  metadata?: MemoryEvent['metadata']
+): Promise<void> {
+  try {
+    const event: MemoryEvent = {
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      memoryId,
+      userId,
+      action,
+      timestamp: new Date().toISOString(),
+      snapshot,
+      metadata,
+    };
+    await collections.memoryEvents().insertOne(event as any);
+  } catch (err) {
+    logger.warn('[TimeMachine] Failed to log event (non-fatal):', err);
+  }
+}
+
+/**
  * Create the MCP server.
  */
 function createServer(): Server {
