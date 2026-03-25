@@ -8,12 +8,16 @@
 ## Overview
 
 MemoRable provides two API surfaces:
-1. **MCP Tools** - 35 tools for Claude Code / MCP clients
+1. **MCP Tools** - 51 tools for Claude Code / MCP clients (see WIRING_STATUS.md for full list)
 2. **REST API** - HTTP endpoints for direct integration
 
 ---
 
-## MCP Tools (35 Tools)
+## MCP Tools (51 Tools)
+
+> **Note:** This reference covers the original 35 tools documented in Jan 2026.
+> 16 additional tools (event daemon, behavioral identity, care circle, LoRA, session continuity)
+> were added Feb-Mar 2026. See `WIRING_STATUS.md` for the complete 51-tool inventory.
 
 ### Context Management
 

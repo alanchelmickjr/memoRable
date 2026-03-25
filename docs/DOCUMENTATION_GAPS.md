@@ -1,9 +1,14 @@
 # Gap Analysis: Documentation & Implementation
 
 **Generated:** 2026-01-17
-**Updated:** 2026-02-15
+**Updated:** 2026-03-24
 **Purpose:** Identify what's missing - both docs AND implementation
 
+> **Mar 2026 Update:** Tool count is now 51 (was 43 in Feb, 35 in Jan). HTTPS live,
+> MCP OAuth solved, nervous system logging, Bedrock LLM, GPU auto-wake all wired.
+> ALB stack decommissioned. 1,586 tests passing (was 293 in Jan).
+> See `PROJECT_STATUS.md` for full service inventory.
+>
 > **Feb 2026 Update:** Tool count is now 43 (was 35). Event daemon, emotion analysis,
 > behavioral identity, care circle tools all implemented. ALB-era docs archived.
 > Key new doc: `SALIENCE_AUDIT_AND_CONTEXT_ARCHITECTURE.md` (salience audit + entity vision).
@@ -358,7 +363,7 @@ Features:
 34. `record_prediction_feedback` - Teach the system what predictions are useful
 35. `set_care_circle` - Set who gets alerted when entity pressure is concerning
 
-**Total MCP Tools: 35**
+**Total MCP Tools: 51** (as of Mar 2026 — see WIRING_STATUS.md for full list)
 
 ---
 

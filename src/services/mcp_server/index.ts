@@ -3073,6 +3073,40 @@ function createServer(): Server {
         },
       },
       // ============================================
+      // LORA COMPOSITION - Multi-memory understanding
+      // ============================================
+      {
+        name: 'compose_context',
+        description:
+          'Compose LoRA weights from an entity\'s internalized memories. Returns a combined weights_key that captures the entity\'s accumulated knowledge, weighted by salience. Use with internalize_document\'s generate for LoRA-enhanced answers. ~40 memories max.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity: {
+              type: 'string',
+              description: 'Entity whose internalized memories to compose (e.g., "alan", "memorable_project")',
+            },
+            query: {
+              type: 'string',
+              description: 'Optional query to filter relevant memories before composing',
+            },
+            limit: {
+              type: 'number',
+              description: 'Max memories to compose (default: 20, max: 40)',
+              default: 20,
+            },
+          },
+          required: ['entity'],
+        },
+        annotations: {
+          title: 'Compose LoRA Context',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      // ============================================
       // DEV ONLY - Remove before production
       // ============================================
       {
@@ -3621,6 +3655,33 @@ function createServer(): Server {
             logger.warn('[MCP] Pressure vector update failed:', pressureError);
           }
 
+          // =================================================================
+          // LORA AUTO-INTERNALIZATION — every high-salience memory gets weights
+          // Each memory becomes a LoRA weight set, composable at recall time.
+          // ~40 docs at rank 8 = effective rank 320. CUDA/MPS/CPU — always runs.
+          // =================================================================
+          const LORA_SALIENCE_THRESHOLD = parseFloat(process.env.LORA_SALIENCE_THRESHOLD || '0.6');
+          if (effectiveScore / 100 > LORA_SALIENCE_THRESHOLD && tier !== 'Tier3_Vault') {
+            setImmediate(async () => {
+              try {
+                const loraClient = await import('./lora_service_client.js');
+                const loraResult = await loraClient.internalize(text, 'gemma-2-2b');
+                await collections.memories().updateOne(
+                  { memoryId },
+                  { $set: {
+                    'lora.weights_key': loraResult.weights_key,
+                    'lora.weights_uri': loraResult.weights_uri,
+                    'lora.model': 'gemma-2-2b',
+                    'lora.internalizedAt': new Date().toISOString(),
+                  } }
+                );
+                logger.info(`[MCP] Auto-internalized memory ${memoryId} → ${loraResult.weights_key}`);
+              } catch (loraErr) {
+                logger.error(`[MCP] Auto-internalization failed for ${memoryId}:`, loraErr);
+              }
+            });
+          }
+
           return {
             content: [
               {
@@ -3978,6 +4039,35 @@ function createServer(): Server {
           if (painWarnings.length > 0) {
             recallResult.painWarnings = painWarnings.slice(0, 3);
             recallResult.note = 'Pain memories matched this query. These represent past frustrations — do not repeat the behaviors that caused them.';
+          }
+
+          // =================================================================
+          // LORA-ENHANCED RECALL — compose internalized memories for synthesis
+          // If retrieved memories have LoRA weights, compose and generate
+          // an enhanced understanding beyond raw text retrieval.
+          // LoRA service is infrastructure — CUDA/MPS/CPU, always available.
+          // =================================================================
+          try {
+            const loraMemories = decrypted.filter((m: any) => m.lora?.weights_key);
+            if (loraMemories.length >= 2) {
+              const loraClient = await import('./lora_service_client.js');
+              const composed = await loraClient.compose(
+                loraMemories.map((m: any) => m.lora.weights_key),
+                loraMemories.map((m: any) => (m.salience || 50) / 100)
+              );
+              const enhanced = await loraClient.generate(
+                `Based on what you know, answer concisely: ${query}`,
+                composed.weights_key,
+              );
+              recallResult.loraEnhanced = {
+                synthesis: enhanced.response,
+                composedFrom: loraMemories.length,
+                effectiveRank: composed.effective_rank,
+                weightsKey: composed.weights_key,
+              };
+            }
+          } catch (loraRecallErr) {
+            logger.error('[MCP] LoRA-enhanced recall failed:', loraRecallErr);
           }
 
           return {
@@ -7492,6 +7582,111 @@ function createServer(): Server {
               }, null, 2),
             }],
           };
+        }
+
+        // ============================================
+        // LORA COMPOSITION HANDLER
+        // ============================================
+        case 'compose_context': {
+          const {
+            entity,
+            query: composeQuery,
+            limit: composeLimit = 20,
+          } = args as {
+            entity: string;
+            query?: string;
+            limit?: number;
+          };
+
+          if (!entity || entity.trim().length === 0) {
+            throw new McpError(ErrorCode.InvalidParams, 'entity is required');
+          }
+
+          const effectiveLimit = Math.min(Math.max(composeLimit, 1), 40);
+
+          try {
+            // Find memories with LoRA weights for this entity
+            const filter: any = {
+              userId: CONFIG.defaultUserId,
+              'lora.weights_key': { $exists: true },
+              state: { $ne: 'deleted' },
+              $or: [
+                { 'extractedFeatures.people': { $regex: entity, $options: 'i' } },
+                { 'userContext.people': { $regex: entity, $options: 'i' } },
+                { text: { $regex: entity, $options: 'i' } },
+              ],
+            };
+
+            if (composeQuery) {
+              filter.text = { $regex: composeQuery, $options: 'i' };
+            }
+
+            const loraMemories = await collections.memories()
+              .find(filter)
+              .sort({ salienceScore: -1 })
+              .limit(effectiveLimit)
+              .toArray();
+
+            if (loraMemories.length === 0) {
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    entity,
+                    error: 'No internalized memories found for this entity',
+                    hint: 'Memories are auto-internalized when salience > LORA_SALIENCE_THRESHOLD (default 0.6). Store high-value memories or use internalize_document directly.',
+                  }, null, 2),
+                }],
+              };
+            }
+
+            if (loraMemories.length === 1) {
+              const mem = loraMemories[0] as any;
+              return {
+                content: [{
+                  type: 'text',
+                  text: JSON.stringify({
+                    entity,
+                    weights_key: mem.lora.weights_key,
+                    weights_uri: mem.lora.weights_uri,
+                    num_composed: 1,
+                    effective_rank: 8,
+                    message: 'Single memory — no composition needed. Use weights_key with internalize_document generate.',
+                  }, null, 2),
+                }],
+              };
+            }
+
+            const loraClient = await import('./lora_service_client.js');
+            const composed = await loraClient.compose(
+              loraMemories.map((m: any) => m.lora.weights_key),
+              loraMemories.map((m: any) => ((m as any).salienceScore || 50) / 100),
+            );
+
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  entity,
+                  weights_key: composed.weights_key,
+                  weights_uri: composed.weights_uri,
+                  num_composed: composed.num_composed,
+                  effective_rank: composed.effective_rank,
+                  memories_used: loraMemories.map((m: any) => ({
+                    id: (m as any).memoryId,
+                    salience: (m as any).salienceScore,
+                    preview: ((m as any).text || '').substring(0, 80),
+                  })),
+                  message: `Composed ${composed.num_composed} memories for ${entity}. Use weights_key with /generate for LoRA-enhanced inference.`,
+                }, null, 2),
+              }],
+            };
+          } catch (err) {
+            throw new McpError(
+              ErrorCode.InternalError,
+              `LoRA composition failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+            );
+          }
         }
 
         // ============================================
