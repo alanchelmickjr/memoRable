@@ -116,7 +116,7 @@ MemoRable + Mem0: Here's what you need to know:
 |-----|---------------------|
 | **Mem0 Users** | Adds salience scoring, commitment tracking, relationships, predictions to your existing vectors |
 | **AI Assistants** | Gives us persistent memory so we actually remember you between conversations |
-| **Developers** | 38 MCP tools + Python/TypeScript SDKs for context-aware apps |
+| **Developers** | 52 MCP tools + Python/TypeScript SDKs for context-aware apps |
 | **Robots/IoT** | Unified memory layer across sensor networks and embodied AI |
 | **Memory Care** | Dignity-preserving memory support for Alzheimer's and cognitive challenges |
 
@@ -137,7 +137,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
 | **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
-| **Claude Code** | 38 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
+| **Claude Code** | 52 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
 | **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
 | **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
 
@@ -1724,7 +1724,7 @@ npx tsx scripts/test_salience.ts
 memorable/
 ├── src/services/
 │   ├── mcp_server/              # MCP server for Claude Code
-│   │   ├── index.ts             # 38 MCP tools
+│   │   ├── index.ts             # 52 MCP tools
 │   │   └── lora_service_client.ts # GPU LoRA service bridge
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
