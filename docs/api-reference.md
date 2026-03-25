@@ -8,7 +8,7 @@
 ## Overview
 
 MemoRable provides two API surfaces:
-1. **MCP Tools** - 35 tools for Claude Code / MCP clients
+1. **MCP Tools** - 51 tools for Claude Code / MCP clients (see WIRING_STATUS.md for full list)
 2. **REST API** - HTTP endpoints for direct integration
 
 ---

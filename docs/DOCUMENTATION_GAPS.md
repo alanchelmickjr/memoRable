@@ -363,7 +363,7 @@ Features:
 34. `record_prediction_feedback` - Teach the system what predictions are useful
 35. `set_care_circle` - Set who gets alerted when entity pressure is concerning
 
-**Total MCP Tools: 35**
+**Total MCP Tools: 51** (as of Mar 2026 — see WIRING_STATUS.md for full list)
 
 ---
 
