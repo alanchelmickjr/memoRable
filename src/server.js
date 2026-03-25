@@ -10339,6 +10339,112 @@ app.get("/memory/:id", (req, res) => {
   }
 });
 
+// ─── TIME MACHINE ENDPOINTS ─────────────────────────────────────────────────
+
+// Get event history for a specific memory
+app.get("/memory/:id/history", async (req, res) => {
+  const { limit = "50" } = req.query;
+  try {
+    const db = getDatabase();
+    const events = await db
+      .collection("memory_events")
+      .find({ memoryId: req.params.id })
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit, 10))
+      .toArray();
+    res.json({ memoryId: req.params.id, eventCount: events.length, events });
+  } catch (error) {
+    console.error("[TimeMachine] history error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
+  }
+});
+
+// Query memory state as of a given timestamp
+app.get("/memories/at", async (req, res) => {
+  const { timestamp, limit = "20" } = req.query;
+  if (!timestamp) {
+    res.status(400).json({ error: "timestamp query param required (ISO8601)" });
+    return;
+  }
+  const userId = req.userId || "default";
+  try {
+    const db = getDatabase();
+    const pipeline = [
+      { $match: { userId, timestamp: { $lte: timestamp } } },
+      { $sort: { timestamp: -1 } },
+      { $group: { _id: "$memoryId", latestEvent: { $first: "$$ROOT" } } },
+      { $replaceRoot: { newRoot: "$latestEvent" } },
+      { $match: { action: { $ne: "delete" } } },
+      { $sort: { timestamp: -1 } },
+      { $limit: parseInt(limit, 10) },
+    ];
+    const snapshots = await db
+      .collection("memory_events")
+      .aggregate(pipeline)
+      .toArray();
+    res.json({ asOf: timestamp, count: snapshots.length, memories: snapshots });
+  } catch (error) {
+    console.error("[TimeMachine] memories_at error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
+  }
+});
+
+// Rollback a memory to a prior event state
+app.post("/memory/:id/rollback", async (req, res) => {
+  const { eventId, reason } = req.body || {};
+  if (!eventId) {
+    res.status(400).json({ error: "eventId required in body" });
+    return;
+  }
+  const userId = req.userId || "default";
+  try {
+    const db = getDatabase();
+    const targetEvent = await db
+      .collection("memory_events")
+      .findOne({ eventId, memoryId: req.params.id });
+    if (!targetEvent) {
+      res.status(404).json({ error: `Event ${eventId} not found` });
+      return;
+    }
+    const snapshot = targetEvent.snapshot;
+    if (!snapshot) {
+      res.status(400).json({ error: "Event has no snapshot to restore" });
+      return;
+    }
+    const { _id, ...restoreData } = snapshot;
+    restoreData.updatedAt = new Date().toISOString();
+    restoreData.state = restoreData.state || "active";
+
+    await db
+      .collection("memories")
+      .replaceOne({ memoryId: req.params.id }, restoreData, { upsert: true });
+
+    // Log restore event
+    await db.collection("memory_events").insertOne({
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      memoryId: req.params.id,
+      userId,
+      action: "restore",
+      timestamp: new Date().toISOString(),
+      snapshot: restoreData,
+      metadata: {
+        reason: reason || `Rolled back to event ${eventId}`,
+        previousEventId: eventId,
+      },
+    });
+
+    res.json({
+      restored: true,
+      memoryId: req.params.id,
+      restoredToEvent: eventId,
+      reason,
+    });
+  } catch (error) {
+    console.error("[TimeMachine] rollback error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
+  }
+});
+
 // Get perspective analysis for a memory
 // Shows how this memory's perceived importance has shifted over time
 app.get("/memory/:id/perspective", (req, res) => {
