@@ -80,6 +80,14 @@ function getPainMemories() {
   return [];
 }
 
+function getStartupMemories() {
+  // Load startup-tagged memories — protocols, instructions, critical context
+  const result = mcpCall('recall_startup', { limit: 10 });
+  if (result?.startupMemories) return result.startupMemories;
+  if (Array.isArray(result)) return result;
+  return [];
+}
+
 // ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
