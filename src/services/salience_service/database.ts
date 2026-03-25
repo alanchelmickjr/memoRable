@@ -292,6 +292,7 @@ export const collections = {
   predictiveMemories: () => getCollection<PredictiveMemoryDocument>('predictive_memories'),
   accessHistory: () => getCollection<AccessHistoryDocument>('access_history'),
   detectedPatterns: () => getCollection<DetectedPatternDocument>('detected_patterns'),
+  memoryEvents: () => getCollection<MemoryEvent>('memory_events'),
 };
 
 /**
