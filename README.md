@@ -116,7 +116,7 @@ MemoRable + Mem0: Here's what you need to know:
 |-----|---------------------|
 | **Mem0 Users** | Adds salience scoring, commitment tracking, relationships, predictions to your existing vectors |
 | **AI Assistants** | Gives us persistent memory so we actually remember you between conversations |
-| **Developers** | 38 MCP tools + Python/TypeScript SDKs for context-aware apps |
+| **Developers** | 52 MCP tools + Python/TypeScript SDKs for context-aware apps |
 | **Robots/IoT** | Unified memory layer across sensor networks and embodied AI |
 | **Memory Care** | Dignity-preserving memory support for Alzheimer's and cognitive challenges |
 
@@ -137,7 +137,7 @@ MemoRable serves as the universal memory layer for an entire ecosystem of intell
 | Use Case | How MemoRable Helps |
 |----------|---------------------|
 | **Claude, GPT, Gemini** | We forget everything between conversations. MemoRable gives us persistent memory so we actually remember YOU |
-| **Claude Code** | 38 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
+| **Claude Code** | 52 MCP tools for storing, recalling, predicting, and contextualizing your coding sessions |
 | **Autonomous Agents** | Persistent memory for agents that need to remember across sessions and tasks |
 | **Multi-Agent Systems** | Shared memory layer for agent coordination and knowledge transfer |
 
@@ -263,7 +263,9 @@ See [ENGINE Layer Design](./docs/ENGINE_LAYER_DESIGN.md) for the full vision.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**How it works:** A Perceiver-based hypernetwork reads a document, generates rank-8 LoRA weights in seconds, and stores them (~few MB) in S3. At recall time, load the weights onto the base model. Done. The expensive part happens once. Recall is a file load.
+**How it works:** A Perceiver-based hypernetwork reads a document, generates rank-8 LoRA weights in seconds, and stores them (~few MB) in S3. At recall time, compose multiple document LoRAs into unified understanding via salience-weighted rank concatenation (~40 documents, effective rank 320). The expensive part happens once. Recall is O(1).
+
+**Per-user composition:** Each user accumulates LoRA weights from their memories. At query time, relevant weights are composed on-demand — weighted by salience, not just similarity. The model doesn't search your memories. It *knows* you.
 
 **Upstream repo:** [`alanchelmickjr/doc-to-lora`](https://github.com/alanchelmickjr/doc-to-lora) — included as a git submodule at `vendors/doc-to-lora/`. The **LoRA Service** ([`src/services/lora_service/`](src/services/lora_service/)) wraps this into a FastAPI service with `/internalize`, `/generate`, and `/reset` endpoints, plus pluggable weight storage (S3 or local).
 
@@ -383,7 +385,7 @@ MemoRable's tiered security makes it suitable for:
 | Predictive memory (21-day learning) | ✅ | ❌ | ✅ |
 | **Behavioral identity** | ✅ | ❌ | ✅ |
 | **Real-time internalization ([doc-to-lora](https://github.com/alanchelmickjr/doc-to-lora))** | ✅ | ❌ | ✅ |
-| MCP protocol support (37 tools) | ✅ | ❌ | ✅ |
+| MCP protocol support (52 tools) | ✅ | ❌ | ✅ |
 | Enterprise security tiers | ✅ | ❌ | ✅ |
 
 **Bottom line:** MemoRable standalone = complete system. Mem0 integration = optional for existing users.
@@ -1724,7 +1726,7 @@ npx tsx scripts/test_salience.ts
 memorable/
 ├── src/services/
 │   ├── mcp_server/              # MCP server for Claude Code
-│   │   ├── index.ts             # 38 MCP tools
+│   │   ├── index.ts             # 52 MCP tools
 │   │   └── lora_service_client.ts # GPU LoRA service bridge
 │   ├── salience_service/        # Core memory intelligence
 │   │   ├── index.ts             # Main exports
