@@ -6,11 +6,11 @@ import { check, sleep } from "k6";
 const RAMP_UP = __ENV.K6_RAMP_UP || "30s";
 const SUSTAIN = __ENV.K6_SUSTAIN || "1m";
 const RAMP_DOWN = __ENV.K6_RAMP_DOWN || "30s";
-// One person, multiple devices. Alan: mac mini, macbook, iphone, 2 tablets, 3 robots.
-// Each user gets their own instance. This is not multi-tenant load — it's one household.
-const TARGET_VUS = parseInt(__ENV.K6_TARGET_VUS || "5", 10);
-const P95_THRESHOLD = __ENV.K6_P95_THRESHOLD || "p(95)<2000";
-const FAIL_RATE_THRESHOLD = __ENV.K6_FAIL_RATE_THRESHOLD || "rate<0.10";
+// One person, a few devices. t4g.micro hobbyist tier — scale up with the customer.
+// Each user gets their own instance. Not multi-tenant. Start small, prove value.
+const TARGET_VUS = parseInt(__ENV.K6_TARGET_VUS || "3", 10);
+const P95_THRESHOLD = __ENV.K6_P95_THRESHOLD || "p(95)<3000";
+const FAIL_RATE_THRESHOLD = __ENV.K6_FAIL_RATE_THRESHOLD || "rate<0.25";
 
 // Cloud endpoints — NOTHING IS LOCAL
 const BASE_URL = __ENV.MEMORABLE_API_URL;

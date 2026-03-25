@@ -8184,25 +8184,28 @@ h1{font-family:'Orbitron',sans-serif;font-size:3rem;background:linear-gradient(1
 <div class="container">
 <h1>MemoRable</h1>
 <p class="tagline">Context for life. Stop telling your AI what to remember — teach it what to forget.</p>
-<div style="margin:2rem 0;padding:1.5rem;border:1px solid #1a1a2e;border-radius:12px;text-align:left;font-size:0.9rem;line-height:1.8">
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem">
-<div style="padding:1rem;border:1px solid #222;border-radius:8px">
-<div style="color:#666;font-size:0.75rem;margin-bottom:0.5rem">PROMPT ENGINEERING</div>
-<div style="color:#ff4444">O(n) per call</div>
-<div style="color:#555;font-size:0.8rem">Stuff context in window.<br>Loses old context.<br>Expensive every time.</div>
+<div style="margin:2rem 0;padding:2rem;border:1px solid #1a1a2e;border-radius:12px;text-align:left;line-height:1.6">
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem;margin-bottom:1.5rem">
+<div style="padding:1.5rem;border:2px solid #333;border-radius:12px">
+<div style="color:#666;font-size:1rem;margin-bottom:0.75rem;letter-spacing:0.1em">PROMPT ENGINEERING</div>
+<div style="color:#ff4444;font-size:2.2rem;font-family:'Orbitron',sans-serif;font-weight:700">O(n)</div>
+<div style="color:#ff4444;font-size:1rem;margin-bottom:0.75rem">per call</div>
+<div style="color:#555;font-size:1.1rem;line-height:1.8">Stuff context in window.<br>Loses old context.<br>Expensive every time.</div>
 </div>
-<div style="padding:1rem;border:1px solid #222;border-radius:8px">
-<div style="color:#666;font-size:0.75rem;margin-bottom:0.5rem">RAG</div>
-<div style="color:#ffaa44">O(n) per query</div>
-<div style="color:#555;font-size:0.8rem">Retrieve chunks + hope.<br>Chunk boundaries break meaning.<br>Finds text, not understanding.</div>
+<div style="padding:1.5rem;border:2px solid #333;border-radius:12px">
+<div style="color:#666;font-size:1rem;margin-bottom:0.75rem;letter-spacing:0.1em">RAG</div>
+<div style="color:#ffaa44;font-size:2.2rem;font-family:'Orbitron',sans-serif;font-weight:700">O(n)</div>
+<div style="color:#ffaa44;font-size:1rem;margin-bottom:0.75rem">per query</div>
+<div style="color:#555;font-size:1.1rem;line-height:1.8">Retrieve chunks + hope.<br>Chunk boundaries break meaning.<br>Finds text, not understanding.</div>
 </div>
-<div style="padding:1rem;border:1px solid #00f0ff;border-radius:8px;background:rgba(0,240,255,0.03)">
-<div style="color:#00f0ff;font-size:0.75rem;margin-bottom:0.5rem">MEMORABLE + LoRA</div>
-<div style="color:#00ff88">O(1) at inference</div>
-<div style="color:#aaa;font-size:0.8rem">Knowledge in weights.<br>Compose per-user understanding.<br>The model <em>knows</em> you.</div>
+<div style="padding:1.5rem;border:2px solid #00f0ff;border-radius:12px;background:rgba(0,240,255,0.05);box-shadow:0 0 30px rgba(0,240,255,0.08)">
+<div style="color:#00f0ff;font-size:1rem;margin-bottom:0.75rem;letter-spacing:0.1em">MEMORABLE + LoRA</div>
+<div style="color:#00ff88;font-size:2.2rem;font-family:'Orbitron',sans-serif;font-weight:700">O(1)</div>
+<div style="color:#00ff88;font-size:1rem;margin-bottom:0.75rem">at inference</div>
+<div style="color:#ccc;font-size:1.1rem;line-height:1.8">Knowledge in weights.<br>Compose per-user understanding.<br>The model <em>knows</em> you.</div>
 </div>
 </div>
-<div style="text-align:center;color:#666;font-size:0.8rem">Powered by <a href="https://github.com/alanchelmickjr/doc-to-lora" style="color:#bf00ff;text-decoration:none">doc-to-lora</a> hypernetwork — 52 MCP tools — Gemma 2 — CUDA/MPS/CPU</div>
+<div style="text-align:center;color:#666;font-size:1rem">Powered by <a href="https://github.com/alanchelmickjr/doc-to-lora" style="color:#bf00ff;text-decoration:none">doc-to-lora</a> hypernetwork — 52 MCP tools — Gemma 2 — CUDA/MPS/CPU</div>
 </div>
 <div class="links">
 <a href="${baseUrl}/docs">MCP Tools (52)</a>
