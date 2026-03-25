@@ -8363,14 +8363,14 @@ code{background:#1a1a2e;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.8re
 
   // ─── Privacy Policy ───────────────────────────────────────────────
   app.get('/privacy', (_req: Request, res: Response) => {
-    const baseUrl = \`\${_req.protocol}://\${_req.get('host')}\`;
-    res.send(\`<!DOCTYPE html>
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.send(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MemoRable — Privacy Policy</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.8}h1{font-family:'Orbitron',sans-serif;font-size:2rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1rem}h2{color:#00f0ff;margin:1.5rem 0 0.5rem}.container{max-width:700px;margin:0 auto}a{color:#00f0ff}.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}</style></head><body>
 <div class="container">
-<a href="\${baseUrl}/" class="back">← Back to MemoRable</a>
+<a href="${baseUrl}/" class="back">← Back to MemoRable</a>
 <h1>Privacy Policy</h1>
 <p style="color:#666">Last updated: March 2026</p>
 
@@ -8400,19 +8400,19 @@ Tier 3 (Vault): NO LLM processing ever. Heuristic extraction only. Encrypted, no
 <p>Questions? <a href="https://github.com/alanchelmickjr/memoRable/issues">GitHub Issues</a></p>
 
 <p style="color:#444;margin-top:2rem;font-size:0.85rem">Memorable is context for life.</p>
-</div></body></html>\`);
+</div></body></html>`);
   });
 
   // ─── Terms of Service ─────────────────────────────────────────────
   app.get('/terms', (_req: Request, res: Response) => {
-    const baseUrl = \`\${_req.protocol}://\${_req.get('host')}\`;
-    res.send(\`<!DOCTYPE html>
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.send(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MemoRable — Terms of Service</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.8}h1{font-family:'Orbitron',sans-serif;font-size:2rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:1rem}h2{color:#00f0ff;margin:1.5rem 0 0.5rem}.container{max-width:700px;margin:0 auto}a{color:#00f0ff}.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}</style></head><body>
 <div class="container">
-<a href="\${baseUrl}/" class="back">← Back to MemoRable</a>
+<a href="${baseUrl}/" class="back">← Back to MemoRable</a>
 <h1>Terms of Service</h1>
 <p style="color:#666">Last updated: March 2026</p>
 
@@ -8435,7 +8435,7 @@ Tier 3 (Vault): NO LLM processing ever. Heuristic extraction only. Encrypted, no
 <p>MemoRable is MIT licensed. The source code is available at <a href="https://github.com/alanchelmickjr/memoRable">GitHub</a>.</p>
 
 <p style="color:#444;margin-top:2rem;font-size:0.85rem">Memorable is context for life.</p>
-</div></body></html>\`);
+</div></body></html>`);
   });
 
   // Health check endpoint
