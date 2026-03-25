@@ -12,6 +12,7 @@ import type {
   RetrievalLog,
   LearnedWeights,
   MemoryDocument,
+  MemoryEvent,
   PredictiveMemoryDocument,
   DetectedPattern,
 } from './models';
