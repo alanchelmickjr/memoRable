@@ -448,6 +448,7 @@ export class ApiClient {
     person?: string;
     owner?: 'self' | 'them' | 'mutual';
     includeOverdue?: boolean;
+    userId?: string;
   }): Promise<unknown[]> {
     const params: Record<string, string> = {};
     if (options?.person) params.person = options.person;
@@ -455,6 +456,7 @@ export class ApiClient {
     if (options?.includeOverdue !== undefined) {
       params.includeOverdue = String(options.includeOverdue);
     }
+    if (options?.userId) params.userId = options.userId;
 
     const result = await this.request<{ loops: unknown[]; count: number }>(
       'GET',

@@ -4203,7 +4203,7 @@ function createServer(): Server {
           // FOUNDATION MODE: Route to HTTP API
           if (connectionMode === 'rest' && apiClient) {
             try {
-              const loops = await apiClient.listLoops({ owner, person, includeOverdue });
+              const loops = await apiClient.listLoops({ owner, person, includeOverdue, userId: CONFIG.defaultUserId });
               return {
                 content: [{
                   type: 'text',
