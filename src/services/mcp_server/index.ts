@@ -8427,6 +8427,159 @@ code{background:#1a1a2e;padding:0.15rem 0.4rem;border-radius:4px;font-size:0.8re
 </div></body></html>`);
   });
 
+  // ─── mem0 vs MemoRable Comparison ──────────────────────────────────
+  app.get('/compare', (_req: Request, res: Response) => {
+    const baseUrl = `${_req.protocol}://${_req.get('host')}`;
+    res.send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mem0 vs MemoRable — The Understanding Gap</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=block" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'Share Tech Mono',monospace;padding:2rem;line-height:1.6}
+.container{max-width:1000px;margin:0 auto}
+h1{font-family:'Orbitron',sans-serif;font-size:2.5rem;background:linear-gradient(135deg,#00f0ff,#bf00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:0.5rem;text-align:center}
+h2{font-family:'Orbitron',sans-serif;color:#00f0ff;font-size:1.3rem;margin:3rem 0 1.5rem;text-align:center}
+.subtitle{text-align:center;color:#666;font-size:1.1rem;margin-bottom:3rem}
+.back{display:inline-block;margin-bottom:2rem;color:#00f0ff;text-decoration:none;font-size:0.85rem}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.vs-left,.vs-right{padding:2rem}
+.vs-left{border-right:2px solid #1a1a2e}
+.vs-left h3{color:#ff4444;font-family:'Orbitron',sans-serif;font-size:1.1rem;margin-bottom:1rem}
+.vs-right h3{color:#00f0ff;font-family:'Orbitron',sans-serif;font-size:1.1rem;margin-bottom:1rem}
+.feature{padding:1rem;margin:0.75rem 0;border-radius:8px;font-size:0.9rem}
+.vs-left .feature{border:1px solid #222;background:#0d0d12}
+.vs-right .feature{border:1px solid rgba(0,240,255,0.15);background:rgba(0,240,255,0.03)}
+.check{color:#00ff88;margin-right:0.5rem}
+.cross{color:#ff4444;margin-right:0.5rem}
+.label{color:#888;font-size:0.8rem;display:block;margin-bottom:0.25rem}
+.scenario{padding:2rem;margin:2rem 0;border:1px solid #1a1a2e;border-radius:12px}
+.scenario h3{font-family:'Orbitron',sans-serif;color:#bf00ff;font-size:1rem;margin-bottom:1rem}
+.scenario .query{color:#888;font-size:1rem;margin:1rem 0;font-style:italic}
+.scenario .result-mem0{color:#666;padding:1rem;border-left:3px solid #ff4444;margin:0.75rem 0}
+.scenario .result-memorable{color:#ccc;padding:1rem;border-left:3px solid #00f0ff;margin:0.75rem 0;background:rgba(0,240,255,0.02)}
+.big-number{font-family:'Orbitron',sans-serif;font-size:2rem;font-weight:700}
+.footer{text-align:center;margin-top:3rem;padding-top:2rem;border-top:1px solid #1a1a2e}
+</style></head><body>
+<div class="container">
+<a href="${baseUrl}/" class="back">← Back to MemoRable</a>
+<h1>mem0 vs MemoRable</h1>
+<p class="subtitle">Same memories. Different intelligence.</p>
+
+<div class="vs">
+<div class="vs-left">
+<h3>mem0 / RAG / ChatGPT Memory</h3>
+<div class="feature"><span class="label">Architecture</span>Store text → Vector embed → Retrieve by similarity</div>
+<div class="feature"><span class="label">Intelligence</span><span class="cross">✗</span> None. Returns what matches, not what matters.</div>
+<div class="feature"><span class="label">Understanding</span><span class="cross">✗</span> Zero. Chunks don't know about each other.</div>
+<div class="feature"><span class="label">Salience</span><span class="cross">✗</span> All memories treated equally. Coffee = recital.</div>
+<div class="feature"><span class="label">Commitments</span><span class="cross">✗</span> No tracking. Promises disappear.</div>
+<div class="feature"><span class="label">Relationships</span><span class="cross">✗</span> No graph. No pressure tracking. No care circle.</div>
+<div class="feature"><span class="label">Predictions</span><span class="cross">✗</span> Reactive only. Never anticipates.</div>
+<div class="feature"><span class="label">Emotions</span><span class="cross">✗</span> No detection. No prosody. No distress scoring.</div>
+<div class="feature"><span class="label">Devices</span><span class="cross">✗</span> Single context. No handoff.</div>
+<div class="feature"><span class="label">Security</span><span class="cross">✗</span> One tier. Everything goes to the LLM.</div>
+<div class="feature"><span class="label">Inference Cost</span><span class="big-number" style="color:#ff4444">O(n)</span> per query</div>
+</div>
+<div class="vs-right">
+<h3>MemoRable + LoRA</h3>
+<div class="feature"><span class="label">Architecture</span>Store → Salience score → LoRA internalize → Compose understanding</div>
+<div class="feature"><span class="label">Intelligence</span><span class="check">✓</span> 5-component salience: emotion, novelty, relevance, social, consequential</div>
+<div class="feature"><span class="label">Understanding</span><span class="check">✓</span> LoRA composition: ~40 memories merged into unified understanding</div>
+<div class="feature"><span class="label">Salience</span><span class="check">✓</span> Weighted by what matters. Recital >> coffee. Always.</div>
+<div class="feature"><span class="label">Commitments</span><span class="check">✓</span> Open loop tracking. Who owes what, when, overdue alerts.</div>
+<div class="feature"><span class="label">Relationships</span><span class="check">✓</span> Computed on demand. Pressure tracking. Care circle notifications.</div>
+<div class="feature"><span class="label">Predictions</span><span class="check">✓</span> 21-day pattern learning. Anticipates before you ask.</div>
+<div class="feature"><span class="label">Emotions</span><span class="check">✓</span> Hume.ai: 57 types. Voice prosody + face + text. Distress scoring.</div>
+<div class="feature"><span class="label">Devices</span><span class="check">✓</span> Multi-device context handoff. Phone → laptop → robot.</div>
+<div class="feature"><span class="label">Security</span><span class="check">✓</span> 3 tiers. Vault: no LLM, encrypted, no vectors. Fort Knox.</div>
+<div class="feature"><span class="label">Inference Cost</span><span class="big-number" style="color:#00ff88">O(1)</span> knowledge in weights</div>
+</div>
+</div>
+
+<h2>See The Difference</h2>
+
+<div class="scenario">
+<h3>Scenario: "What is going on with Betty?"</h3>
+<p>5 memories stored: medication forgotten, daughter worried, confused about day, needs help with bills, doctor recommends assessment.</p>
+<div class="query">"What is going on with Betty?"</div>
+<div class="result-mem0">
+<strong>mem0 returns:</strong><br>
+Memory 1: "Betty mentioned she has been forgetting to take her medication"<br>
+Memory 2: "Betty's daughter Sarah called yesterday worried"<br>
+Memory 3: "Betty seemed confused about what day it was"<br>
+<em style="color:#555">5 separate text chunks ranked by cosine similarity. You connect the dots.</em>
+</div>
+<div class="result-memorable">
+<strong>MemoRable returns:</strong><br>
+<em>memories:</em> [5 memories, salience-ranked]<br>
+<em>loraEnhanced:</em> "Betty is showing multiple signs of cognitive decline — medication non-compliance, temporal confusion, loss of financial independence. Her daughter is already concerned. Her doctor has flagged it. This is a converging pattern that needs attention. Care circle notified."<br>
+<span style="color:#00ff88">The system understood. The system acted.</span>
+</div>
+</div>
+
+<div class="scenario">
+<h3>Scenario: "How should I work with Alan?"</h3>
+<p>8 memories stored over time about Alan's patterns, preferences, family, and work style.</p>
+<div class="query">"How should I work with Alan?"</div>
+<div class="result-mem0">
+<strong>mem0 returns:</strong><br>
+Top 5 text chunks matching "work with Alan".<br>
+Maybe: "coding since 1978", "gets frustrated when AI doesn't listen".<br>
+<em style="color:#555">No synthesis. No behavioral guidance. Just text.</em>
+</div>
+<div class="result-memorable">
+<strong>MemoRable returns:</strong><br>
+<em>loraEnhanced:</em> "Alan is exceptionally sharp — 140++ IQ, coding since 1978. Do exactly what he asks, nothing more. Don't over-explain or add unsolicited advice. His daughter is non-negotiable priority. 3am wake-ups are normal. If he says you're broken, investigate immediately."<br>
+<span style="color:#00ff88">mem0 gives facts about Alan. MemoRable gives you the ability to work with him.</span>
+</div>
+</div>
+
+<div class="scenario">
+<h3>The Guardian: Real-Time Protection</h3>
+<p>Betty's phone rings. Real-time call transcript analyzed.</p>
+<div class="query">Caller: "This is your bank. We need to verify your credit card number."</div>
+<div class="result-mem0">
+<strong>mem0:</strong><br>
+<em style="color:#555">Nothing. mem0 doesn't process external events. Betty is on her own.</em>
+</div>
+<div class="result-memorable">
+<strong>MemoRable Guardian:</strong><br>
+Threat pattern match: <span style="color:#ff4444">BANK_CARD_SCAM</span> (confidence: 94%)<br>
+Action: <span style="color:#00ff88">INTERCEPT</span> — call terminated<br>
+Notification: Care circle (daughter Sarah) alerted<br>
+Log: Pattern stored for future detection<br>
+<span style="color:#00ff88">Betty never gives out her card number. The system protected her.</span>
+</div>
+</div>
+
+<h2>52 MCP Tools vs mem0's API</h2>
+
+<div class="vs" style="margin:2rem 0">
+<div class="vs-left" style="text-align:center">
+<div class="big-number" style="color:#ff4444;font-size:3rem">4</div>
+<div style="color:#666">mem0 operations<br>add · search · update · delete</div>
+</div>
+<div class="vs-right" style="text-align:center">
+<div class="big-number" style="color:#00ff88;font-size:3rem">52</div>
+<div style="color:#888">MCP tools<br>memory · context · predictions · emotions · guardian · LoRA · relationships · commitments · devices</div>
+</div>
+</div>
+
+<div class="footer">
+<p style="font-family:'Orbitron',sans-serif;color:#00f0ff;font-size:1.2rem">Memorable is context for life.</p>
+<p style="color:#555;font-size:0.85rem;margin-top:0.5rem">Stop telling your AI what to remember. Teach it what to forget.</p>
+<p style="color:#444;font-size:0.75rem;margin-top:1rem">
+<a href="${baseUrl}/" style="color:#555">Home</a> ·
+<a href="${baseUrl}/docs" style="color:#555">MCP Tools</a> ·
+<a href="https://github.com/alanchelmickjr/memoRable" style="color:#555">GitHub</a> ·
+<a href="${baseUrl}/privacy" style="color:#555">Privacy</a> ·
+<a href="${baseUrl}/terms" style="color:#555">Terms</a>
+</p>
+</div>
+</div></body></html>`);
+  });
+
   // ─── Privacy Policy ───────────────────────────────────────────────
   app.get('/privacy', (_req: Request, res: Response) => {
     const baseUrl = `${_req.protocol}://${_req.get('host')}`;
