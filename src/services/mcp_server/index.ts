@@ -3073,6 +3073,40 @@ function createServer(): Server {
         },
       },
       // ============================================
+      // LORA COMPOSITION - Multi-memory understanding
+      // ============================================
+      {
+        name: 'compose_context',
+        description:
+          'Compose LoRA weights from an entity\'s internalized memories. Returns a combined weights_key that captures the entity\'s accumulated knowledge, weighted by salience. Use with internalize_document\'s generate for LoRA-enhanced answers. ~40 memories max.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            entity: {
+              type: 'string',
+              description: 'Entity whose internalized memories to compose (e.g., "alan", "memorable_project")',
+            },
+            query: {
+              type: 'string',
+              description: 'Optional query to filter relevant memories before composing',
+            },
+            limit: {
+              type: 'number',
+              description: 'Max memories to compose (default: 20, max: 40)',
+              default: 20,
+            },
+          },
+          required: ['entity'],
+        },
+        annotations: {
+          title: 'Compose LoRA Context',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      // ============================================
       // DEV ONLY - Remove before production
       // ============================================
       {
