@@ -1661,7 +1661,7 @@ app.get("/docs", (_req, res) => {
       margin-bottom: 8px;
     }
     .tool-desc {
-      font-size: 13px;
+      font-size: 14px;
       color: var(--text-dim);
     }
     code {
@@ -1669,7 +1669,7 @@ app.get("/docs", (_req, res) => {
       background: var(--bg-card);
       padding: 2px 6px;
       border-radius: 3px;
-      font-size: 13px;
+      font-size: 14px;
       color: var(--yellow);
     }
     pre {
