@@ -60,9 +60,13 @@ const NAV_CSS = `
     .nav-link:hover { background: rgba(0,255,255,0.1); border-color: #00ffff; box-shadow: 0 0 15px rgba(0,255,255,0.3); }
     .nav-link.active { background: #00ffff; color: #0d1117; border-color: #00ffff; }
     @media (max-width: 768px) {
-      .nav { flex-direction: column; gap: 10px; padding: 10px 15px; }
-      .nav-links { justify-content: center; }
-      .nav-link { font-size: 9px; padding: 6px 10px; }
+      .nav { flex-direction: column; gap: 10px; padding: 12px 15px; }
+      .nav-links { justify-content: center; flex-wrap: wrap; }
+      .nav-link { font-size: 12px; padding: 8px 12px; }
+    }
+    @media (max-width: 480px) {
+      .nav-logo { font-size: 16px; letter-spacing: 2px; }
+      .nav-link { font-size: 11px; padding: 7px 10px; letter-spacing: 1px; }
     }`;
 
 export function head(title: string, extraCss = '', autoRefresh?: number): string {

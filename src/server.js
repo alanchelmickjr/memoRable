@@ -3244,19 +3244,32 @@ app.get("/privacy", (_req, res) => {
       margin-bottom: 12px;
       text-transform: uppercase;
     }
-    p { margin-bottom: 14px; font-size: 13px; }
-    ul { margin: 10px 0 14px 24px; font-size: 13px; }
+    p { margin-bottom: 14px; font-size: 15px; }
+    ul { margin: 10px 0 14px 24px; font-size: 15px; }
     li { margin-bottom: 6px; }
-    .updated { color: var(--text-dim); font-size: 11px; margin-bottom: 20px; }
+    .updated { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
     .back-link {
       display: block;
       text-align: center;
       margin-top: 30px;
       color: var(--text-dim);
-      font-size: 12px;
+      font-size: 14px;
       text-decoration: none;
     }
     .back-link:hover { color: var(--cyan); }
+    @media (max-width: 768px) {
+      body { padding: 20px 15px; }
+      .content { padding: 24px 20px; }
+      h1 { font-size: 16px; }
+      h2 { font-size: 13px; }
+    }
+    @media (max-width: 480px) {
+      body { padding: 15px 12px; }
+      .logo { font-size: 22px; letter-spacing: 2px; }
+      .content { padding: 20px 15px; }
+      h1 { font-size: 15px; }
+      p, ul { font-size: 14px; }
+    }
   </style>
 </head>
 <body>
