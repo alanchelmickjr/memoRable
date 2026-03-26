@@ -1,0 +1,46 @@
+[Unit]
+Description=MemoRable MCP Server (Orin Nano Edge)
+Documentation=https://github.com/alanhelmick/memoRable
+After=network.target mongod.service redis-server.service
+Requires=mongod.service redis-server.service
+
+[Service]
+Type=simple
+User=memorable
+Group=memorable
+WorkingDirectory=/opt/memorable
+EnvironmentFile=/opt/memorable/.env
+
+# Node.js with tight memory ceiling — 512MB heap for 8GB unified RAM
+ExecStart=/usr/bin/tsx src/services/mcp_server/index.ts
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# Memory hard limit via cgroup — kill before OOM takes the whole system
+MemoryMax=768M
+MemoryHigh=512M
+
+# CPU weight (not pinned — let the scheduler balance with GPU workloads)
+CPUWeight=80
+
+# Graceful shutdown — flush state before battery kills us
+TimeoutStopSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/memorable/data
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=memorable-mcp
+
+[Install]
+WantedBy=multi-user.target
