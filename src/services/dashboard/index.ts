@@ -14,11 +14,12 @@
 import { Router } from 'express';
 import type { Db } from 'mongodb';
 
-import { getDashboardSummary, getCalendarData, getDashboardJSON, getMissionControlData } from './queries.js';
+import { getDashboardSummary, getCalendarData, getDashboardJSON, getMissionControlData, getLoopsData } from './queries.js';
 import { renderHome } from './templates/home.js';
 import { renderIntelligence } from './templates/intelligence.js';
 import { renderMissionControl } from './templates/mission-control.js';
 import { renderCalendar } from './templates/calendar.js';
+import { renderLoops } from './templates/loops.js';
 
 export function createDashboardRouter(db: Db, startTime: number): Router {
   const router = Router();
@@ -78,6 +79,18 @@ export function createDashboardRouter(db: Db, startTime: number): Router {
     } catch (err) {
       console.error('[Dashboard] Mission Control error:', err);
       res.status(500).send('Mission Control error — check MongoDB connection');
+    }
+  });
+
+  // Commitment Tracker — open loops dashboard
+  router.get('/dashboard/loops', async (_req, res) => {
+    try {
+      const data = await getLoopsData(db);
+      res.set('Content-Type', 'text/html');
+      res.send(renderLoops(data));
+    } catch (err) {
+      console.error('[Dashboard] Loops error:', err);
+      res.status(500).send('Loops error — check MongoDB connection');
     }
   });
 

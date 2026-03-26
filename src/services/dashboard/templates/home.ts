@@ -153,10 +153,23 @@ export function renderHome(): string {
       50% { opacity: 0.5; }
     }
     @media (max-width: 768px) {
-      .logo { font-size: 36px; letter-spacing: 4px; }
+      .logo { font-size: 40px; letter-spacing: 4px; }
       .tagline { font-size: 18px; }
-      .btn { font-size: 12px; padding: 12px 24px; }
-      .features { padding: 30px 20px; }
+      .subtitle { font-size: 15px; }
+      .btn { font-size: 13px; padding: 14px 28px; }
+      .features { padding: 30px 20px; gap: 20px; }
+      .feature p { font-size: 15px; }
+    }
+    @media (max-width: 480px) {
+      .logo { font-size: 28px; letter-spacing: 3px; }
+      .tagline { font-size: 16px; letter-spacing: 1px; }
+      .subtitle { font-size: 14px; margin-bottom: 30px; }
+      .cta-buttons { gap: 12px; }
+      .btn { font-size: 12px; padding: 12px 20px; letter-spacing: 2px; }
+      .features { padding: 20px 15px; }
+      .feature { padding: 20px; }
+      .feature h3 { font-size: 13px; }
+      .feature p { font-size: 14px; }
     }
   </style>
 </head>

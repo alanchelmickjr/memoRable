@@ -553,3 +553,121 @@ export async function retrieveMemoriesByQuery(
     return [];
   }
 }
+
+/**
+ * Retrieve memories ranked for an active context frame.
+ *
+ * Unlike retrieveMemoriesByQuery, this fires all context-aware boosts
+ * (upcoming events, deadlines, active relationships) for every person
+ * in the frame, then merges and re-ranks by highest score.
+ *
+ * This is the right function to call from whats_relevant / surfaceMemoriesForFrame.
+ */
+export async function retrieveForContextFrame(
+  userId: string,
+  frame: {
+    people: Array<{ value: string }>;
+    location?: { value: string };
+    activity?: { value: string };
+  },
+  options: { limit?: number; minSalience?: number } = {}
+): Promise<ScoredMemory[]> {
+  const limit = options.limit ?? 10;
+  const minSalience = options.minSalience ?? 0;
+
+  // Build combined search query from all frame dimensions
+  const queryParts: string[] = [];
+  frame.people.forEach(p => queryParts.push(p.value));
+  if (frame.location) queryParts.push(frame.location.value);
+  if (frame.activity) queryParts.push(frame.activity.value);
+
+  if (queryParts.length === 0) {
+    // No context at all — fall back to recent high-salience memories
+    return retrieveMemoriesByQuery(userId, '', { limit, minSalience: Math.max(minSalience, 50) });
+  }
+
+  const query = queryParts.join(' ');
+  const searchTerms = query.split(/\s+/).filter(Boolean);
+  const searchRegex = new RegExp(searchTerms.join('|'), 'i');
+
+  // Fetch a wide candidate pool for re-ranking
+  const raw = await collections.memories()
+    .find({
+      userId,
+      $or: [
+        { text: { $regex: searchRegex } },
+        { content: { $regex: searchRegex } },
+        { 'extractedFeatures.topics': { $regex: searchRegex } },
+        { 'extractedFeatures.peopleMentioned': { $regex: searchRegex } },
+      ],
+      ...(minSalience > 0 ? { salienceScore: { $gte: minSalience } } : {}),
+    } as any)
+    .sort({ salienceScore: -1 as const, createdAt: -1 as const })
+    .limit(limit * 4)
+    .toArray();
+
+  const candidates = raw.map((m: any) => {
+    const memText = (m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)) || '').toLowerCase();
+    const topics = (m.extractedFeatures?.topics || []).join(' ').toLowerCase();
+    const people = (m.extractedFeatures?.peopleMentioned || []).join(' ').toLowerCase();
+    const searchableText = `${memText} ${topics} ${people}`;
+    const matchedTerms = searchTerms.filter(term => searchableText.includes(term.toLowerCase()));
+    const termMatchRatio = searchTerms.length > 0 ? matchedTerms.length / searchTerms.length : 0;
+    const exactMatch = searchableText.includes(query.toLowerCase()) ? 0.2 : 0;
+    return {
+      memoryId: m.memoryId || m._id?.toString() || m.mementoId,
+      text: m.text || (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)),
+      createdAt: m.createdAt || m.eventTimestamp || new Date().toISOString(),
+      semanticSimilarity: Math.min(1, termMatchRatio + exactMatch),
+      salienceScore: m.salienceScore,
+      salienceComponents: m.salienceComponents,
+      peopleMentioned: m.extractedFeatures?.peopleMentioned,
+      topics: m.extractedFeatures?.topics,
+      hasOpenLoops: m.hasOpenLoops,
+      earliestDueDate: m.earliestDueDate,
+      securityTier: m.securityTier,
+      encrypted: m.encrypted,
+    };
+  });
+
+  // Score once per person in frame — each pass fires all boosts for that contact.
+  // Keep the highest score each memory achieves across all passes.
+  const scoreMap = new Map<string, ScoredMemory>();
+
+  for (const personDim of frame.people) {
+    const scored = await retrieveWithSalience(candidates, {
+      query,
+      userId,
+      contactId: personDim.value,
+      limit: limit * 2,
+      minSalience,
+      boostForUpcomingEvents: true,
+      boostForDeadlines: true,
+      boostActiveRelationships: true,
+    });
+    for (const m of scored) {
+      const existing = scoreMap.get(m.memoryId);
+      if (!existing || m.retrievalScore > existing.retrievalScore) {
+        scoreMap.set(m.memoryId, m);
+      }
+    }
+  }
+
+  // If no people in frame, still run with deadline/location boosts
+  if (frame.people.length === 0) {
+    const scored = await retrieveWithSalience(candidates, {
+      query,
+      userId,
+      limit,
+      minSalience,
+      boostForDeadlines: true,
+      boostForUpcomingEvents: false,
+      boostActiveRelationships: false,
+    });
+    return scored;
+  }
+
+  return Array.from(scoreMap.values())
+    .sort((a, b) => b.retrievalScore - a.retrievalScore)
+    .slice(0, limit);
+}

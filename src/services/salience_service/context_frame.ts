@@ -36,7 +36,7 @@ interface RedisClientType {
   sMembers?(key: string): Promise<string[]>;
 }
 import { collections } from './database';
-import { retrieveMemoriesByQuery, getMemoriesForPerson } from './retrieval';
+import { retrieveMemoriesByQuery, retrieveForContextFrame, getMemoriesForPerson } from './retrieval';
 import { generateQuickBriefing } from './briefing_generator';
 import { getOpenLoops } from './open_loop_tracker';
 import { getUpcomingEventsForContact } from './timeline_tracker';
@@ -722,32 +722,9 @@ async function getActivityMemories(
  * Get recent relevant memories based on all frame dimensions.
  */
 async function getRecentRelevant(frame: ContextFrame): Promise<SurfacedMemory[]> {
-  // Build a combined query from frame dimensions
-  const queryParts: string[] = [];
-
-  if (frame.location) queryParts.push(frame.location.value);
-  if (frame.activity) queryParts.push(frame.activity.value);
-  frame.people.forEach(p => queryParts.push(p.value));
-
-  if (queryParts.length === 0) {
-    // No specific context, just get recent high-salience
-    const memories = await retrieveMemoriesByQuery(frame.userId, '', {
-      limit: 10,
-      minSalience: 50,
-    });
-
-    return memories.map(m => ({
-      memoryId: m.memoryId,
-      text: m.text?.slice(0, 200) || '',
-      relevanceScore: m.retrievalScore,
-      salienceScore: m.salienceScore || 0,
-      matchedOn: ['time'] as const,
-      createdAt: m.createdAt || '',
-    }));
-  }
-
-  const query = queryParts.join(' ');
-  const memories = await retrieveMemoriesByQuery(frame.userId, query, { limit: 10 });
+  // Use context-aware retrieval that fires all boosts (upcoming events,
+  // deadlines, active relationships) for each person in the frame.
+  const memories = await retrieveForContextFrame(frame.userId, frame, { limit: 10 });
 
   return memories.map(m => ({
     memoryId: m.memoryId,
