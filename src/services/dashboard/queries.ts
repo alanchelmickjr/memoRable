@@ -331,3 +331,68 @@ export async function getDashboardJSON(db: Db, userId?: string) {
     topEntities: summary.topEntities,
   };
 }
+
+export interface LoopItem {
+  id: string;
+  description: string;
+  owner: string;
+  otherParty?: string;
+  dueDate?: string;
+  urgency: string;
+  isOverdue?: boolean;
+  loopType?: string;
+  category?: string;
+}
+
+export interface LoopsData {
+  iOwe: LoopItem[];
+  theyOwe: LoopItem[];
+  overdue: LoopItem[];
+  total: number;
+}
+
+/**
+ * Fetch open loops for the commitment tracker dashboard.
+ * Queries MongoDB directly, same as other dashboard queries.
+ */
+export async function getLoopsData(db: Db, userId?: string): Promise<LoopsData> {
+  const col = db.collection('open_loops');
+  const filter: Record<string, unknown> = {
+    status: { $in: ['open', 'overdue'] },
+    ...(userId ? { userId } : {}),
+  };
+
+  const now = new Date();
+  const raw = await col
+    .find(filter)
+    .sort({ dueDate: 1, createdAt: -1 })
+    .limit(100)
+    .toArray();
+
+  const toItem = (m: any): LoopItem => {
+    const dueDate = m.dueDate || m.softDeadline;
+    const isOverdue = dueDate ? new Date(dueDate) < now : false;
+    return {
+      id: m.id || m._id?.toString(),
+      description: m.description || '',
+      owner: m.owner || 'unknown',
+      otherParty: m.otherParty,
+      dueDate,
+      urgency: m.urgency || 'normal',
+      isOverdue,
+      loopType: m.loopType,
+      category: m.category,
+    };
+  };
+
+  const all = raw.map(toItem);
+  const overdue = all.filter(l => l.isOverdue);
+  const iOwe = all.filter(l => !l.isOverdue && l.owner === 'self');
+  const theyOwe = all.filter(l => !l.isOverdue && l.owner === 'them');
+  // mutual loops appear in both panels
+  const mutual = all.filter(l => !l.isOverdue && l.owner === 'mutual');
+  iOwe.push(...mutual);
+  theyOwe.push(...mutual);
+
+  return { iOwe, theyOwe, overdue, total: all.length };
+}
