@@ -14,11 +14,12 @@
 import { Router } from 'express';
 import type { Db } from 'mongodb';
 
-import { getDashboardSummary, getCalendarData, getDashboardJSON, getMissionControlData } from './queries.js';
+import { getDashboardSummary, getCalendarData, getDashboardJSON, getMissionControlData, getLoopsData } from './queries.js';
 import { renderHome } from './templates/home.js';
 import { renderIntelligence } from './templates/intelligence.js';
 import { renderMissionControl } from './templates/mission-control.js';
 import { renderCalendar } from './templates/calendar.js';
+import { renderLoops } from './templates/loops.js';
 
 export function createDashboardRouter(db: Db, startTime: number): Router {
   const router = Router();
