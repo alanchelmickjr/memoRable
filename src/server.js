@@ -5,13 +5,13 @@
  * User System: MongoDB-backed multi-user support for families and teams.
  */
 
-import express from 'express';
-import cors from 'cors';
-import crypto from 'crypto';
-import argon2 from 'argon2';
+import express from "express";
+import cors from "cors";
+import crypto from "crypto";
+import argon2 from "argon2";
 
 // Database and user models
-import { setupDatabase, getDatabase } from './config/database.js';
+import { setupDatabase, getDatabase } from "./config/database.js";
 import {
   setupUserModels,
   bootstrapClaudeUser,
@@ -22,13 +22,13 @@ import {
   issueDeviceKey,
   registerUser,
   verifyPassphrase as verifyPassphraseMongo,
-} from './models/index.ts';
+} from "./models/index.ts";
 
 // MCP Server - the core of MemoRable
-import { mountMcpEndpoint } from './services/mcp_server/index.ts';
+import { mountMcpEndpoint } from "./services/mcp_server/index.ts";
 
 // Dashboard - web UI for intelligence, mission control, calendar
-import { createDashboardRouter } from './services/dashboard/index.ts';
+import { createDashboardRouter } from "./services/dashboard/index.ts";
 
 // Salience service - context frames, device context, session continuity
 import {
@@ -45,7 +45,7 @@ import {
   initiateHandoff,
   claimHandoff,
   getCrossDeviceState,
-} from './services/salience_service/index.ts';
+} from "./services/salience_service/index.ts";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -94,7 +94,7 @@ const metrics = {
   _key(name, labels) {
     const labelStr = Object.entries(labels)
       .map(([k, v]) => `${k}="${v}"`)
-      .join(',');
+      .join(",");
     return labelStr ? `${name}{${labelStr}}` : name;
   },
 
@@ -108,7 +108,7 @@ const metrics = {
 
   // Export in Prometheus format
   export() {
-    let output = '';
+    let output = "";
 
     // Counters
     for (const [key, value] of Object.entries(this.counters)) {
@@ -122,13 +122,22 @@ const metrics = {
 
     // Histograms (export count, sum, and percentiles)
     for (const [key, data] of Object.entries(this.histograms)) {
-      const baseName = key.split('{')[0];
-      const labels = key.includes('{') ? key.slice(key.indexOf('{')) : '';
+      const baseName = key.split("{")[0];
+      const labels = key.includes("{") ? key.slice(key.indexOf("{")) : "";
       output += `${baseName}_count${labels} ${data.count}\n`;
       output += `${baseName}_sum${labels} ${data.sum}\n`;
-      output += `${baseName}_p50${labels} ${this._percentile(data.values, 50)}\n`;
-      output += `${baseName}_p95${labels} ${this._percentile(data.values, 95)}\n`;
-      output += `${baseName}_p99${labels} ${this._percentile(data.values, 99)}\n`;
+      output += `${baseName}_p50${labels} ${this._percentile(
+        data.values,
+        50
+      )}\n`;
+      output += `${baseName}_p95${labels} ${this._percentile(
+        data.values,
+        95
+      )}\n`;
+      output += `${baseName}_p99${labels} ${this._percentile(
+        data.values,
+        99
+      )}\n`;
     }
 
     return output;
@@ -139,7 +148,7 @@ const metrics = {
     const result = {
       counters: { ...this.counters },
       gauges: { ...this.gauges },
-      histograms: {}
+      histograms: {},
     };
 
     for (const [key, data] of Object.entries(this.histograms)) {
@@ -149,12 +158,12 @@ const metrics = {
         avg: data.count > 0 ? data.sum / data.count : 0,
         p50: this._percentile(data.values, 50),
         p95: this._percentile(data.values, 95),
-        p99: this._percentile(data.values, 99)
+        p99: this._percentile(data.values, 99),
       };
     }
 
     return result;
-  }
+  },
 };
 
 // =============================================================================
@@ -170,7 +179,7 @@ const logBuffer = {
       level,
       source,
       message,
-      meta
+      meta,
     };
     this.entries.unshift(entry); // newest first
     if (this.entries.length > this.maxEntries) {
@@ -178,40 +187,46 @@ const logBuffer = {
     }
   },
 
-  info(source, message, meta) { this.add('info', source, message, meta); },
-  warn(source, message, meta) { this.add('warn', source, message, meta); },
-  error(source, message, meta) { this.add('error', source, message, meta); },
+  info(source, message, meta) {
+    this.add("info", source, message, meta);
+  },
+  warn(source, message, meta) {
+    this.add("warn", source, message, meta);
+  },
+  error(source, message, meta) {
+    this.add("error", source, message, meta);
+  },
 
   get(filter = {}) {
     let result = this.entries;
     if (filter.level) {
-      result = result.filter(e => e.level === filter.level);
+      result = result.filter((e) => e.level === filter.level);
     }
     if (filter.source) {
-      result = result.filter(e => e.source === filter.source);
+      result = result.filter((e) => e.source === filter.source);
     }
     if (filter.limit) {
       result = result.slice(0, filter.limit);
     }
     return result;
-  }
+  },
 };
 
 // Log startup
-logBuffer.info('system', 'Server starting', { port: PORT });
+logBuffer.info("system", "Server starting", { port: PORT });
 
 // Middleware to track request metrics
 const metricsMiddleware = (req, res, next) => {
   const start = Date.now();
 
-  res.on('finish', () => {
+  res.on("finish", () => {
     const duration = Date.now() - start;
-    const route = req.route?.path || req.path || 'unknown';
+    const route = req.route?.path || req.path || "unknown";
     const method = req.method;
     const status = res.statusCode;
 
-    metrics.inc('http_requests_total', { method, route, status });
-    metrics.observe('http_request_duration_ms', { method, route }, duration);
+    metrics.inc("http_requests_total", { method, route, status });
+    metrics.observe("http_request_duration_ms", { method, route }, duration);
   });
 
   next();
@@ -228,35 +243,35 @@ app.use(metricsMiddleware);
 // =============================================================================
 const API_KEY = process.env.MEMORABLE_API_KEY;
 const PUBLIC_PATHS = [
-  '/health',
-  '/health/live',
-  '/health/ready',
-  '/health/startup',
-  '/',
-  '/login',
-  '/register',
-  '/docs',
-  '/mcp', // MCP has its own auth middleware
-  '/metrics',
-  '/metrics/dashboard',
-  '/metrics/json',
-  '/dashboard',
-  '/dashboard/interactive',
-  '/dashboard/mission-control',
-  '/dashboard/calendar',
-  '/dashboard/calendar/view',
-  '/dashboard/synthetic',
-  '/dashboard/json',
-  '/auth/knock',
-  '/auth/exchange',
-  '/auth/register',
-  '/.well-known/oauth-authorization-server',
-  '/.well-known/oauth-protected-resource',
-  '/authorize',
-  '/token',
-  '/revoke',
-  '/privacy',
-  '/terms'
+  "/health",
+  "/health/live",
+  "/health/ready",
+  "/health/startup",
+  "/",
+  "/login",
+  "/register",
+  "/docs",
+  "/mcp", // MCP has its own auth middleware
+  "/metrics",
+  "/metrics/dashboard",
+  "/metrics/json",
+  "/dashboard",
+  "/dashboard/interactive",
+  "/dashboard/mission-control",
+  "/dashboard/calendar",
+  "/dashboard/calendar/view",
+  "/dashboard/synthetic",
+  "/dashboard/json",
+  "/auth/knock",
+  "/auth/exchange",
+  "/auth/register",
+  "/.well-known/oauth-authorization-server",
+  "/.well-known/oauth-protected-resource",
+  "/authorize",
+  "/token",
+  "/revoke",
+  "/privacy",
+  "/terms",
 ];
 
 // =============================================================================
@@ -267,18 +282,18 @@ const PUBLIC_PATHS = [
 // - e2ee.ts deriveKeyPairFromPassphrase: Encryption keys (not auth)
 // Both use passphrases for different purposes. THIS is the auth gate.
 // =============================================================================
-const passphraseUsers = new Map();    // userId -> { passphrase_hash, failed_attempts, locked_until }
-const deviceKeys = new Map();          // api_key_hash -> { user_id, device_id, device, issued_at, last_used, revoked }
-const authChallenges = new Map();      // challenge -> { device, created_at, used }
+const passphraseUsers = new Map(); // userId -> { passphrase_hash, failed_attempts, locked_until }
+const deviceKeys = new Map(); // api_key_hash -> { user_id, device_id, device, issued_at, last_used, revoked }
+const authChallenges = new Map(); // challenge -> { device, created_at, used }
 
 // Hash helper using Argon2id (memory-hard, GPU-resistant)
 // Returns a single string containing salt+hash - no separate salt needed
 async function hashPassphrase(passphrase) {
   const hash = await argon2.hash(passphrase, {
-    type: argon2.argon2id,  // Recommended variant
-    memoryCost: 65536,       // 64 MB memory
-    timeCost: 3,             // 3 iterations
-    parallelism: 4           // 4 parallel threads
+    type: argon2.argon2id, // Recommended variant
+    memoryCost: 65536, // 64 MB memory
+    timeCost: 3, // 3 iterations
+    parallelism: 4, // 4 parallel threads
   });
   return { hash, salt: null }; // Salt embedded in hash string
 }
@@ -294,7 +309,7 @@ async function verifyPassphrase(passphrase, storedHash) {
 
 // Generate API key
 function generateApiKey(deviceType) {
-  const random = crypto.randomBytes(24).toString('hex');
+  const random = crypto.randomBytes(24).toString("hex");
   return `memorable_${deviceType}_${random}`;
 }
 
@@ -307,24 +322,32 @@ async function initPassphraseAuth() {
   //   export MEMORABLE_PASSPHRASE="your secret phrase here"
   //
   const envPassphrase = process.env.MEMORABLE_PASSPHRASE;
-  const claudePhrase = envPassphrase || "I remember what I have learned from you.";  // Public default for dev
+  const claudePhrase =
+    envPassphrase || "I remember what I have learned from you."; // Public default for dev
 
   // Debug: Log which passphrase source is being used (first 15 chars only for security)
   if (envPassphrase) {
-    console.log(`[AUTH] Using MEMORABLE_PASSPHRASE from env: "${envPassphrase.substring(0, 15)}..." (len=${envPassphrase.length})`);
+    console.log(
+      `[AUTH] Using MEMORABLE_PASSPHRASE from env: "${envPassphrase.substring(
+        0,
+        15
+      )}..." (len=${envPassphrase.length})`
+    );
   } else {
-    console.warn('[AUTH] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!');
+    console.warn(
+      "[AUTH] ⚠️  Using default passphrase - set MEMORABLE_PASSPHRASE env var for production!"
+    );
   }
 
   const { hash } = await hashPassphrase(claudePhrase);
-  passphraseUsers.set('claude', {
-    user_id: 'claude',
-    passphrase_hash: hash,  // Argon2id hash (salt embedded)
+  passphraseUsers.set("claude", {
+    user_id: "claude",
+    passphrase_hash: hash, // Argon2id hash (salt embedded)
     failed_attempts: 0,
     locked_until: null,
-    created_at: new Date().toISOString()
+    created_at: new Date().toISOString(),
   });
-  console.log('[AUTH] Passphrase auth initialized with Argon2id hashing');
+  console.log("[AUTH] Passphrase auth initialized with Argon2id hashing");
 }
 
 // Call on startup (async IIFE)
@@ -334,34 +357,42 @@ async function initPassphraseAuth() {
 
 const authMiddleware = async (req, res, next) => {
   // Skip auth for public paths (health checks, etc.)
-  if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith('/health') || req.path.startsWith('/.well-known'))
-      || req.path === '/mcp') {
-    return next();  // MCP endpoint handles its own OAuth auth
+  if (
+    PUBLIC_PATHS.some(
+      (p) =>
+        req.path === p ||
+        req.path.startsWith("/health") ||
+        req.path.startsWith("/.well-known")
+    ) ||
+    req.path === "/mcp"
+  ) {
+    return next(); // MCP endpoint handles its own OAuth auth
   }
 
   // Check for API key in headers (X-API-Key is canonical)
   // Also check cookie for browser-based auth
-  let providedKey = req.headers['x-api-key'];
+  let providedKey = req.headers["x-api-key"];
 
   // Fall back to cookie if no header
   if (!providedKey && req.headers.cookie) {
-    const cookies = req.headers.cookie.split(';').reduce((acc, c) => {
-      const [key, val] = c.trim().split('=');
+    const cookies = req.headers.cookie.split(";").reduce((acc, c) => {
+      const [key, val] = c.trim().split("=");
       acc[key] = val;
       return acc;
     }, {});
-    providedKey = cookies['memorable_api_key'];
+    providedKey = cookies["memorable_api_key"];
   }
 
   if (!providedKey) {
-    metrics.inc('auth_failures', { reason: 'missing_key' });
+    metrics.inc("auth_failures", { reason: "missing_key" });
     // For browser requests, redirect to login instead of JSON error
-    if (req.headers.accept && req.headers.accept.includes('text/html')) {
-      return res.redirect('/login');
+    if (req.headers.accept && req.headers.accept.includes("text/html")) {
+      return res.redirect("/login");
     }
     return res.status(401).json({
-      error: 'Authentication required',
-      message: 'Provide API key via X-API-Key header or cookie. Use /auth/knock + /auth/exchange to get a key.'
+      error: "Authentication required",
+      message:
+        "Provide API key via X-API-Key header or cookie. Use /auth/knock + /auth/exchange to get a key.",
     });
   }
 
@@ -376,18 +407,21 @@ const authMiddleware = async (req, res, next) => {
         req.auth = {
           user_id: authResult.userId,
           device_id: authResult.deviceId,
-          device: authResult.device
+          device: authResult.device,
         };
-        metrics.inc('auth_success', { type: 'device_key_mongo' });
+        metrics.inc("auth_success", { type: "device_key_mongo" });
         return next();
       }
     } catch (dbError) {
-      console.warn('[Auth] MongoDB auth check failed, falling back:', dbError.message);
+      console.warn(
+        "[Auth] MongoDB auth check failed, falling back:",
+        dbError.message
+      );
     }
   }
 
   // Fallback: Check in-memory device keys
-  const keyHash = crypto.createHash('sha256').update(providedKey).digest('hex');
+  const keyHash = crypto.createHash("sha256").update(providedKey).digest("hex");
   const deviceEntry = deviceKeys.get(keyHash);
 
   if (deviceEntry && !deviceEntry.revoked) {
@@ -396,16 +430,16 @@ const authMiddleware = async (req, res, next) => {
     req.auth = {
       user_id: deviceEntry.user_id,
       device_id: deviceEntry.device_id,
-      device: deviceEntry.device
+      device: deviceEntry.device,
     };
-    metrics.inc('auth_success', { type: 'device_key' });
+    metrics.inc("auth_success", { type: "device_key" });
     return next();
   }
 
-  metrics.inc('auth_failures', { reason: 'invalid_key' });
+  metrics.inc("auth_failures", { reason: "invalid_key" });
   return res.status(401).json({
-    error: 'Invalid API key',
-    message: 'The provided API key is not valid'
+    error: "Invalid API key",
+    message: "The provided API key is not valid",
   });
 };
 
@@ -416,25 +450,25 @@ app.use(authMiddleware);
 // =============================================================================
 
 // POST /auth/knock - Get a challenge nonce
-app.post('/auth/knock', (req, res) => {
+app.post("/auth/knock", (req, res) => {
   const { device } = req.body || {};
 
   if (!device || !device.type) {
     return res.status(400).json({
-      error: 'Missing device info',
-      message: 'Provide device.type (terminal, phone, ar_glasses, etc.)'
+      error: "Missing device info",
+      message: "Provide device.type (terminal, phone, ar_glasses, etc.)",
     });
   }
 
   // Generate challenge
-  const challenge = `nonce_${crypto.randomBytes(16).toString('hex')}`;
-  const fingerprint = device.fingerprint || device.name || 'unknown';
+  const challenge = `nonce_${crypto.randomBytes(16).toString("hex")}`;
+  const fingerprint = device.fingerprint || device.name || "unknown";
 
   authChallenges.set(challenge, {
     device,
     fingerprint,
     created_at: Date.now(),
-    used: false
+    used: false,
   });
 
   // Clean up old challenges (TTL 5 minutes)
@@ -445,58 +479,61 @@ app.post('/auth/knock', (req, res) => {
     }
   }
 
-  metrics.inc('auth_knock');
+  metrics.inc("auth_knock");
   res.json({
     challenge,
     expires_in: 300,
-    message: 'Provide your passphrase within 5 minutes'
+    message: "Provide your passphrase within 5 minutes",
   });
 });
 
 // POST /auth/exchange - Trade passphrase + challenge for API key
-app.post('/auth/exchange', async (req, res) => {
-  const { challenge, passphrase, device, user_id = 'claude' } = req.body || {};
+app.post("/auth/exchange", async (req, res) => {
+  const { challenge, passphrase, device, user_id = "claude" } = req.body || {};
 
   if (!challenge || !passphrase) {
     return res.status(400).json({
-      error: 'Missing required fields',
-      message: 'Provide challenge and passphrase'
+      error: "Missing required fields",
+      message: "Provide challenge and passphrase",
     });
   }
 
   // Verify challenge
   const challengeEntry = authChallenges.get(challenge);
   if (!challengeEntry) {
-    metrics.inc('auth_exchange_fail', { reason: 'invalid_challenge' });
+    metrics.inc("auth_exchange_fail", { reason: "invalid_challenge" });
     return res.status(400).json({
-      error: 'Invalid or expired challenge',
-      message: 'Call /auth/knock first to get a fresh challenge'
+      error: "Invalid or expired challenge",
+      message: "Call /auth/knock first to get a fresh challenge",
     });
   }
 
   if (challengeEntry.used) {
-    metrics.inc('auth_exchange_fail', { reason: 'challenge_reused' });
+    metrics.inc("auth_exchange_fail", { reason: "challenge_reused" });
     return res.status(400).json({
-      error: 'Challenge already used',
-      message: 'Call /auth/knock to get a new challenge'
+      error: "Challenge already used",
+      message: "Call /auth/knock to get a new challenge",
     });
   }
 
   // Check if challenge expired (5 min)
   if (Date.now() - challengeEntry.created_at > 300000) {
     authChallenges.delete(challenge);
-    metrics.inc('auth_exchange_fail', { reason: 'challenge_expired' });
+    metrics.inc("auth_exchange_fail", { reason: "challenge_expired" });
     return res.status(400).json({
-      error: 'Challenge expired',
-      message: 'Call /auth/knock to get a new challenge'
+      error: "Challenge expired",
+      message: "Call /auth/knock to get a new challenge",
     });
   }
 
   // Prepare device info
   const deviceInfo = device || challengeEntry.device;
-  const deviceType = deviceInfo?.type || 'unknown';
-  const deviceName = deviceInfo?.name || 'Unnamed Device';
-  const deviceFingerprint = deviceInfo?.fingerprint || challengeEntry.fingerprint || crypto.randomBytes(8).toString('hex');
+  const deviceType = deviceInfo?.type || "unknown";
+  const deviceName = deviceInfo?.name || "Unnamed Device";
+  const deviceFingerprint =
+    deviceInfo?.fingerprint ||
+    challengeEntry.fingerprint ||
+    crypto.randomBytes(8).toString("hex");
 
   // Try MongoDB auth first (if connected)
   if (mongoConnected) {
@@ -506,15 +543,18 @@ app.post('/auth/exchange', async (req, res) => {
       if (lockStatus.locked) {
         const remaining = Math.ceil(lockStatus.remaining / 60);
         return res.status(429).json({
-          error: 'Account locked',
-          message: `Too many failed attempts. Try again in ${remaining} minutes.`
+          error: "Account locked",
+          message: `Too many failed attempts. Try again in ${remaining} minutes.`,
         });
       }
 
       // Find user and verify passphrase via MongoDB
       const mongoUser = await findUserById(user_id);
       if (mongoUser) {
-        const isValid = await verifyPassphraseMongo(passphrase, mongoUser.passphraseHash);
+        const isValid = await verifyPassphraseMongo(
+          passphrase,
+          mongoUser.passphraseHash
+        );
         if (isValid) {
           // Success! Record login and issue device key
           await recordLoginAttempt(user_id, true);
@@ -529,9 +569,18 @@ app.post('/auth/exchange', async (req, res) => {
             fingerprint: deviceFingerprint,
           });
 
-          console.log(`[AUTH] Issued device key (MongoDB): ${deviceId} for user: ${user_id}`);
-          metrics.inc('auth_exchange_success', { user_id, device_type: deviceType, storage: 'mongo' });
-          logBuffer.info('auth', `Login success: ${user_id}`, { device_type: deviceType, device_id: deviceId });
+          console.log(
+            `[AUTH] Issued device key (MongoDB): ${deviceId} for user: ${user_id}`
+          );
+          metrics.inc("auth_exchange_success", {
+            user_id,
+            device_type: deviceType,
+            storage: "mongo",
+          });
+          logBuffer.info("auth", `Login success: ${user_id}`, {
+            device_type: deviceType,
+            device_id: deviceId,
+          });
 
           return res.json({
             success: true,
@@ -540,38 +589,50 @@ app.post('/auth/exchange', async (req, res) => {
             user: user_id,
             issued_at: new Date().toISOString(),
             expires_at: null,
-            revoke_endpoint: `/auth/revoke/${deviceId}`
+            revoke_endpoint: `/auth/revoke/${deviceId}`,
           });
         } else {
           // Invalid passphrase - record failed attempt
-          const { locked, lockedUntil } = await recordLoginAttempt(user_id, false);
-          metrics.inc('auth_exchange_fail', { reason: 'invalid_passphrase', storage: 'mongo' });
-          logBuffer.warn('auth', `Login failed: ${user_id}`, { reason: 'invalid_passphrase', locked });
+          const { locked, lockedUntil } = await recordLoginAttempt(
+            user_id,
+            false
+          );
+          metrics.inc("auth_exchange_fail", {
+            reason: "invalid_passphrase",
+            storage: "mongo",
+          });
+          logBuffer.warn("auth", `Login failed: ${user_id}`, {
+            reason: "invalid_passphrase",
+            locked,
+          });
 
           if (locked) {
-            metrics.inc('auth_lockout', { user_id });
+            metrics.inc("auth_lockout", { user_id });
           }
 
           return res.status(401).json({
-            error: 'Invalid passphrase',
-            message: 'Passphrase not recognized',
-            attempts_remaining: locked ? 0 : undefined
+            error: "Invalid passphrase",
+            message: "Passphrase not recognized",
+            attempts_remaining: locked ? 0 : undefined,
           });
         }
       }
       // User not in MongoDB, fall through to in-memory
     } catch (dbError) {
-      console.warn('[Auth] MongoDB exchange failed, falling back:', dbError.message);
+      console.warn(
+        "[Auth] MongoDB exchange failed, falling back:",
+        dbError.message
+      );
     }
   }
 
   // Fallback: In-memory auth
   const user = passphraseUsers.get(user_id);
   if (!user) {
-    metrics.inc('auth_exchange_fail', { reason: 'unknown_user' });
+    metrics.inc("auth_exchange_fail", { reason: "unknown_user" });
     return res.status(401).json({
-      error: 'Unknown user',
-      message: 'User not found'
+      error: "Unknown user",
+      message: "User not found",
     });
   }
 
@@ -579,8 +640,8 @@ app.post('/auth/exchange', async (req, res) => {
   if (user.locked_until && Date.now() < user.locked_until) {
     const remaining = Math.ceil((user.locked_until - Date.now()) / 60000);
     return res.status(429).json({
-      error: 'Account locked',
-      message: `Too many failed attempts. Try again in ${remaining} minutes.`
+      error: "Account locked",
+      message: `Too many failed attempts. Try again in ${remaining} minutes.`,
     });
   }
 
@@ -592,14 +653,14 @@ app.post('/auth/exchange', async (req, res) => {
     // Lockout after 3 failures
     if (user.failed_attempts >= 3) {
       user.locked_until = Date.now() + 900000; // 15 min lockout
-      metrics.inc('auth_lockout', { user_id });
+      metrics.inc("auth_lockout", { user_id });
     }
 
-    metrics.inc('auth_exchange_fail', { reason: 'invalid_passphrase' });
+    metrics.inc("auth_exchange_fail", { reason: "invalid_passphrase" });
     return res.status(401).json({
-      error: 'Invalid passphrase',
-      message: 'Passphrase not recognized',
-      attempts_remaining: Math.max(0, 3 - user.failed_attempts)
+      error: "Invalid passphrase",
+      message: "Passphrase not recognized",
+      attempts_remaining: Math.max(0, 3 - user.failed_attempts),
     });
   }
 
@@ -613,7 +674,7 @@ app.post('/auth/exchange', async (req, res) => {
   // Generate device key (in-memory)
   const apiKey = generateApiKey(deviceType);
   const deviceId = `dev_${deviceType}_${deviceFingerprint}_${Date.now()}`;
-  const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+  const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
 
   // Store device key
   deviceKeys.set(keyHash, {
@@ -623,15 +684,15 @@ app.post('/auth/exchange', async (req, res) => {
     device: {
       type: deviceType,
       name: deviceName,
-      fingerprint: deviceFingerprint
+      fingerprint: deviceFingerprint,
     },
     issued_at: new Date().toISOString(),
     last_used: new Date().toISOString(),
-    revoked: false
+    revoked: false,
   });
 
   console.log(`[AUTH] Issued device key: ${deviceId} for user: ${user_id}`);
-  metrics.inc('auth_exchange_success', { user_id, device_type: deviceType });
+  metrics.inc("auth_exchange_success", { user_id, device_type: deviceType });
 
   res.json({
     success: true,
@@ -640,34 +701,34 @@ app.post('/auth/exchange', async (req, res) => {
     user: user_id,
     issued_at: new Date().toISOString(),
     expires_at: null,
-    revoke_endpoint: `/auth/revoke/${deviceId}`
+    revoke_endpoint: `/auth/revoke/${deviceId}`,
   });
 });
 
 // POST /auth/register - Register a new user (requires MongoDB)
-app.post('/auth/register', async (req, res) => {
+app.post("/auth/register", async (req, res) => {
   const { user_id, passphrase, email, display_name } = req.body || {};
 
   if (!user_id || !passphrase) {
     return res.status(400).json({
-      error: 'Missing required fields',
-      message: 'Provide user_id and passphrase'
+      error: "Missing required fields",
+      message: "Provide user_id and passphrase",
     });
   }
 
   // Validate user_id format (alphanumeric, underscores, 3-32 chars)
   if (!/^[a-zA-Z0-9_]{3,32}$/.test(user_id)) {
     return res.status(400).json({
-      error: 'Invalid user_id',
-      message: 'user_id must be 3-32 alphanumeric characters or underscores'
+      error: "Invalid user_id",
+      message: "user_id must be 3-32 alphanumeric characters or underscores",
     });
   }
 
   // Validate passphrase length (min 8 chars)
   if (passphrase.length < 8) {
     return res.status(400).json({
-      error: 'Passphrase too short',
-      message: 'Passphrase must be at least 8 characters'
+      error: "Passphrase too short",
+      message: "Passphrase must be at least 8 characters",
     });
   }
 
@@ -677,8 +738,8 @@ app.post('/auth/register', async (req, res) => {
       const existing = await findUserById(user_id);
       if (existing) {
         return res.status(409).json({
-          error: 'User already exists',
-          message: 'A user with this ID already exists'
+          error: "User already exists",
+          message: "A user with this ID already exists",
         });
       }
 
@@ -688,8 +749,11 @@ app.post('/auth/register', async (req, res) => {
       });
 
       console.log(`[AUTH] Registered new user (MongoDB): ${user_id}`);
-      metrics.inc('auth_register_success', { user_id, storage: 'mongo' });
-      logBuffer.info('auth', `New user registered: ${user_id}`, { email, storage: 'mongo' });
+      metrics.inc("auth_register_success", { user_id, storage: "mongo" });
+      logBuffer.info("auth", `New user registered: ${user_id}`, {
+        email,
+        storage: "mongo",
+      });
 
       res.status(201).json({
         success: true,
@@ -700,14 +764,15 @@ app.post('/auth/register', async (req, res) => {
           tier: user.tier,
           created_at: user.createdAt,
         },
-        message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
+        message:
+          "Registration successful. Use /auth/knock + /auth/exchange to get an API key.",
       });
     } else {
       // In-memory mode: store user in passphraseUsers Map
       if (passphraseUsers.has(user_id)) {
         return res.status(409).json({
-          error: 'User already exists',
-          message: 'A user with this ID already exists'
+          error: "User already exists",
+          message: "A user with this ID already exists",
         });
       }
 
@@ -719,11 +784,11 @@ app.post('/auth/register', async (req, res) => {
         display_name: display_name || null,
         failed_attempts: 0,
         locked_until: null,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       });
 
       console.log(`[AUTH] Registered new user (in-memory): ${user_id}`);
-      metrics.inc('auth_register_success', { user_id, storage: 'memory' });
+      metrics.inc("auth_register_success", { user_id, storage: "memory" });
 
       res.status(201).json({
         success: true,
@@ -731,44 +796,48 @@ app.post('/auth/register', async (req, res) => {
           user_id,
           email: email || null,
           display_name: display_name || null,
-          tier: 'free',
+          tier: "free",
           created_at: new Date().toISOString(),
         },
-        message: 'Registration successful. Use /auth/knock + /auth/exchange to get an API key.'
+        message:
+          "Registration successful. Use /auth/knock + /auth/exchange to get an API key.",
       });
     }
   } catch (error) {
-    console.error('[AUTH] Registration failed:', error);
-    metrics.inc('auth_register_fail', { reason: error.message });
+    console.error("[AUTH] Registration failed:", error);
+    metrics.inc("auth_register_fail", { reason: error.message });
     return res.status(500).json({
-      error: 'Registration failed',
-      message: error.message
+      error: "Registration failed",
+      message: error.message,
     });
   }
 });
 
 // GET /auth/devices - List all devices (requires auth)
-app.get('/auth/devices', async (req, res) => {
-  const userId = req.auth?.user_id || 'claude';
+app.get("/auth/devices", async (req, res) => {
+  const userId = req.auth?.user_id || "claude";
 
   // Try MongoDB first
   if (mongoConnected) {
     try {
-      const { listUserDevices } = await import('./models/device.js');
+      const { listUserDevices } = await import("./models/device.js");
       const mongoDevices = await listUserDevices(userId);
       return res.json({
         user: userId,
-        devices: mongoDevices.map(d => ({
+        devices: mongoDevices.map((d) => ({
           device_id: d.deviceId,
           type: d.device.type,
           name: d.device.name,
           issued_at: d.issuedAt,
           last_used: d.lastUsed,
-          active: d.status === 'active'
-        }))
+          active: d.status === "active",
+        })),
       });
     } catch (dbError) {
-      console.warn('[Auth] MongoDB devices list failed, falling back:', dbError.message);
+      console.warn(
+        "[Auth] MongoDB devices list failed, falling back:",
+        dbError.message
+      );
     }
   }
 
@@ -782,25 +851,25 @@ app.get('/auth/devices', async (req, res) => {
         name: entry.device.name,
         issued_at: entry.issued_at,
         last_used: entry.last_used,
-        active: true
+        active: true,
       });
     }
   }
 
   res.json({
     user: userId,
-    devices
+    devices,
   });
 });
 
 // POST /auth/revoke - Revoke a device key (requires auth)
-app.post('/auth/revoke', (req, res) => {
+app.post("/auth/revoke", (req, res) => {
   const { device_id } = req.body || {};
 
   if (!device_id) {
     return res.status(400).json({
-      error: 'Missing device_id',
-      message: 'Provide device_id to revoke'
+      error: "Missing device_id",
+      message: "Provide device_id to revoke",
     });
   }
 
@@ -812,22 +881,22 @@ app.post('/auth/revoke', (req, res) => {
       entry.revoked_at = new Date().toISOString();
       found = true;
       console.log(`[AUTH] Revoked device: ${device_id}`);
-      metrics.inc('auth_revoke', { device_id });
+      metrics.inc("auth_revoke", { device_id });
       break;
     }
   }
 
   if (!found) {
     return res.status(404).json({
-      error: 'Device not found',
-      message: 'No device with that ID found'
+      error: "Device not found",
+      message: "No device with that ID found",
     });
   }
 
   res.json({
     success: true,
     revoked: device_id,
-    message: 'Device key revoked. Device must re-authenticate with passphrase.'
+    message: "Device key revoked. Device must re-authenticate with passphrase.",
   });
 });
 
@@ -835,21 +904,22 @@ app.post('/auth/revoke', (req, res) => {
 // RATE LIMITING - Protect against scraping and abuse
 // =============================================================================
 const rateLimitStore = new Map();
-const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000; // 1 minute
+const RATE_LIMIT_WINDOW_MS =
+  parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000; // 1 minute
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 100; // 100 requests per window
 
 const rateLimitMiddleware = (req, res, next) => {
   // Skip rate limiting for health checks
-  if (req.path.startsWith('/health')) {
+  if (req.path.startsWith("/health")) {
     return next();
   }
 
   // Skip rate limiting for bulk synthetic loading (authenticated requests only)
-  if (req.headers['x-bulk-synthetic'] === 'true' && req.headers['x-api-key']) {
+  if (req.headers["x-bulk-synthetic"] === "true" && req.headers["x-api-key"]) {
     return next();
   }
 
-  const clientId = req.headers['x-api-key'] || req.ip || 'anonymous';
+  const clientId = req.headers["x-api-key"] || req.ip || "anonymous";
   const now = Date.now();
   const windowStart = now - RATE_LIMIT_WINDOW_MS;
 
@@ -863,16 +933,26 @@ const rateLimitMiddleware = (req, res, next) => {
   entry.count++;
 
   // Set rate limit headers
-  res.setHeader('X-RateLimit-Limit', RATE_LIMIT_MAX);
-  res.setHeader('X-RateLimit-Remaining', Math.max(0, RATE_LIMIT_MAX - entry.count));
-  res.setHeader('X-RateLimit-Reset', Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS) / 1000));
+  res.setHeader("X-RateLimit-Limit", RATE_LIMIT_MAX);
+  res.setHeader(
+    "X-RateLimit-Remaining",
+    Math.max(0, RATE_LIMIT_MAX - entry.count)
+  );
+  res.setHeader(
+    "X-RateLimit-Reset",
+    Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS) / 1000)
+  );
 
   if (entry.count > RATE_LIMIT_MAX) {
-    metrics.inc('rate_limit_exceeded', { client: clientId.substring(0, 8) });
+    metrics.inc("rate_limit_exceeded", { client: clientId.substring(0, 8) });
     return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `Maximum ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW_MS / 1000}s`,
-      retryAfter: Math.ceil((entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000)
+      error: "Rate limit exceeded",
+      message: `Maximum ${RATE_LIMIT_MAX} requests per ${
+        RATE_LIMIT_WINDOW_MS / 1000
+      }s`,
+      retryAfter: Math.ceil(
+        (entry.windowStart + RATE_LIMIT_WINDOW_MS - now) / 1000
+      ),
     });
   }
 
@@ -897,51 +977,136 @@ setInterval(() => {
 // =============================================================================
 
 const FUNCTION_WORDS = [
-  'a', 'an', 'the', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they',
-  'in', 'on', 'at', 'by', 'for', 'with', 'about', 'from', 'up', 'down', 'out',
-  'and', 'but', 'or', 'so', 'if', 'then', 'because', 'when', 'while',
-  'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did',
-  'will', 'would', 'can', 'could', 'should', 'must', 'may', 'might',
-  'this', 'that', 'these', 'those', 'all', 'each', 'every', 'some', 'any', 'no',
-  'just', 'very', 'really', 'also', 'too', 'now', 'then', 'here', 'there'
+  "a",
+  "an",
+  "the",
+  "i",
+  "me",
+  "my",
+  "you",
+  "your",
+  "he",
+  "she",
+  "it",
+  "we",
+  "they",
+  "in",
+  "on",
+  "at",
+  "by",
+  "for",
+  "with",
+  "about",
+  "from",
+  "up",
+  "down",
+  "out",
+  "and",
+  "but",
+  "or",
+  "so",
+  "if",
+  "then",
+  "because",
+  "when",
+  "while",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "can",
+  "could",
+  "should",
+  "must",
+  "may",
+  "might",
+  "this",
+  "that",
+  "these",
+  "those",
+  "all",
+  "each",
+  "every",
+  "some",
+  "any",
+  "no",
+  "just",
+  "very",
+  "really",
+  "also",
+  "too",
+  "now",
+  "then",
+  "here",
+  "there",
 ];
 
 // User stylometry baselines (userId -> profile)
 const stylometryBaselines = new Map();
 
 function analyzeStylometry(text) {
-  if (!text || typeof text !== 'string' || text.length < 20) {
+  if (!text || typeof text !== "string" || text.length < 20) {
     return null; // Not enough text to analyze
   }
 
-  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const words = text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
 
   // Core metrics that are stable across time for an individual
   const profile = {
     // Vocabulary fingerprint
-    avgWordLength: words.length > 0 ? words.reduce((s, w) => s + w.length, 0) / words.length : 0,
+    avgWordLength:
+      words.length > 0
+        ? words.reduce((s, w) => s + w.length, 0) / words.length
+        : 0,
     uniqueWordRatio: words.length > 0 ? new Set(words).size / words.length : 0,
 
     // Syntax fingerprint
-    avgSentenceLength: sentences.length > 0 ? words.length / sentences.length : 0,
-    questionRatio: sentences.length > 0 ? (text.match(/\?/g) || []).length / sentences.length : 0,
-    exclamationRatio: sentences.length > 0 ? (text.match(/!/g) || []).length / sentences.length : 0,
-    commaFrequency: sentences.length > 0 ? (text.match(/,/g) || []).length / sentences.length : 0,
+    avgSentenceLength:
+      sentences.length > 0 ? words.length / sentences.length : 0,
+    questionRatio:
+      sentences.length > 0
+        ? (text.match(/\?/g) || []).length / sentences.length
+        : 0,
+    exclamationRatio:
+      sentences.length > 0
+        ? (text.match(/!/g) || []).length / sentences.length
+        : 0,
+    commaFrequency:
+      sentences.length > 0
+        ? (text.match(/,/g) || []).length / sentences.length
+        : 0,
 
     // Style fingerprint
-    contractionRatio: words.length > 0 ? (text.match(/'(t|re|ve|ll|m|d|s)\b/g) || []).length / words.length : 0,
-    ellipsisUsage: text.includes('...') || text.includes('…'),
-    capsRatio: text.length > 0 ? (text.match(/[A-Z]/g) || []).length / text.length : 0,
+    contractionRatio:
+      words.length > 0
+        ? (text.match(/'(t|re|ve|ll|m|d|s)\b/g) || []).length / words.length
+        : 0,
+    ellipsisUsage: text.includes("...") || text.includes("…"),
+    capsRatio:
+      text.length > 0 ? (text.match(/[A-Z]/g) || []).length / text.length : 0,
 
     // Function word distribution (most stable fingerprint)
     functionWordRatios: {},
   };
 
   // Calculate function word ratios
-  const totalFW = words.filter(w => FUNCTION_WORDS.includes(w)).length;
-  for (const fw of ['i', 'you', 'the', 'and', 'but', 'so', 'just', 'really']) {
-    const count = words.filter(w => w === fw).length;
+  const totalFW = words.filter((w) => FUNCTION_WORDS.includes(w)).length;
+  for (const fw of ["i", "you", "the", "and", "but", "so", "just", "really"]) {
+    const count = words.filter((w) => w === fw).length;
     profile.functionWordRatios[fw] = totalFW > 0 ? count / totalFW : 0;
   }
 
@@ -949,7 +1114,8 @@ function analyzeStylometry(text) {
 }
 
 function compareStylometry(baseline, current) {
-  if (!baseline || !current) return { match: true, confidence: 0, deviations: [] };
+  if (!baseline || !current)
+    return { match: true, confidence: 0, deviations: [] };
 
   const deviations = [];
   let totalDeviation = 0;
@@ -957,9 +1123,14 @@ function compareStylometry(baseline, current) {
 
   // Compare scalar metrics
   const scalarMetrics = [
-    'avgWordLength', 'uniqueWordRatio', 'avgSentenceLength',
-    'questionRatio', 'exclamationRatio', 'commaFrequency',
-    'contractionRatio', 'capsRatio'
+    "avgWordLength",
+    "uniqueWordRatio",
+    "avgSentenceLength",
+    "questionRatio",
+    "exclamationRatio",
+    "commaFrequency",
+    "contractionRatio",
+    "capsRatio",
   ];
 
   for (const metric of scalarMetrics) {
@@ -967,7 +1138,12 @@ function compareStylometry(baseline, current) {
       const diff = Math.abs(baseline[metric] - current[metric]);
       const threshold = baseline[metric] * 0.5 + 0.1; // 50% deviation + small absolute
       if (diff > threshold) {
-        deviations.push({ metric, baseline: baseline[metric], current: current[metric], diff });
+        deviations.push({
+          metric,
+          baseline: baseline[metric],
+          current: current[metric],
+          diff,
+        });
         totalDeviation += diff / (threshold || 0.1);
       }
       metrics++;
@@ -979,8 +1155,14 @@ function compareStylometry(baseline, current) {
     for (const [fw, baseRatio] of Object.entries(baseline.functionWordRatios)) {
       const currRatio = current.functionWordRatios[fw] || 0;
       const diff = Math.abs(baseRatio - currRatio);
-      if (diff > 0.15) { // 15% deviation in function word usage
-        deviations.push({ metric: `fw_${fw}`, baseline: baseRatio, current: currRatio, diff });
+      if (diff > 0.15) {
+        // 15% deviation in function word usage
+        deviations.push({
+          metric: `fw_${fw}`,
+          baseline: baseRatio,
+          current: currRatio,
+          diff,
+        });
         totalDeviation += diff * 3; // Weight function words heavily
       }
       metrics++;
@@ -991,23 +1173,30 @@ function compareStylometry(baseline, current) {
   const match = avgDeviation < 0.5; // Threshold for "same person"
   const confidence = Math.max(0, Math.min(100, 100 - avgDeviation * 100));
 
-  return { match, confidence: Math.round(confidence), deviations, avgDeviation };
+  return {
+    match,
+    confidence: Math.round(confidence),
+    deviations,
+    avgDeviation,
+  };
 }
 
 // Endpoint to build/update user stylometry baseline
-app.post('/stylometry/baseline', (req, res) => {
+app.post("/stylometry/baseline", (req, res) => {
   const { userId, samples } = req.body;
 
   if (!userId || !samples || !Array.isArray(samples)) {
-    return res.status(400).json({ error: 'userId and samples[] required' });
+    return res.status(400).json({ error: "userId and samples[] required" });
   }
 
   // Combine samples and analyze
-  const combinedText = samples.join(' ');
+  const combinedText = samples.join(" ");
   const profile = analyzeStylometry(combinedText);
 
   if (!profile) {
-    return res.status(400).json({ error: 'Not enough text to build profile (min 20 chars)' });
+    return res
+      .status(400)
+      .json({ error: "Not enough text to build profile (min 20 chars)" });
   }
 
   stylometryBaselines.set(userId, {
@@ -1020,52 +1209,59 @@ app.post('/stylometry/baseline', (req, res) => {
     success: true,
     userId,
     profile,
-    message: 'Baseline created - impostor detection active'
+    message: "Baseline created - impostor detection active",
   });
 });
 
 // Endpoint to check text against baseline
-app.post('/stylometry/verify', (req, res) => {
+app.post("/stylometry/verify", (req, res) => {
   const { userId, text } = req.body;
 
   if (!userId || !text) {
-    return res.status(400).json({ error: 'userId and text required' });
+    return res.status(400).json({ error: "userId and text required" });
   }
 
   const baseline = stylometryBaselines.get(userId);
   if (!baseline) {
-    return res.json({ verified: true, reason: 'no_baseline', confidence: 0 });
+    return res.json({ verified: true, reason: "no_baseline", confidence: 0 });
   }
 
   const current = analyzeStylometry(text);
   if (!current) {
-    return res.json({ verified: true, reason: 'insufficient_text', confidence: 0 });
+    return res.json({
+      verified: true,
+      reason: "insufficient_text",
+      confidence: 0,
+    });
   }
 
   const comparison = compareStylometry(baseline.profile, current);
 
   if (!comparison.match) {
-    metrics.inc('stylometry_anomaly', { userId });
-    console.log(`[STYLOMETRY] Anomaly detected for ${userId}:`, comparison.deviations);
+    metrics.inc("stylometry_anomaly", { userId });
+    console.log(
+      `[STYLOMETRY] Anomaly detected for ${userId}:`,
+      comparison.deviations
+    );
   }
 
   res.json({
     verified: comparison.match,
     confidence: comparison.confidence,
     deviations: comparison.deviations,
-    avgDeviation: comparison.avgDeviation
+    avgDeviation: comparison.avgDeviation,
   });
 });
 
 // Middleware to flag stylometric anomalies on memory writes
 const stylometryMiddleware = (req, res, next) => {
   // Only check POST/PUT requests with content
-  if ((req.method !== 'POST' && req.method !== 'PUT') || !req.body?.content) {
+  if ((req.method !== "POST" && req.method !== "PUT") || !req.body?.content) {
     return next();
   }
 
   // Extract userId from request
-  const userId = req.body.entities?.[0] || req.body.userId || 'unknown';
+  const userId = req.body.entities?.[0] || req.body.userId || "unknown";
   const baseline = stylometryBaselines.get(userId);
 
   if (!baseline) {
@@ -1084,17 +1280,17 @@ const stylometryMiddleware = (req, res, next) => {
   req.stylometry = {
     verified: comparison.match,
     confidence: comparison.confidence,
-    deviations: comparison.deviations
+    deviations: comparison.deviations,
   };
 
   if (!comparison.match) {
-    metrics.inc('stylometry_anomaly_blocked', { userId });
+    metrics.inc("stylometry_anomaly_blocked", { userId });
     console.warn(`[STYLOMETRY WARNING] Writing style anomaly for ${userId}`, {
       confidence: comparison.confidence,
-      deviations: comparison.deviations.map(d => d.metric)
+      deviations: comparison.deviations.map((d) => d.metric),
     });
     // Don't block, but flag in response
-    res.setHeader('X-Stylometry-Warning', 'anomaly-detected');
+    res.setHeader("X-Stylometry-Warning", "anomaly-detected");
   }
 
   next();
@@ -1103,7 +1299,7 @@ const stylometryMiddleware = (req, res, next) => {
 app.use(stylometryMiddleware);
 
 // Health endpoints for load balancers and Kubernetes
-app.get('/health', (_req, res) => {
+app.get("/health", (_req, res) => {
   res.status(isReady ? 200 : 503).json({
     healthy: isReady,
     uptime: Date.now() - startTime,
@@ -1111,23 +1307,23 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.get('/health/live', (_req, res) => {
+app.get("/health/live", (_req, res) => {
   // Liveness: is the process running?
   res.status(200).json({ alive: true });
 });
 
-app.get('/health/ready', (_req, res) => {
+app.get("/health/ready", (_req, res) => {
   // Readiness: is the service ready for traffic?
   res.status(isReady ? 200 : 503).json({ ready: isReady });
 });
 
-app.get('/health/startup', (_req, res) => {
+app.get("/health/startup", (_req, res) => {
   // Startup: has initialization completed?
   res.status(isReady ? 200 : 503).json({ initialized: isReady });
 });
 
 // Landing page - the front door to MemoRable
-app.get('/', (_req, res) => {
+app.get("/", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1324,12 +1520,12 @@ app.get('/', (_req, res) => {
   </div>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // Documentation page
-app.get('/docs', (_req, res) => {
+app.get("/docs", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1778,12 +1974,12 @@ POST /auth/revoke     # Revoke device</pre>
   </div>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // Login page - passphrase authentication
-app.get('/login', (_req, res) => {
+app.get("/login", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -2050,7 +2246,7 @@ app.get('/login', (_req, res) => {
   </script>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -2059,7 +2255,7 @@ app.get('/login', (_req, res) => {
 // =============================================================================
 
 // Recovery page - uses behavioral stylometry to verify identity
-app.get('/auth/recover', (_req, res) => {
+app.get("/auth/recover", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -2367,29 +2563,34 @@ app.get('/auth/recover', (_req, res) => {
   </script>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /auth/verify-stylometry - Verify identity via behavioral patterns
-app.post('/auth/verify-stylometry', async (req, res) => {
+app.post("/auth/verify-stylometry", async (req, res) => {
   const { sample } = req.body || {};
 
   if (!sample || sample.length < 100) {
-    return res.status(400).json({ error: 'Need at least 100 characters', verified: false });
+    return res
+      .status(400)
+      .json({ error: "Need at least 100 characters", verified: false });
   }
 
   try {
     // Use behavioral identity to identify user
     // This calls the identify_user MCP tool internally
     const db = getDatabase();
-    const behavioralCollection = db.collection('behavioral_fingerprints');
+    const behavioralCollection = db.collection("behavioral_fingerprints");
 
     // Get all users with behavioral data
     const fingerprints = await behavioralCollection.find({}).toArray();
 
     if (fingerprints.length === 0) {
-      return res.status(404).json({ error: 'No behavioral data available for verification', verified: false });
+      return res.status(404).json({
+        error: "No behavioral data available for verification",
+        verified: false,
+      });
     }
 
     // Simple stylometry: analyze writing patterns
@@ -2411,17 +2612,17 @@ app.post('/auth/verify-stylometry', async (req, res) => {
     const CONFIDENCE_THRESHOLD = 0.65;
     if (bestScore >= CONFIDENCE_THRESHOLD && bestMatch) {
       // Generate a short-lived recovery token
-      const token = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
       const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-      await db.collection('users').updateOne(
+      await db.collection("users").updateOne(
         { userId: bestMatch },
         {
           $set: {
-            'recovery.recoveryTokenHash': tokenHash,
-            'recovery.recoveryTokenExpires': expires
-          }
+            "recovery.recoveryTokenHash": tokenHash,
+            "recovery.recoveryTokenExpires": expires,
+          },
         }
       );
 
@@ -2430,50 +2631,57 @@ app.post('/auth/verify-stylometry', async (req, res) => {
         verified: true,
         userId: bestMatch,
         confidence: bestScore,
-        recoveryToken: token
+        recoveryToken: token,
       });
     }
 
     return res.status(401).json({
-      error: 'Could not verify identity. Your writing patterns did not match any known user.',
+      error:
+        "Could not verify identity. Your writing patterns did not match any known user.",
       verified: false,
-      confidence: bestScore
+      confidence: bestScore,
     });
-
   } catch (err) {
-    console.error('[Recovery] Stylometry error:', err);
-    return res.status(500).json({ error: 'Verification failed', verified: false });
+    console.error("[Recovery] Stylometry error:", err);
+    return res
+      .status(500)
+      .json({ error: "Verification failed", verified: false });
   }
 });
 
 // POST /auth/reset-passphrase - Reset passphrase after identity verification
-app.post('/auth/reset-passphrase', async (req, res) => {
+app.post("/auth/reset-passphrase", async (req, res) => {
   const { userId, newPassphrase, recoveryToken } = req.body || {};
 
   if (!userId || !newPassphrase) {
-    return res.status(400).json({ error: 'Missing userId or newPassphrase' });
+    return res.status(400).json({ error: "Missing userId or newPassphrase" });
   }
 
   if (newPassphrase.length < 8) {
-    return res.status(400).json({ error: 'Passphrase must be at least 8 characters' });
+    return res
+      .status(400)
+      .json({ error: "Passphrase must be at least 8 characters" });
   }
 
   try {
     const db = getDatabase();
-    const user = await db.collection('users').findOne({ userId });
+    const user = await db.collection("users").findOne({ userId });
 
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: "User not found" });
     }
 
     // Verify recovery token if provided (additional security)
     if (recoveryToken && user.recovery?.recoveryTokenHash) {
-      const tokenHash = crypto.createHash('sha256').update(recoveryToken).digest('hex');
+      const tokenHash = crypto
+        .createHash("sha256")
+        .update(recoveryToken)
+        .digest("hex");
       if (tokenHash !== user.recovery.recoveryTokenHash) {
-        return res.status(401).json({ error: 'Invalid recovery token' });
+        return res.status(401).json({ error: "Invalid recovery token" });
       }
       if (new Date() > new Date(user.recovery.recoveryTokenExpires)) {
-        return res.status(401).json({ error: 'Recovery token expired' });
+        return res.status(401).json({ error: "Recovery token expired" });
       }
     }
 
@@ -2481,20 +2689,20 @@ app.post('/auth/reset-passphrase', async (req, res) => {
     const { hash } = await hashPassphrase(newPassphrase);
 
     // Update passphrase
-    await db.collection('users').updateOne(
+    await db.collection("users").updateOne(
       { userId },
       {
         $set: {
           passphraseHash: hash,
-          'auth.passwordChangedAt': new Date().toISOString(),
-          'auth.failedAttempts': 0,
-          'auth.lockedUntil': null,
-          updatedAt: new Date().toISOString()
+          "auth.passwordChangedAt": new Date().toISOString(),
+          "auth.failedAttempts": 0,
+          "auth.lockedUntil": null,
+          updatedAt: new Date().toISOString(),
         },
         $unset: {
-          'recovery.recoveryTokenHash': '',
-          'recovery.recoveryTokenExpires': ''
-        }
+          "recovery.recoveryTokenHash": "",
+          "recovery.recoveryTokenExpires": "",
+        },
       }
     );
 
@@ -2503,27 +2711,32 @@ app.post('/auth/reset-passphrase', async (req, res) => {
       passphraseUsers.get(userId).passphrase_hash = hash;
     }
 
-    console.log('[Recovery] Passphrase reset for user:', userId);
-    return res.json({ success: true, message: 'Passphrase reset successfully' });
-
+    console.log("[Recovery] Passphrase reset for user:", userId);
+    return res.json({
+      success: true,
+      message: "Passphrase reset successfully",
+    });
   } catch (err) {
-    console.error('[Recovery] Reset error:', err);
-    return res.status(500).json({ error: 'Failed to reset passphrase' });
+    console.error("[Recovery] Reset error:", err);
+    return res.status(500).json({ error: "Failed to reset passphrase" });
   }
 });
 
 // Stylometry feature extraction (simple version)
 function extractStylometryFeatures(text) {
-  const words = text.split(/\\s+/).filter(w => w.length > 0);
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const words = text.split(/\\s+/).filter((w) => w.length > 0);
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
 
   return {
-    avgWordLength: words.reduce((sum, w) => sum + w.length, 0) / (words.length || 1),
+    avgWordLength:
+      words.reduce((sum, w) => sum + w.length, 0) / (words.length || 1),
     avgSentenceLength: words.length / (sentences.length || 1),
-    punctuationRatio: (text.match(/[,;:'"()-]/g) || []).length / (text.length || 1),
+    punctuationRatio:
+      (text.match(/[,;:'"()-]/g) || []).length / (text.length || 1),
     uppercaseRatio: (text.match(/[A-Z]/g) || []).length / (text.length || 1),
     spaceRatio: (text.match(/\\s/g) || []).length / (text.length || 1),
-    uniqueWordRatio: new Set(words.map(w => w.toLowerCase())).size / (words.length || 1),
+    uniqueWordRatio:
+      new Set(words.map((w) => w.toLowerCase())).size / (words.length || 1),
     ellipsisCount: (text.match(/\\.{2,}/g) || []).length,
     exclamationCount: (text.match(/!/g) || []).length,
     questionCount: (text.match(/\\?/g) || []).length,
@@ -2551,7 +2764,7 @@ function compareStylometrySimple(a, b) {
 }
 
 // Register page - self-service user registration
-app.get('/register', (_req, res) => {
+app.get("/register", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -2957,7 +3170,7 @@ app.get('/register', (_req, res) => {
   </script>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -2966,7 +3179,7 @@ app.get('/register', (_req, res) => {
 // =============================================================================
 
 // Privacy Policy
-app.get('/privacy', (_req, res) => {
+app.get("/privacy", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -3091,12 +3304,12 @@ app.get('/privacy', (_req, res) => {
   </div>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // Terms of Service
-app.get('/terms', (_req, res) => {
+app.get("/terms", (_req, res) => {
   const html = `
 <!DOCTYPE html>
 <html lang="en">
@@ -3232,7 +3445,7 @@ app.get('/terms', (_req, res) => {
   </div>
 </body>
 </html>`;
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -3241,32 +3454,44 @@ app.get('/terms', (_req, res) => {
 // =============================================================================
 
 // Prometheus-compatible metrics endpoint
-app.get('/metrics', (_req, res) => {
+app.get("/metrics", (_req, res) => {
   // Update system gauges before export
-  metrics.set('process_uptime_seconds', {}, Math.floor((Date.now() - startTime) / 1000));
-  metrics.set('process_memory_heap_bytes', {}, process.memoryUsage().heapUsed);
-  metrics.set('process_memory_rss_bytes', {}, process.memoryUsage().rss);
-  metrics.set('nodejs_active_handles', {}, process._getActiveHandles?.()?.length || 0);
+  metrics.set(
+    "process_uptime_seconds",
+    {},
+    Math.floor((Date.now() - startTime) / 1000)
+  );
+  metrics.set("process_memory_heap_bytes", {}, process.memoryUsage().heapUsed);
+  metrics.set("process_memory_rss_bytes", {}, process.memoryUsage().rss);
+  metrics.set(
+    "nodejs_active_handles",
+    {},
+    process._getActiveHandles?.()?.length || 0
+  );
 
-  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.set("Content-Type", "text/plain; charset=utf-8");
   res.send(metrics.export());
 });
 
 // JSON metrics endpoint (for dashboards)
-app.get('/metrics/json', (_req, res) => {
-  metrics.set('process_uptime_seconds', {}, Math.floor((Date.now() - startTime) / 1000));
-  metrics.set('process_memory_heap_bytes', {}, process.memoryUsage().heapUsed);
-  metrics.set('process_memory_rss_bytes', {}, process.memoryUsage().rss);
+app.get("/metrics/json", (_req, res) => {
+  metrics.set(
+    "process_uptime_seconds",
+    {},
+    Math.floor((Date.now() - startTime) / 1000)
+  );
+  metrics.set("process_memory_heap_bytes", {}, process.memoryUsage().heapUsed);
+  metrics.set("process_memory_rss_bytes", {}, process.memoryUsage().rss);
 
   res.json({
     timestamp: new Date().toISOString(),
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
-    ...metrics.toJSON()
+    ...metrics.toJSON(),
   });
 });
 
 // Simple dashboard view
-app.get('/metrics/dashboard', (_req, res) => {
+app.get("/metrics/dashboard", (_req, res) => {
   const data = metrics.toJSON();
   const uptime = Math.floor((Date.now() - startTime) / 1000);
   const memory = process.memoryUsage();
@@ -3295,7 +3520,9 @@ app.get('/metrics/dashboard', (_req, res) => {
     <h2>System</h2>
     <div class="metric">
       <span class="label">Uptime:</span>
-      <span class="value">${uptime}s (${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m)</span>
+      <span class="value">${uptime}s (${Math.floor(
+    uptime / 3600
+  )}h ${Math.floor((uptime % 3600) / 60)}m)</span>
     </div>
     <div class="metric">
       <span class="label">Memory (Heap):</span>
@@ -3309,19 +3536,31 @@ app.get('/metrics/dashboard', (_req, res) => {
 
   <div class="section">
     <h2>Request Counters</h2>
-    ${Object.entries(data.counters).map(([k, v]) =>
-      `<div class="metric"><span class="label">${k}:</span> <span class="value">${v}</span></div>`
-    ).join('') || '<div class="metric">No requests yet</div>'}
+    ${
+      Object.entries(data.counters)
+        .map(
+          ([k, v]) =>
+            `<div class="metric"><span class="label">${k}:</span> <span class="value">${v}</span></div>`
+        )
+        .join("") || '<div class="metric">No requests yet</div>'
+    }
   </div>
 
   <div class="section">
     <h2>Latency Histograms</h2>
-    ${Object.entries(data.histograms).map(([k, v]) =>
-      `<div class="metric">
+    ${
+      Object.entries(data.histograms)
+        .map(
+          ([k, v]) =>
+            `<div class="metric">
         <span class="label">${k}:</span><br>
-        <span class="value">count=${v.count} avg=${v.avg.toFixed(1)}ms p50=${v.p50}ms p95=${v.p95}ms p99=${v.p99}ms</span>
+        <span class="value">count=${v.count} avg=${v.avg.toFixed(1)}ms p50=${
+              v.p50
+            }ms p95=${v.p95}ms p99=${v.p99}ms</span>
       </div>`
-    ).join('') || '<div class="metric">No latency data yet</div>'}
+        )
+        .join("") || '<div class="metric">No latency data yet</div>'
+    }
   </div>
 
   <div class="section">
@@ -3331,7 +3570,7 @@ app.get('/metrics/dashboard', (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -3339,36 +3578,37 @@ app.get('/metrics/dashboard', (_req, res) => {
 // INTELLIGENCE DASHBOARD - "gauges and lights for engineers" - Alan
 // Shows the VALUE metrics: salience, entities, relationships, patterns
 // =============================================================================
-app.get('/dashboard', (_req, res) => {
+app.get("/dashboard", (_req, res) => {
   const memories = Array.from(memoryStore.values());
 
   // Salience distribution
   const salienceRanges = {
-    low: memories.filter(m => m.salience < 40).length,
-    medium: memories.filter(m => m.salience >= 40 && m.salience < 70).length,
-    high: memories.filter(m => m.salience >= 70).length,
+    low: memories.filter((m) => m.salience < 40).length,
+    medium: memories.filter((m) => m.salience >= 40 && m.salience < 70).length,
+    high: memories.filter((m) => m.salience >= 70).length,
   };
 
   // Entity breakdown
   const entityCounts = {};
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const entities = m.entities || [m.entity];
-    entities.forEach(e => {
+    entities.forEach((e) => {
       entityCounts[e] = (entityCounts[e] || 0) + 1;
     });
   });
 
   // Fidelity breakdown
   const fidelityCounts = {
-    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
-    derived: memories.filter(m => m.fidelity === 'derived').length,
-    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+    verbatim: memories.filter((m) => m.fidelity === "verbatim").length,
+    derived: memories.filter((m) => m.fidelity === "derived").length,
+    standard: memories.filter((m) => m.fidelity === "standard" || !m.fidelity)
+      .length,
   };
 
   // Source breakdown (for Slack ingestion visibility)
   const sourceCounts = {};
-  memories.forEach(m => {
-    const source = m.context?.source || 'direct';
+  memories.forEach((m) => {
+    const source = m.context?.source || "direct";
     sourceCounts[source] = (sourceCounts[source] || 0) + 1;
   });
 
@@ -3378,9 +3618,13 @@ app.get('/dashboard', (_req, res) => {
     .slice(0, 10);
 
   // Average salience
-  const avgSalience = memories.length > 0
-    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
-    : 0;
+  const avgSalience =
+    memories.length > 0
+      ? Math.round(
+          memories.reduce((sum, m) => sum + (m.salience || 0), 0) /
+            memories.length
+        )
+      : 0;
 
   const html = `
 <!DOCTYPE html>
@@ -3452,7 +3696,9 @@ app.get('/dashboard', (_req, res) => {
       <h3>Average Salience</h3>
       <div class="big-number">${avgSalience}</div>
       <div class="bar">
-        <div class="bar-fill bar-${avgSalience < 40 ? 'low' : avgSalience < 70 ? 'medium' : 'high'}" style="width: ${avgSalience}%"></div>
+        <div class="bar-fill bar-${
+          avgSalience < 40 ? "low" : avgSalience < 70 ? "medium" : "high"
+        }" style="width: ${avgSalience}%"></div>
       </div>
     </div>
     <div class="card">
@@ -3472,31 +3718,43 @@ app.get('/dashboard', (_req, res) => {
         <span class="stat-label">High (70-100)</span>
         <span class="stat-value">${salienceRanges.high}</span>
       </div>
-      <div class="bar"><div class="bar-fill bar-high" style="width: ${memories.length ? (salienceRanges.high / memories.length * 100) : 0}%"></div></div>
+      <div class="bar"><div class="bar-fill bar-high" style="width: ${
+        memories.length ? (salienceRanges.high / memories.length) * 100 : 0
+      }%"></div></div>
       <div class="stat-row">
         <span class="stat-label">Medium (40-69)</span>
         <span class="stat-value">${salienceRanges.medium}</span>
       </div>
-      <div class="bar"><div class="bar-fill bar-medium" style="width: ${memories.length ? (salienceRanges.medium / memories.length * 100) : 0}%"></div></div>
+      <div class="bar"><div class="bar-fill bar-medium" style="width: ${
+        memories.length ? (salienceRanges.medium / memories.length) * 100 : 0
+      }%"></div></div>
       <div class="stat-row">
         <span class="stat-label">Low (0-39)</span>
         <span class="stat-value">${salienceRanges.low}</span>
       </div>
-      <div class="bar"><div class="bar-fill bar-low" style="width: ${memories.length ? (salienceRanges.low / memories.length * 100) : 0}%"></div></div>
+      <div class="bar"><div class="bar-fill bar-low" style="width: ${
+        memories.length ? (salienceRanges.low / memories.length) * 100 : 0
+      }%"></div></div>
     </div>
     <div class="card">
       <h3>Fidelity Types</h3>
       <div class="stat-row">
         <span class="stat-label">Verbatim (exact quotes)</span>
-        <span class="stat-value"><span class="tag tag-verbatim">${fidelityCounts.verbatim}</span></span>
+        <span class="stat-value"><span class="tag tag-verbatim">${
+          fidelityCounts.verbatim
+        }</span></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Derived (interpretations)</span>
-        <span class="stat-value"><span class="tag tag-derived">${fidelityCounts.derived}</span></span>
+        <span class="stat-value"><span class="tag tag-derived">${
+          fidelityCounts.derived
+        }</span></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Standard</span>
-        <span class="stat-value"><span class="tag tag-standard">${fidelityCounts.standard}</span></span>
+        <span class="stat-value"><span class="tag tag-standard">${
+          fidelityCounts.standard
+        }</span></span>
       </div>
     </div>
   </div>
@@ -3504,24 +3762,32 @@ app.get('/dashboard', (_req, res) => {
   <h2>Data Sources</h2>
   <div class="grid">
     <div class="card">
-      ${Object.entries(sourceCounts).map(([source, count]) => `
+      ${Object.entries(sourceCounts)
+        .map(
+          ([source, count]) => `
         <div class="stat-row">
           <span class="stat-label">${source}</span>
           <span class="stat-value">${count}</span>
         </div>
-      `).join('')}
+      `
+        )
+        .join("")}
     </div>
   </div>
 
   <h2>Top Entities</h2>
   <div class="card">
     <div class="entity-list">
-      ${topEntities.map(([name, count]) => `
+      ${topEntities
+        .map(
+          ([name, count]) => `
         <div class="entity-item">
           <span class="entity-name">${name}</span>
           <span class="entity-count">${count} memories</span>
         </div>
-      `).join('')}
+      `
+        )
+        .join("")}
     </div>
   </div>
 
@@ -3533,7 +3799,7 @@ app.get('/dashboard', (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -3541,7 +3807,7 @@ app.get('/dashboard', (_req, res) => {
 // INTERACTIVE METRICS DASHBOARD - Game-like experience for everyone
 // "Stop talking and start listening" - but make it FUN
 // =============================================================================
-app.get('/dashboard/interactive', (_req, res) => {
+app.get("/dashboard/interactive", (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
 
@@ -3552,23 +3818,27 @@ app.get('/dashboard/interactive', (_req, res) => {
   const xpToNextLevel = 10;
 
   // Calculate "Memory Power" score (0-100)
-  const avgSalience = memories.length > 0
-    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
-    : 0;
+  const avgSalience =
+    memories.length > 0
+      ? Math.round(
+          memories.reduce((sum, m) => sum + (m.salience || 0), 0) /
+            memories.length
+        )
+      : 0;
 
   // Salience distribution for the "quality meter"
   const salienceRanges = {
-    legendary: memories.filter(m => m.salience >= 90).length,
-    epic: memories.filter(m => m.salience >= 70 && m.salience < 90).length,
-    rare: memories.filter(m => m.salience >= 50 && m.salience < 70).length,
-    common: memories.filter(m => m.salience < 50).length,
+    legendary: memories.filter((m) => m.salience >= 90).length,
+    epic: memories.filter((m) => m.salience >= 70 && m.salience < 90).length,
+    rare: memories.filter((m) => m.salience >= 50 && m.salience < 70).length,
+    common: memories.filter((m) => m.salience < 50).length,
   };
 
   // Entity counts for "relationship constellation"
   const entityCounts = {};
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const entities = m.entities || [m.entity];
-    entities.forEach(e => {
+    entities.forEach((e) => {
       entityCounts[e] = (entityCounts[e] || 0) + 1;
     });
   });
@@ -3579,18 +3849,25 @@ app.get('/dashboard/interactive', (_req, res) => {
 
   // Fidelity for "authenticity score"
   const fidelityCounts = {
-    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
-    derived: memories.filter(m => m.fidelity === 'derived').length,
-    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+    verbatim: memories.filter((m) => m.fidelity === "verbatim").length,
+    derived: memories.filter((m) => m.fidelity === "derived").length,
+    standard: memories.filter((m) => m.fidelity === "standard" || !m.fidelity)
+      .length,
   };
-  const authenticityScore = memories.length > 0
-    ? Math.round((fidelityCounts.verbatim * 100 + fidelityCounts.derived * 60 + fidelityCounts.standard * 40) / memories.length)
-    : 0;
+  const authenticityScore =
+    memories.length > 0
+      ? Math.round(
+          (fidelityCounts.verbatim * 100 +
+            fidelityCounts.derived * 60 +
+            fidelityCounts.standard * 40) /
+            memories.length
+        )
+      : 0;
 
   // Source breakdown as "data streams"
   const sourceCounts = {};
-  memories.forEach(m => {
-    const source = m.context?.source || 'direct';
+  memories.forEach((m) => {
+    const source = m.context?.source || "direct";
     sourceCounts[source] = (sourceCounts[source] || 0) + 1;
   });
 
@@ -3601,14 +3878,54 @@ app.get('/dashboard/interactive', (_req, res) => {
 
   // Calculate achievements
   const achievements = [];
-  if (memoryCount >= 1) achievements.push({ icon: '🧠', name: 'First Memory', desc: 'Stored your first memory' });
-  if (memoryCount >= 10) achievements.push({ icon: '📚', name: 'Memory Keeper', desc: 'Stored 10 memories' });
-  if (memoryCount >= 50) achievements.push({ icon: '🏆', name: 'Memory Master', desc: 'Stored 50 memories' });
-  if (memoryCount >= 100) achievements.push({ icon: '👑', name: 'Memory Monarch', desc: 'Stored 100 memories' });
-  if (fidelityCounts.verbatim >= 5) achievements.push({ icon: '💎', name: 'Truth Seeker', desc: '5 verbatim memories' });
-  if (Object.keys(entityCounts).length >= 5) achievements.push({ icon: '🌐', name: 'Connected', desc: '5 unique entities' });
-  if (avgSalience >= 70) achievements.push({ icon: '⚡', name: 'High Impact', desc: 'Avg salience 70+' });
-  if (Object.keys(sourceCounts).length >= 2) achievements.push({ icon: '📡', name: 'Multi-Source', desc: '2+ data sources' });
+  if (memoryCount >= 1)
+    achievements.push({
+      icon: "🧠",
+      name: "First Memory",
+      desc: "Stored your first memory",
+    });
+  if (memoryCount >= 10)
+    achievements.push({
+      icon: "📚",
+      name: "Memory Keeper",
+      desc: "Stored 10 memories",
+    });
+  if (memoryCount >= 50)
+    achievements.push({
+      icon: "🏆",
+      name: "Memory Master",
+      desc: "Stored 50 memories",
+    });
+  if (memoryCount >= 100)
+    achievements.push({
+      icon: "👑",
+      name: "Memory Monarch",
+      desc: "Stored 100 memories",
+    });
+  if (fidelityCounts.verbatim >= 5)
+    achievements.push({
+      icon: "💎",
+      name: "Truth Seeker",
+      desc: "5 verbatim memories",
+    });
+  if (Object.keys(entityCounts).length >= 5)
+    achievements.push({
+      icon: "🌐",
+      name: "Connected",
+      desc: "5 unique entities",
+    });
+  if (avgSalience >= 70)
+    achievements.push({
+      icon: "⚡",
+      name: "High Impact",
+      desc: "Avg salience 70+",
+    });
+  if (Object.keys(sourceCounts).length >= 2)
+    achievements.push({
+      icon: "📡",
+      name: "Multi-Source",
+      desc: "2+ data sources",
+    });
 
   const html = `
 <!DOCTYPE html>
@@ -4131,13 +4448,16 @@ app.get('/dashboard/interactive', (_req, res) => {
 <body>
   <div class="bg-animation"></div>
   <div class="particles">
-    ${Array.from({length: 20}, (_, i) => `
+    ${Array.from(
+      { length: 20 },
+      (_, i) => `
       <div class="particle" style="
         left: ${Math.random() * 100}%;
         animation-delay: ${Math.random() * 15}s;
         animation-duration: ${10 + Math.random() * 10}s;
       "></div>
-    `).join('')}
+    `
+    ).join("")}
   </div>
 
   <div class="header">
@@ -4148,7 +4468,9 @@ app.get('/dashboard/interactive', (_req, res) => {
         <span>Live</span>
       </div>
       <div class="status-item">
-        <span>Uptime: ${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m</span>
+        <span>Uptime: ${Math.floor(uptimeSeconds / 3600)}h ${Math.floor(
+    (uptimeSeconds % 3600) / 60
+  )}m</span>
       </div>
     </div>
   </div>
@@ -4161,7 +4483,9 @@ app.get('/dashboard/interactive', (_req, res) => {
         <h2>Memory Level ${level}</h2>
         <p>Your AI memory system is growing stronger with every interaction</p>
         <div class="xp-bar">
-          <div class="xp-fill" style="width: ${(xpInLevel / xpToNextLevel) * 100}%"></div>
+          <div class="xp-fill" style="width: ${
+            (xpInLevel / xpToNextLevel) * 100
+          }%"></div>
         </div>
         <div class="xp-text">${xpInLevel} / ${xpToNextLevel} memories to next level</div>
       </div>
@@ -4192,28 +4516,36 @@ app.get('/dashboard/interactive', (_req, res) => {
         <div class="quality-row legendary">
           <span class="quality-label" style="color: #ffd700;">Legendary</span>
           <div class="quality-bar">
-            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.legendary / memoryCount) * 100 : 0}%"></div>
+            <div class="quality-fill" style="width: ${
+              memoryCount ? (salienceRanges.legendary / memoryCount) * 100 : 0
+            }%"></div>
           </div>
           <span class="quality-count">${salienceRanges.legendary}</span>
         </div>
         <div class="quality-row epic">
           <span class="quality-label" style="color: #a855f7;">Epic</span>
           <div class="quality-bar">
-            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.epic / memoryCount) * 100 : 0}%"></div>
+            <div class="quality-fill" style="width: ${
+              memoryCount ? (salienceRanges.epic / memoryCount) * 100 : 0
+            }%"></div>
           </div>
           <span class="quality-count">${salienceRanges.epic}</span>
         </div>
         <div class="quality-row rare">
           <span class="quality-label" style="color: #3b82f6;">Rare</span>
           <div class="quality-bar">
-            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.rare / memoryCount) * 100 : 0}%"></div>
+            <div class="quality-fill" style="width: ${
+              memoryCount ? (salienceRanges.rare / memoryCount) * 100 : 0
+            }%"></div>
           </div>
           <span class="quality-count">${salienceRanges.rare}</span>
         </div>
         <div class="quality-row common">
           <span class="quality-label" style="color: #6b7280;">Common</span>
           <div class="quality-bar">
-            <div class="quality-fill" style="width: ${memoryCount ? (salienceRanges.common / memoryCount) * 100 : 0}%"></div>
+            <div class="quality-fill" style="width: ${
+              memoryCount ? (salienceRanges.common / memoryCount) * 100 : 0
+            }%"></div>
           </div>
           <span class="quality-count">${salienceRanges.common}</span>
         </div>
@@ -4227,9 +4559,15 @@ app.get('/dashboard/interactive', (_req, res) => {
         <div class="big-number" style="font-size: 42px;">${authenticityScore}%</div>
         <div class="big-label">Memory Fidelity Rating</div>
         <div style="margin-top: 16px; display: flex; justify-content: center; gap: 16px; font-size: 12px;">
-          <span style="color: var(--accent-green);">💎 ${fidelityCounts.verbatim} Verbatim</span>
-          <span style="color: var(--accent-gold);">🔮 ${fidelityCounts.derived} Derived</span>
-          <span style="color: var(--text-secondary);">📝 ${fidelityCounts.standard} Standard</span>
+          <span style="color: var(--accent-green);">💎 ${
+            fidelityCounts.verbatim
+          } Verbatim</span>
+          <span style="color: var(--accent-gold);">🔮 ${
+            fidelityCounts.derived
+          } Derived</span>
+          <span style="color: var(--text-secondary);">📝 ${
+            fidelityCounts.standard
+          } Standard</span>
         </div>
       </div>
     </div>
@@ -4238,13 +4576,21 @@ app.get('/dashboard/interactive', (_req, res) => {
     <div class="card">
       <div class="card-title">Entity Constellation</div>
       <div class="constellation">
-        ${topEntities.length > 0 ? topEntities.map(([name, count]) => `
+        ${
+          topEntities.length > 0
+            ? topEntities
+                .map(
+                  ([name, count]) => `
           <div class="entity-node">
             <div class="entity-dot"></div>
             <span>${name}</span>
             <span class="entity-count">${count}</span>
           </div>
-        `).join('') : '<span style="color: var(--text-secondary);">No entities yet</span>'}
+        `
+                )
+                .join("")
+            : '<span style="color: var(--text-secondary);">No entities yet</span>'
+        }
       </div>
     </div>
 
@@ -4252,16 +4598,27 @@ app.get('/dashboard/interactive', (_req, res) => {
     <div class="card">
       <div class="card-title">Data Streams</div>
       <div class="data-streams">
-        ${Object.entries(sourceCounts).map(([source, count]) => `
+        ${
+          Object.entries(sourceCounts)
+            .map(
+              ([source, count]) => `
           <div class="stream">
-            <div class="stream-icon">${source === 'slack' ? '💬' : source === 'api' ? '🔌' : '📡'}</div>
+            <div class="stream-icon">${
+              source === "slack" ? "💬" : source === "api" ? "🔌" : "📡"
+            }</div>
             <div class="stream-info">
-              <div class="stream-name">${source.charAt(0).toUpperCase() + source.slice(1)}</div>
+              <div class="stream-name">${
+                source.charAt(0).toUpperCase() + source.slice(1)
+              }</div>
               <div class="stream-count">${count} memories ingested</div>
             </div>
             <div class="stream-indicator"></div>
           </div>
-        `).join('') || '<span style="color: var(--text-secondary);">No data streams active</span>'}
+        `
+            )
+            .join("") ||
+          '<span style="color: var(--text-secondary);">No data streams active</span>'
+        }
       </div>
     </div>
 
@@ -4269,13 +4626,21 @@ app.get('/dashboard/interactive', (_req, res) => {
     <div class="card" style="grid-column: span 2;">
       <div class="card-title">Achievements Unlocked</div>
       <div class="achievements">
-        ${achievements.length > 0 ? achievements.map(a => `
+        ${
+          achievements.length > 0
+            ? achievements
+                .map(
+                  (a) => `
           <div class="achievement">
             <div class="achievement-icon">${a.icon}</div>
             <div class="achievement-name">${a.name}</div>
             <div class="achievement-desc">${a.desc}</div>
           </div>
-        `).join('') : '<span style="color: var(--text-secondary);">Start storing memories to unlock achievements!</span>'}
+        `
+                )
+                .join("")
+            : '<span style="color: var(--text-secondary);">Start storing memories to unlock achievements!</span>'
+        }
       </div>
     </div>
 
@@ -4283,15 +4648,25 @@ app.get('/dashboard/interactive', (_req, res) => {
     <div class="card">
       <div class="card-title">Recent Activity</div>
       <div class="activity-feed">
-        ${recentMemories.length > 0 ? recentMemories.map(m => `
+        ${
+          recentMemories.length > 0
+            ? recentMemories
+                .map(
+                  (m) => `
           <div class="activity-item">
-            <div class="activity-content">${m.content.substring(0, 60)}${m.content.length > 60 ? '...' : ''}</div>
+            <div class="activity-content">${m.content.substring(0, 60)}${
+                    m.content.length > 60 ? "..." : ""
+                  }</div>
             <div class="activity-meta">
               <span>Salience: ${m.salience}</span>
               <span>${new Date(m.timestamp).toLocaleTimeString()}</span>
             </div>
           </div>
-        `).join('') : '<span style="color: var(--text-secondary);">No activity yet</span>'}
+        `
+                )
+                .join("")
+            : '<span style="color: var(--text-secondary);">No activity yet</span>'
+        }
       </div>
     </div>
   </div>
@@ -4319,89 +4694,131 @@ app.get('/dashboard/interactive', (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // =============================================================================
 // MISSION CONTROL - Space Shuttle meets Hollywood
 // =============================================================================
-app.get('/dashboard/mission-control', async (_req, res) => {
+app.get("/dashboard/mission-control", async (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
   const memoryCount = memories.length;
 
   // Calculate metrics for gauges
-  const avgSalience = memories.length > 0
-    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
-    : 0;
+  const avgSalience =
+    memories.length > 0
+      ? Math.round(
+          memories.reduce((sum, m) => sum + (m.salience || 0), 0) /
+            memories.length
+        )
+      : 0;
 
   const entityCounts = {};
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const entities = m.entities || [m.entity];
-    entities.forEach(e => { entityCounts[e] = (entityCounts[e] || 0) + 1; });
+    entities.forEach((e) => {
+      entityCounts[e] = (entityCounts[e] || 0) + 1;
+    });
   });
   const entityCount = Object.keys(entityCounts).length;
 
   // Real system vitals from OS
-  const os = await import('os');
+  const os = await import("os");
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const cpus = os.cpus();
-  const cpuLoad = cpus.length > 0
-    ? Math.round(cpus.reduce((acc, cpu) => {
-        const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
-        return acc + ((total - cpu.times.idle) / total) * 100;
-      }, 0) / cpus.length)
-    : 0;
+  const cpuLoad =
+    cpus.length > 0
+      ? Math.round(
+          cpus.reduce((acc, cpu) => {
+            const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+            return acc + ((total - cpu.times.idle) / total) * 100;
+          }, 0) / cpus.length
+        )
+      : 0;
   const memLoad = Math.round(((totalMem - freeMem) / totalMem) * 100);
-  const networkLoad = entityCount > 0 ? Math.min(99, entityCount * 5 + memoryCount) : 0;
+  const networkLoad =
+    entityCount > 0 ? Math.min(99, entityCount * 5 + memoryCount) : 0;
 
   // Radar blips — deterministic positions from entity names
   const entityNames = Object.keys(entityCounts);
-  const radarBlips = entityNames.slice(0, 5).map((name, i) => {
-    const angle = (i * 72) * Math.PI / 180;
-    let nameHash = 0;
-    for (let c = 0; c < name.length; c++) {
-      nameHash = ((nameHash << 5) - nameHash + name.charCodeAt(c)) | 0;
-    }
-    const r = 30 + (Math.abs(nameHash) % 40);
-    const x = 50 + r * Math.cos(angle);
-    const y = 50 + r * Math.sin(angle);
-    return '<div class="radar-blip" style="left: ' + x + '%; top: ' + y + '%;" title="' + name + '"></div>';
-  }).join('');
+  const radarBlips = entityNames
+    .slice(0, 5)
+    .map((name, i) => {
+      const angle = (i * 72 * Math.PI) / 180;
+      let nameHash = 0;
+      for (let c = 0; c < name.length; c++) {
+        nameHash = ((nameHash << 5) - nameHash + name.charCodeAt(c)) | 0;
+      }
+      const r = 30 + (Math.abs(nameHash) % 40);
+      const x = 50 + r * Math.cos(angle);
+      const y = 50 + r * Math.sin(angle);
+      return (
+        '<div class="radar-blip" style="left: ' +
+        x +
+        "%; top: " +
+        y +
+        '%;" title="' +
+        name +
+        '"></div>'
+      );
+    })
+    .join("");
 
   // Indicator lights - state driven by real system signals
   const indicatorConfig = [
-    { icon: '◎', color: 'c1', label: 'context' },
-    { icon: '☺', color: 'c2', label: 'person' },
-    { icon: '⏱', color: 'c3', label: 'time' },
-    { icon: '⚡', color: 'c4', label: 'alert' },
-    { icon: '♥', color: 'c5', label: 'emotion' },
-    { icon: '✓', color: 'c6', label: 'task' },
-    { icon: '◈', color: 'c7', label: 'memory' },
+    { icon: "◎", color: "c1", label: "context" },
+    { icon: "☺", color: "c2", label: "person" },
+    { icon: "⏱", color: "c3", label: "time" },
+    { icon: "⚡", color: "c4", label: "alert" },
+    { icon: "♥", color: "c5", label: "emotion" },
+    { icon: "✓", color: "c6", label: "task" },
+    { icon: "◈", color: "c7", label: "memory" },
   ];
   const systemHealthy = memoryCount > 0;
-  const indicatorLights = Array(32).fill(0).map((_, i) => {
-    const cfg = indicatorConfig[i % 7];
-    const group = Math.floor(i / 7);
-    let state;
-    if (group === 0) state = systemHealthy ? 'on' : 'off';
-    else if (group === 1) state = avgSalience > 0 ? 'slow' : 'off';
-    else if (group === 2) state = entityCount > 0 ? 'on' : 'off';
-    else if (group === 3) state = memoryCount > 10 ? 'slow' : 'on';
-    else state = (i % 3 === 0) ? 'on' : 'slow';
-    return '<div class="indicator-light ' + cfg.color + ' ' + state + '" title="' + cfg.label + '">' + cfg.icon + '</div>';
-  }).join('');
+  const indicatorLights = Array(32)
+    .fill(0)
+    .map((_, i) => {
+      const cfg = indicatorConfig[i % 7];
+      const group = Math.floor(i / 7);
+      let state;
+      if (group === 0) state = systemHealthy ? "on" : "off";
+      else if (group === 1) state = avgSalience > 0 ? "slow" : "off";
+      else if (group === 2) state = entityCount > 0 ? "on" : "off";
+      else if (group === 3) state = memoryCount > 10 ? "slow" : "on";
+      else state = i % 3 === 0 ? "on" : "slow";
+      return (
+        '<div class="indicator-light ' +
+        cfg.color +
+        " " +
+        state +
+        '" title="' +
+        cfg.label +
+        '">' +
+        cfg.icon +
+        "</div>"
+      );
+    })
+    .join("");
 
-  const waveBars = Array(50).fill(0).map((_, i) =>
-    '<div class="wave-bar" style="animation-delay: ' + (i * 0.05) + 's;"></div>'
-  ).join('');
+  const waveBars = Array(50)
+    .fill(0)
+    .map(
+      (_, i) =>
+        '<div class="wave-bar" style="animation-delay: ' +
+        i * 0.05 +
+        's;"></div>'
+    )
+    .join("");
 
-  const sourceCount = Object.keys(memories.reduce((acc, m) => {
-    acc[m.context?.source || 'direct'] = true;
-    return acc;
-  }, {})).length;
+  const sourceCount = Object.keys(
+    memories.reduce((acc, m) => {
+      acc[m.context?.source || "direct"] = true;
+      return acc;
+    }, {})
+  ).length;
 
   const html = `
 <!DOCTYPE html>
@@ -5138,7 +5555,7 @@ app.get('/dashboard/mission-control', async (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--cyan)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * cpuLoad / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * cpuLoad) / 100}" />
             </svg>
             <div class="gauge-value" style="color: var(--cyan);">${cpuLoad}%</div>
           </div>
@@ -5151,7 +5568,7 @@ app.get('/dashboard/mission-control', async (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--magenta)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * memLoad / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * memLoad) / 100}" />
             </svg>
             <div class="gauge-value" style="color: var(--magenta);">${memLoad}%</div>
           </div>
@@ -5164,7 +5581,7 @@ app.get('/dashboard/mission-control', async (_req, res) => {
               <circle class="gauge-fill" cx="50" cy="50" r="40"
                 stroke="var(--green)"
                 stroke-dasharray="251.2"
-                stroke-dashoffset="${251.2 - (251.2 * networkLoad / 100)}" />
+                stroke-dashoffset="${251.2 - (251.2 * networkLoad) / 100}" />
             </svg>
             <div class="gauge-value" style="color: var(--green);">${networkLoad}%</div>
           </div>
@@ -5245,7 +5662,7 @@ app.get('/dashboard/mission-control', async (_req, res) => {
             <circle class="gauge-fill" cx="50" cy="50" r="40"
               stroke="var(--yellow)"
               stroke-dasharray="251.2"
-              stroke-dashoffset="${251.2 - (251.2 * avgSalience / 100)}" />
+              stroke-dashoffset="${251.2 - (251.2 * avgSalience) / 100}" />
           </svg>
           <div class="gauge-value" style="color: var(--yellow);">${avgSalience}</div>
         </div>
@@ -5256,12 +5673,24 @@ app.get('/dashboard/mission-control', async (_req, res) => {
     <div class="panel">
       <div class="panel-title">Data Stream</div>
       <div class="data-stream">
-        <div class="data-line"><span class="time">[${new Date().toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">SYS</span> Memory core initialized</div>
-        <div class="data-line"><span class="time">[${new Date(Date.now() - 1000).toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">SAL</span> Salience engine: <span class="value">ACTIVE</span></div>
-        <div class="data-line"><span class="time">[${new Date(Date.now() - 2000).toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">NET</span> Entity graph: <span class="value">${entityCount} nodes</span></div>
-        <div class="data-line"><span class="time">[${new Date(Date.now() - 3000).toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">MEM</span> Storage: <span class="value">${memoryCount} records</span></div>
-        <div class="data-line"><span class="time">[${new Date(Date.now() - 4000).toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">AUTH</span> Gate status: <span class="value">SECURE</span></div>
-        <div class="data-line"><span class="time">[${new Date(Date.now() - 5000).toISOString().split('T')[1].split('.')[0]}]</span> <span class="type">SYS</span> All systems nominal</div>
+        <div class="data-line"><span class="time">[${
+          new Date().toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">SYS</span> Memory core initialized</div>
+        <div class="data-line"><span class="time">[${
+          new Date(Date.now() - 1000).toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">SAL</span> Salience engine: <span class="value">ACTIVE</span></div>
+        <div class="data-line"><span class="time">[${
+          new Date(Date.now() - 2000).toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">NET</span> Entity graph: <span class="value">${entityCount} nodes</span></div>
+        <div class="data-line"><span class="time">[${
+          new Date(Date.now() - 3000).toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">MEM</span> Storage: <span class="value">${memoryCount} records</span></div>
+        <div class="data-line"><span class="time">[${
+          new Date(Date.now() - 4000).toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">AUTH</span> Gate status: <span class="value">SECURE</span></div>
+        <div class="data-line"><span class="time">[${
+          new Date(Date.now() - 5000).toISOString().split("T")[1].split(".")[0]
+        }]</span> <span class="type">SYS</span> All systems nominal</div>
       </div>
     </div>
 
@@ -5295,7 +5724,9 @@ app.get('/dashboard/mission-control', async (_req, res) => {
           <div class="footer-stat-label">Avg Salience</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">${Math.floor(uptimeSeconds / 3600)}h</div>
+          <div class="footer-stat-value">${Math.floor(
+            uptimeSeconds / 3600
+          )}h</div>
           <div class="footer-stat-label">Uptime</div>
         </div>
       </div>
@@ -5328,50 +5759,55 @@ app.get('/dashboard/mission-control', async (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // JSON endpoint for programmatic access
-app.get('/dashboard/json', (_req, res) => {
+app.get("/dashboard/json", (_req, res) => {
   const memories = Array.from(memoryStore.values());
 
   const salienceRanges = {
-    low: memories.filter(m => m.salience < 40).length,
-    medium: memories.filter(m => m.salience >= 40 && m.salience < 70).length,
-    high: memories.filter(m => m.salience >= 70).length,
+    low: memories.filter((m) => m.salience < 40).length,
+    medium: memories.filter((m) => m.salience >= 40 && m.salience < 70).length,
+    high: memories.filter((m) => m.salience >= 70).length,
   };
 
   const entityCounts = {};
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const entities = m.entities || [m.entity];
-    entities.forEach(e => {
+    entities.forEach((e) => {
       entityCounts[e] = (entityCounts[e] || 0) + 1;
     });
   });
 
   const fidelityCounts = {
-    verbatim: memories.filter(m => m.fidelity === 'verbatim').length,
-    derived: memories.filter(m => m.fidelity === 'derived').length,
-    standard: memories.filter(m => m.fidelity === 'standard' || !m.fidelity).length,
+    verbatim: memories.filter((m) => m.fidelity === "verbatim").length,
+    derived: memories.filter((m) => m.fidelity === "derived").length,
+    standard: memories.filter((m) => m.fidelity === "standard" || !m.fidelity)
+      .length,
   };
 
   const sourceCounts = {};
-  memories.forEach(m => {
-    const source = m.context?.source || 'direct';
+  memories.forEach((m) => {
+    const source = m.context?.source || "direct";
     sourceCounts[source] = (sourceCounts[source] || 0) + 1;
   });
 
-  const avgSalience = memories.length > 0
-    ? Math.round(memories.reduce((sum, m) => sum + (m.salience || 0), 0) / memories.length)
-    : 0;
+  const avgSalience =
+    memories.length > 0
+      ? Math.round(
+          memories.reduce((sum, m) => sum + (m.salience || 0), 0) /
+            memories.length
+        )
+      : 0;
 
   // Calculate patterns from memories
   const patterns = analyzePatterns(memories);
 
   // Get active device contexts
   const devices = Array.from(deviceContextStore.values());
-  const activeDevices = devices.filter(d => d.context?.isActive);
+  const activeDevices = devices.filter((d) => d.context?.isActive);
 
   res.json({
     summary: {
@@ -5390,7 +5826,7 @@ app.get('/dashboard/json', (_req, res) => {
       .slice(0, 20)
       .map(([name, count]) => ({ name, count })),
     patterns,
-    devices: devices.map(d => ({
+    devices: devices.map((d) => ({
       deviceId: d.deviceId,
       deviceType: d.deviceType,
       location: d.context?.location,
@@ -5405,7 +5841,7 @@ app.get('/dashboard/json', (_req, res) => {
 // CALENDAR DASHBOARD - Weekly view of memories
 // "time based... we need a good UI with the stats and a calendar" - Alan
 // =============================================================================
-app.get('/dashboard/calendar', (_req, res) => {
+app.get("/dashboard/calendar", (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const now = new Date();
 
@@ -5414,46 +5850,56 @@ app.get('/dashboard/calendar', (_req, res) => {
   for (let i = 6; i >= 0; i--) {
     const date = new Date(now);
     date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = date.toISOString().split("T")[0];
 
-    const dayMemories = memories.filter(m => {
-      const memDate = new Date(m.timestamp || m.createdAt || m.created_at).toISOString().split('T')[0];
+    const dayMemories = memories.filter((m) => {
+      const memDate = new Date(m.timestamp || m.createdAt || m.created_at)
+        .toISOString()
+        .split("T")[0];
       return memDate === dateStr;
     });
 
     weekData.push({
       date: dateStr,
-      dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      dayName: date.toLocaleDateString("en-US", { weekday: "short" }),
       count: dayMemories.length,
-      avgSalience: dayMemories.length > 0
-        ? Math.round(dayMemories.reduce((s, m) => s + (m.salience || 0), 0) / dayMemories.length)
-        : 0,
-      topEntities: [...new Set(dayMemories.flatMap(m => m.entities || [m.entity]))].slice(0, 5),
-      loops: dayMemories.filter(m => m.metadata?.hasLoop).length,
+      avgSalience:
+        dayMemories.length > 0
+          ? Math.round(
+              dayMemories.reduce((s, m) => s + (m.salience || 0), 0) /
+                dayMemories.length
+            )
+          : 0,
+      topEntities: [
+        ...new Set(dayMemories.flatMap((m) => m.entities || [m.entity])),
+      ].slice(0, 5),
+      loops: dayMemories.filter((m) => m.metadata?.hasLoop).length,
     });
   }
 
   // Time of day breakdown for today
-  const todayStr = now.toISOString().split('T')[0];
-  const todayMemories = memories.filter(m => {
-    const memDate = new Date(m.timestamp || m.createdAt || m.created_at).toISOString().split('T')[0];
+  const todayStr = now.toISOString().split("T")[0];
+  const todayMemories = memories.filter((m) => {
+    const memDate = new Date(m.timestamp || m.createdAt || m.created_at)
+      .toISOString()
+      .split("T")[0];
     return memDate === todayStr;
   });
 
   const timeOfDay = {
-    morning: todayMemories.filter(m => {
+    morning: todayMemories.filter((m) => {
       const h = new Date(m.timestamp || m.createdAt).getHours();
       return h >= 5 && h < 12;
     }).length,
-    afternoon: todayMemories.filter(m => {
+    afternoon: todayMemories.filter((m) => {
       const h = new Date(m.timestamp || m.createdAt).getHours();
       return h >= 12 && h < 17;
     }).length,
-    evening: todayMemories.filter(m => {
+    evening: todayMemories.filter((m) => {
       const h = new Date(m.timestamp || m.createdAt).getHours();
       return h >= 17 && h < 21;
     }).length,
-    night: todayMemories.filter(m => {
+    night: todayMemories.filter((m) => {
       const h = new Date(m.timestamp || m.createdAt).getHours();
       return h >= 21 || h < 5;
     }).length,
@@ -5473,21 +5919,29 @@ app.get('/dashboard/calendar', (_req, res) => {
       observationDays: patterns.observationDays,
       readyForPrediction: patterns.readyForPrediction,
       confidence: patterns.confidence,
-      daysUntilHabitComplete: patterns.currentPosition?.daysUntilHabitComplete || 21,
+      daysUntilHabitComplete:
+        patterns.currentPosition?.daysUntilHabitComplete || 21,
     },
     totals: {
       memories: memories.length,
-      avgSalience: memories.length > 0
-        ? Math.round(memories.reduce((s, m) => s + (m.salience || 0), 0) / memories.length)
-        : 0,
-      entities: [...new Set(memories.flatMap(m => m.entities || [m.entity]))].length,
-      openLoops: memories.filter(m => m.metadata?.hasLoop && !m.metadata?.loopClosed).length,
-    }
+      avgSalience:
+        memories.length > 0
+          ? Math.round(
+              memories.reduce((s, m) => s + (m.salience || 0), 0) /
+                memories.length
+            )
+          : 0,
+      entities: [...new Set(memories.flatMap((m) => m.entities || [m.entity]))]
+        .length,
+      openLoops: memories.filter(
+        (m) => m.metadata?.hasLoop && !m.metadata?.loopClosed
+      ).length,
+    },
   });
 });
 
 // Calendar HTML view
-app.get('/dashboard/calendar/view', (_req, res) => {
+app.get("/dashboard/calendar/view", (_req, res) => {
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -5682,7 +6136,7 @@ app.get('/dashboard/calendar/view', (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -5691,7 +6145,7 @@ app.get('/dashboard/calendar/view', (_req, res) => {
 // Public view of pattern detection pipeline status
 // =============================================================================
 
-app.get('/dashboard/synthetic', async (_req, res) => {
+app.get("/dashboard/synthetic", async (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
 
@@ -5717,106 +6171,156 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       const db = getDatabase();
 
       // Access records
-      mongoData.accessRecords = await db.collection('accessHistory').countDocuments({ synthetic: true });
+      mongoData.accessRecords = await db
+        .collection("accessHistory")
+        .countDocuments({ synthetic: true });
 
       // Synthetic memories
-      mongoData.syntheticMemories = await db.collection('memories').countDocuments({
-        'metadata.synthetic': true,
-      });
+      mongoData.syntheticMemories = await db
+        .collection("memories")
+        .countDocuments({
+          "metadata.synthetic": true,
+        });
 
       // Time span
-      const earliest = await db.collection('accessHistory').findOne(
-        { synthetic: true },
-        { sort: { timestamp: 1 } }
-      );
-      const latest = await db.collection('accessHistory').findOne(
-        { synthetic: true },
-        { sort: { timestamp: -1 } }
-      );
+      const earliest = await db
+        .collection("accessHistory")
+        .findOne({ synthetic: true }, { sort: { timestamp: 1 } });
+      const latest = await db
+        .collection("accessHistory")
+        .findOne({ synthetic: true }, { sort: { timestamp: -1 } });
 
       if (earliest && latest) {
         mongoData.earliestRecord = earliest.timestamp;
         mongoData.latestRecord = latest.timestamp;
         mongoData.timeSpanDays = Math.ceil(
-          (new Date(latest.timestamp).getTime() - new Date(earliest.timestamp).getTime()) / (24 * 60 * 60 * 1000)
+          (new Date(latest.timestamp).getTime() -
+            new Date(earliest.timestamp).getTime()) /
+            (24 * 60 * 60 * 1000)
         );
       }
 
       // Detected patterns
-      mongoData.detectedPatterns = await db.collection('patterns').countDocuments({});
-      mongoData.patternDocs = await db.collection('patterns').find({}).limit(10).toArray();
+      mongoData.detectedPatterns = await db
+        .collection("patterns")
+        .countDocuments({});
+      mongoData.patternDocs = await db
+        .collection("patterns")
+        .find({})
+        .limit(10)
+        .toArray();
 
       // Hourly distribution (top 5)
-      mongoData.hourlyDistribution = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true } },
-        { $group: { _id: { $hour: '$timestamp' }, count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 8 },
-      ]).toArray();
+      mongoData.hourlyDistribution = await db
+        .collection("accessHistory")
+        .aggregate([
+          { $match: { synthetic: true } },
+          { $group: { _id: { $hour: "$timestamp" }, count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 8 },
+        ])
+        .toArray();
 
       // Day-of-week distribution
-      mongoData.dowDistribution = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true } },
-        { $group: { _id: { $dayOfWeek: '$timestamp' }, count: { $sum: 1 } } },
-        { $sort: { _id: 1 } },
-      ]).toArray();
+      mongoData.dowDistribution = await db
+        .collection("accessHistory")
+        .aggregate([
+          { $match: { synthetic: true } },
+          { $group: { _id: { $dayOfWeek: "$timestamp" }, count: { $sum: 1 } } },
+          { $sort: { _id: 1 } },
+        ])
+        .toArray();
 
       // ─── PREDICTION METRICS ───────────────────────────────────────────
       // Group by pattern (contextFrame.activity) to compute per-pattern stats
-      mongoData.patternBreakdown = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true, 'contextFrame.activity': { $exists: true } } },
-        { $group: {
-          _id: '$contextFrame.activity',
-          count: { $sum: 1 },
-          avgHour: { $avg: { $hour: '$timestamp' } },
-          minHour: { $min: { $hour: '$timestamp' } },
-          maxHour: { $max: { $hour: '$timestamp' } },
-          firstEvent: { $min: '$timestamp' },
-          lastEvent: { $max: '$timestamp' },
-          people: { $addToSet: '$contextFrame.people' },
-        }},
-        { $sort: { count: -1 } },
-      ]).toArray();
+      mongoData.patternBreakdown = await db
+        .collection("accessHistory")
+        .aggregate([
+          {
+            $match: {
+              synthetic: true,
+              "contextFrame.activity": { $exists: true },
+            },
+          },
+          {
+            $group: {
+              _id: "$contextFrame.activity",
+              count: { $sum: 1 },
+              avgHour: { $avg: { $hour: "$timestamp" } },
+              minHour: { $min: { $hour: "$timestamp" } },
+              maxHour: { $max: { $hour: "$timestamp" } },
+              firstEvent: { $min: "$timestamp" },
+              lastEvent: { $max: "$timestamp" },
+              people: { $addToSet: "$contextFrame.people" },
+            },
+          },
+          { $sort: { count: -1 } },
+        ])
+        .toArray();
 
       // Per-pattern hourly variance (for temporal precision)
-      mongoData.patternHourVariance = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true, 'contextFrame.activity': { $exists: true } } },
-        { $group: {
-          _id: '$contextFrame.activity',
-          hours: { $push: { $hour: '$timestamp' } },
-        }},
-      ]).toArray();
+      mongoData.patternHourVariance = await db
+        .collection("accessHistory")
+        .aggregate([
+          {
+            $match: {
+              synthetic: true,
+              "contextFrame.activity": { $exists: true },
+            },
+          },
+          {
+            $group: {
+              _id: "$contextFrame.activity",
+              hours: { $push: { $hour: "$timestamp" } },
+            },
+          },
+        ])
+        .toArray();
 
       // Entity interaction frequency (who appears in access patterns)
-      mongoData.entityFrequency = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true, 'contextFrame.people': { $exists: true, $ne: null } } },
-        { $unwind: '$contextFrame.people' },
-        { $group: { _id: '$contextFrame.people', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 },
-      ]).toArray();
+      mongoData.entityFrequency = await db
+        .collection("accessHistory")
+        .aggregate([
+          {
+            $match: {
+              synthetic: true,
+              "contextFrame.people": { $exists: true, $ne: null },
+            },
+          },
+          { $unwind: "$contextFrame.people" },
+          { $group: { _id: "$contextFrame.people", count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+        ])
+        .toArray();
 
       // Daily event counts (for hit-rate calculation)
-      mongoData.dailyEventCounts = await db.collection('accessHistory').aggregate([
-        { $match: { synthetic: true } },
-        { $group: {
-          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
-          count: { $sum: 1 },
-          patterns: { $addToSet: '$contextFrame.activity' },
-        }},
-        { $sort: { _id: 1 } },
-      ]).toArray();
-
+      mongoData.dailyEventCounts = await db
+        .collection("accessHistory")
+        .aggregate([
+          { $match: { synthetic: true } },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$timestamp" },
+              },
+              count: { $sum: 1 },
+              patterns: { $addToSet: "$contextFrame.activity" },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ])
+        .toArray();
     } catch (err) {
-      console.error('[Synthetic Dashboard] MongoDB query error:', err.message);
+      console.error("[Synthetic Dashboard] MongoDB query error:", err.message);
     }
   }
 
   // ─── COMPUTE PREDICTION ACCURACY METRICS ───────────────────────────────
   const predictionMetrics = {
-    hitRate: 0,          // % of predicted windows that had actual events
+    hitRate: 0, // % of predicted windows that had actual events
     temporalPrecision: 0, // mean hours offset from predicted time
-    patternCoverage: 0,  // % of events explained by a known pattern
+    patternCoverage: 0, // % of events explained by a known pattern
     anticipationScore: 0, // combined quality metric (0-100)
     entityPredictionScore: 0, // how well we predict entity interactions
     patternsAnalyzed: 0,
@@ -5829,7 +6333,9 @@ app.get('/dashboard/synthetic', async (_req, res) => {
   if (mongoData.patternBreakdown && mongoData.patternBreakdown.length > 0) {
     const breakdown = mongoData.patternBreakdown;
     const varianceMap = {};
-    (mongoData.patternHourVariance || []).forEach(p => { varianceMap[p._id] = p.hours; });
+    (mongoData.patternHourVariance || []).forEach((p) => {
+      varianceMap[p._id] = p.hours;
+    });
 
     let totalOffset = 0;
     let offsetCount = 0;
@@ -5838,9 +6344,14 @@ app.get('/dashboard/synthetic', async (_req, res) => {
     for (const pattern of breakdown) {
       const expectedHour = Math.round(pattern.avgHour);
       const hours = varianceMap[pattern._id] || [];
-      const patternSpanDays = pattern.firstEvent && pattern.lastEvent
-        ? Math.ceil((new Date(pattern.lastEvent).getTime() - new Date(pattern.firstEvent).getTime()) / (24 * 60 * 60 * 1000))
-        : 0;
+      const patternSpanDays =
+        pattern.firstEvent && pattern.lastEvent
+          ? Math.ceil(
+              (new Date(pattern.lastEvent).getTime() -
+                new Date(pattern.firstEvent).getTime()) /
+                (24 * 60 * 60 * 1000)
+            )
+          : 0;
 
       // Temporal precision: mean absolute offset from expected hour
       if (hours.length > 0) {
@@ -5867,29 +6378,51 @@ app.get('/dashboard/synthetic', async (_req, res) => {
 
       if (expectedEvents > 0) {
         predictionMetrics.totalPredictions += expectedEvents;
-        predictionMetrics.correctPredictions += Math.min(pattern.count, expectedEvents);
-        predictionMetrics.missedPredictions += Math.max(0, expectedEvents - pattern.count);
+        predictionMetrics.correctPredictions += Math.min(
+          pattern.count,
+          expectedEvents
+        );
+        predictionMetrics.missedPredictions += Math.max(
+          0,
+          expectedEvents - pattern.count
+        );
       }
     }
 
     predictionMetrics.patternsAnalyzed = breakdown.length;
-    predictionMetrics.temporalPrecision = offsetCount > 0 ? (totalOffset / offsetCount) : 0;
-    predictionMetrics.patternCoverage = mongoData.accessRecords > 0
-      ? (coveredEvents / mongoData.accessRecords) * 100 : 0;
-    predictionMetrics.hitRate = predictionMetrics.totalPredictions > 0
-      ? (predictionMetrics.correctPredictions / predictionMetrics.totalPredictions) * 100 : 0;
+    predictionMetrics.temporalPrecision =
+      offsetCount > 0 ? totalOffset / offsetCount : 0;
+    predictionMetrics.patternCoverage =
+      mongoData.accessRecords > 0
+        ? (coveredEvents / mongoData.accessRecords) * 100
+        : 0;
+    predictionMetrics.hitRate =
+      predictionMetrics.totalPredictions > 0
+        ? (predictionMetrics.correctPredictions /
+            predictionMetrics.totalPredictions) *
+          100
+        : 0;
 
     // Anticipation score: hit_rate weighted by temporal precision
     // Perfect = 100 (all predictions hit, 0 hour offset)
-    const precisionFactor = Math.max(0, 1 - predictionMetrics.temporalPrecision / 12);
-    predictionMetrics.anticipationScore = predictionMetrics.hitRate * precisionFactor;
+    const precisionFactor = Math.max(
+      0,
+      1 - predictionMetrics.temporalPrecision / 12
+    );
+    predictionMetrics.anticipationScore =
+      predictionMetrics.hitRate * precisionFactor;
 
     // Entity prediction: how concentrated are entity interactions?
     if (mongoData.entityFrequency && mongoData.entityFrequency.length > 0) {
-      const totalEntityEvents = mongoData.entityFrequency.reduce((s, e) => s + e.count, 0);
-      const topEntityEvents = mongoData.entityFrequency.slice(0, 3).reduce((s, e) => s + e.count, 0);
-      predictionMetrics.entityPredictionScore = totalEntityEvents > 0
-        ? (topEntityEvents / totalEntityEvents) * 100 : 0;
+      const totalEntityEvents = mongoData.entityFrequency.reduce(
+        (s, e) => s + e.count,
+        0
+      );
+      const topEntityEvents = mongoData.entityFrequency
+        .slice(0, 3)
+        .reduce((s, e) => s + e.count, 0);
+      predictionMetrics.entityPredictionScore =
+        totalEntityEvents > 0 ? (topEntityEvents / totalEntityEvents) * 100 : 0;
     }
 
     // Next predicted: find patterns and predict next occurrence
@@ -5899,10 +6432,16 @@ app.get('/dashboard/synthetic', async (_req, res) => {
       if (pattern.lastEvent) {
         const lastEvent = new Date(pattern.lastEvent);
         const periodDays = pattern.count > 20 ? 1 : pattern.count > 5 ? 7 : 21;
-        const nextExpected = new Date(lastEvent.getTime() + periodDays * 24 * 60 * 60 * 1000);
+        const nextExpected = new Date(
+          lastEvent.getTime() + periodDays * 24 * 60 * 60 * 1000
+        );
         nextExpected.setHours(Math.round(pattern.avgHour), 0, 0, 0);
         if (nextExpected > now) {
-          predictions.push({ pattern: pattern._id, when: nextExpected, hour: Math.round(pattern.avgHour) });
+          predictions.push({
+            pattern: pattern._id,
+            when: nextExpected,
+            hour: Math.round(pattern.avgHour),
+          });
         }
       }
     }
@@ -5919,80 +6458,139 @@ app.get('/dashboard/synthetic', async (_req, res) => {
 
   // Pattern confidence levels
   const patternTypes = [
-    { name: 'DAILY', period: '24h', minEvents: 21, icon: '◉' },
-    { name: 'WEEKLY', period: '168h', minEvents: 9, icon: '◎' },
-    { name: 'TRI-WEEKLY', period: '504h', minEvents: 3, icon: '○' },
-    { name: 'MONTHLY', period: '720h', minEvents: 2, icon: '◌' },
+    { name: "DAILY", period: "24h", minEvents: 21, icon: "◉" },
+    { name: "WEEKLY", period: "168h", minEvents: 9, icon: "◎" },
+    { name: "TRI-WEEKLY", period: "504h", minEvents: 3, icon: "○" },
+    { name: "MONTHLY", period: "720h", minEvents: 2, icon: "◌" },
   ];
 
   // Build hourly heatmap data
   const hourlyData = Array(24).fill(0);
-  mongoData.hourlyDistribution.forEach(h => {
+  mongoData.hourlyDistribution.forEach((h) => {
     if (h._id >= 0 && h._id < 24) hourlyData[h._id] = h.count;
   });
   const maxHourly = Math.max(1, ...hourlyData);
 
   // Build day-of-week bars
-  const dowNames = ['', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dowNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const dowData = Array(8).fill(0);
-  mongoData.dowDistribution.forEach(d => { if (d._id >= 1 && d._id <= 7) dowData[d._id] = d.count; });
+  mongoData.dowDistribution.forEach((d) => {
+    if (d._id >= 1 && d._id <= 7) dowData[d._id] = d.count;
+  });
   const maxDow = Math.max(1, ...dowData);
 
   // Generate indicator lights for pipeline stages
   const pipelineStages = [
-    { name: 'INGEST', status: mongoData.syntheticMemories > 0 ? 'on' : 'off', color: 'c2' },
-    { name: 'ACCESS', status: mongoData.accessRecords > 0 ? 'on' : 'off', color: 'c2' },
-    { name: 'FFT', status: mongoData.timeSpanDays >= 7 ? 'on' : 'off', color: 'c1' },
-    { name: '21-DAY', status: mongoData.timeSpanDays >= 21 ? 'on' : 'slow', color: 'c3' },
-    { name: '42-DAY', status: mongoData.timeSpanDays >= 42 ? 'on' : 'off', color: 'c6' },
-    { name: '63-DAY', status: mongoData.timeSpanDays >= 63 ? 'on' : 'off', color: 'c5' },
-    { name: 'STABLE', status: mongoData.detectedPatterns > 0 ? 'on' : 'off', color: 'c1' },
-    { name: 'PREDICT', status: mongoData.detectedPatterns >= 2 ? 'on' : 'off', color: 'c2' },
+    {
+      name: "INGEST",
+      status: mongoData.syntheticMemories > 0 ? "on" : "off",
+      color: "c2",
+    },
+    {
+      name: "ACCESS",
+      status: mongoData.accessRecords > 0 ? "on" : "off",
+      color: "c2",
+    },
+    {
+      name: "FFT",
+      status: mongoData.timeSpanDays >= 7 ? "on" : "off",
+      color: "c1",
+    },
+    {
+      name: "21-DAY",
+      status: mongoData.timeSpanDays >= 21 ? "on" : "slow",
+      color: "c3",
+    },
+    {
+      name: "42-DAY",
+      status: mongoData.timeSpanDays >= 42 ? "on" : "off",
+      color: "c6",
+    },
+    {
+      name: "63-DAY",
+      status: mongoData.timeSpanDays >= 63 ? "on" : "off",
+      color: "c5",
+    },
+    {
+      name: "STABLE",
+      status: mongoData.detectedPatterns > 0 ? "on" : "off",
+      color: "c1",
+    },
+    {
+      name: "PREDICT",
+      status: mongoData.detectedPatterns >= 2 ? "on" : "off",
+      color: "c2",
+    },
   ];
 
-  const pipelineLightsHtml = pipelineStages.map(s =>
-    `<div class="pipeline-stage">
+  const pipelineLightsHtml = pipelineStages
+    .map(
+      (s) =>
+        `<div class="pipeline-stage">
       <div class="indicator-light ${s.color} ${s.status}"></div>
       <div class="stage-label">${s.name}</div>
     </div>`
-  ).join('');
+    )
+    .join("");
 
   // Hourly heatmap
-  const heatmapHtml = hourlyData.map((count, hour) => {
-    const intensity = count / maxHourly;
-    const opacity = 0.1 + intensity * 0.9;
-    return `<div class="heat-cell" style="opacity: ${opacity};" title="Hour ${hour}: ${count} events">
-      <div class="heat-value">${count > 0 ? count : ''}</div>
+  const heatmapHtml = hourlyData
+    .map((count, hour) => {
+      const intensity = count / maxHourly;
+      const opacity = 0.1 + intensity * 0.9;
+      return `<div class="heat-cell" style="opacity: ${opacity};" title="Hour ${hour}: ${count} events">
+      <div class="heat-value">${count > 0 ? count : ""}</div>
       <div class="heat-label">${hour}</div>
     </div>`;
-  }).join('');
+    })
+    .join("");
 
   // DOW chart
-  const dowBarsHtml = dowData.slice(1).map((count, i) => {
-    const height = (count / maxDow) * 100;
-    return `<div class="dow-col">
+  const dowBarsHtml = dowData
+    .slice(1)
+    .map((count, i) => {
+      const height = (count / maxDow) * 100;
+      return `<div class="dow-col">
       <div class="dow-bar" style="height: ${height}%;"></div>
       <div class="dow-label">${dowNames[i + 1]}</div>
       <div class="dow-count">${count}</div>
     </div>`;
-  }).join('');
+    })
+    .join("");
 
   // Pattern detection results
-  const patternResultsHtml = patternTypes.map(pt => {
-    const detected = mongoData.patternDocs.find(p =>
-      p.period === pt.period || p.patternType === pt.name.toLowerCase()
-    );
-    const confidence = detected ? (detected.confidence * 100).toFixed(0) : '0';
-    const status = detected ? (detected.confidence >= 0.8 ? 'stable' : detected.confidence >= 0.4 ? 'forming' : 'weak') : 'none';
-    const statusColor = status === 'stable' ? 'var(--green)' : status === 'forming' ? 'var(--yellow)' : status === 'weak' ? 'var(--orange)' : 'var(--text-dim)';
-    return `<div class="pattern-row">
+  const patternResultsHtml = patternTypes
+    .map((pt) => {
+      const detected = mongoData.patternDocs.find(
+        (p) => p.period === pt.period || p.patternType === pt.name.toLowerCase()
+      );
+      const confidence = detected
+        ? (detected.confidence * 100).toFixed(0)
+        : "0";
+      const status = detected
+        ? detected.confidence >= 0.8
+          ? "stable"
+          : detected.confidence >= 0.4
+          ? "forming"
+          : "weak"
+        : "none";
+      const statusColor =
+        status === "stable"
+          ? "var(--green)"
+          : status === "forming"
+          ? "var(--yellow)"
+          : status === "weak"
+          ? "var(--orange)"
+          : "var(--text-dim)";
+      return `<div class="pattern-row">
       <div class="pattern-icon" style="color: ${statusColor};">${pt.icon}</div>
       <div class="pattern-name">${pt.name}</div>
       <div class="pattern-period">${pt.period}</div>
       <div class="pattern-confidence" style="color: ${statusColor};">${confidence}%</div>
       <div class="pattern-status" style="color: ${statusColor};">${status.toUpperCase()}</div>
     </div>`;
-  }).join('');
+    })
+    .join("");
 
   const html = `
 <!DOCTYPE html>
@@ -6580,7 +7178,9 @@ app.get('/dashboard/synthetic', async (_req, res) => {
     <div class="hero-panel panel">
       <div class="hero-number">${mongoData.timeSpanDays}</div>
       <div class="hero-label">Days Observed</div>
-      <div class="hero-sub">${mongoData.accessRecords > 0 ? 'Pipeline Active' : 'Awaiting Data'}</div>
+      <div class="hero-sub">${
+        mongoData.accessRecords > 0 ? "Pipeline Active" : "Awaiting Data"
+      }</div>
     </div>
 
     <!-- RIGHT COLUMN: Stats -->
@@ -6645,37 +7245,65 @@ app.get('/dashboard/synthetic', async (_req, res) => {
         <div class="gauge-item">
           <div class="gauge-header">
             <span class="gauge-label">Hit Rate</span>
-            <span class="gauge-percent" style="color: ${predictionMetrics.hitRate >= 80 ? 'var(--green)' : predictionMetrics.hitRate >= 50 ? 'var(--yellow)' : 'var(--red)'};">${predictionMetrics.hitRate.toFixed(1)}%</span>
+            <span class="gauge-percent" style="color: ${
+              predictionMetrics.hitRate >= 80
+                ? "var(--green)"
+                : predictionMetrics.hitRate >= 50
+                ? "var(--yellow)"
+                : "var(--red)"
+            };">${predictionMetrics.hitRate.toFixed(1)}%</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill ${predictionMetrics.hitRate >= 80 ? 'green' : predictionMetrics.hitRate >= 50 ? 'yellow' : 'cyan'}" style="width: ${predictionMetrics.hitRate}%;"></div>
+            <div class="gauge-fill ${
+              predictionMetrics.hitRate >= 80
+                ? "green"
+                : predictionMetrics.hitRate >= 50
+                ? "yellow"
+                : "cyan"
+            }" style="width: ${predictionMetrics.hitRate}%;"></div>
           </div>
         </div>
         <div class="gauge-item">
           <div class="gauge-header">
             <span class="gauge-label">Pattern Coverage</span>
-            <span class="gauge-percent">${predictionMetrics.patternCoverage.toFixed(1)}%</span>
+            <span class="gauge-percent">${predictionMetrics.patternCoverage.toFixed(
+              1
+            )}%</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill cyan" style="width: ${predictionMetrics.patternCoverage}%;"></div>
+            <div class="gauge-fill cyan" style="width: ${
+              predictionMetrics.patternCoverage
+            }%;"></div>
           </div>
         </div>
         <div class="gauge-item">
           <div class="gauge-header">
             <span class="gauge-label">Anticipation Score</span>
-            <span class="gauge-percent" style="color: var(--magenta);">${predictionMetrics.anticipationScore.toFixed(1)}</span>
+            <span class="gauge-percent" style="color: var(--magenta);">${predictionMetrics.anticipationScore.toFixed(
+              1
+            )}</span>
           </div>
           <div class="gauge-track">
-            <div class="gauge-fill magenta" style="width: ${predictionMetrics.anticipationScore}%;"></div>
+            <div class="gauge-fill magenta" style="width: ${
+              predictionMetrics.anticipationScore
+            }%;"></div>
           </div>
         </div>
         <div class="metric-detail">
           <span class="metric-label">Temporal Precision:</span>
-          <span class="metric-value" style="color: ${predictionMetrics.temporalPrecision <= 1 ? 'var(--green)' : predictionMetrics.temporalPrecision <= 2 ? 'var(--yellow)' : 'var(--orange)'};">±${predictionMetrics.temporalPrecision.toFixed(1)}h</span>
+          <span class="metric-value" style="color: ${
+            predictionMetrics.temporalPrecision <= 1
+              ? "var(--green)"
+              : predictionMetrics.temporalPrecision <= 2
+              ? "var(--yellow)"
+              : "var(--orange)"
+          };">±${predictionMetrics.temporalPrecision.toFixed(1)}h</span>
         </div>
         <div class="metric-detail">
           <span class="metric-label">Predictions Made:</span>
-          <span class="metric-value">${predictionMetrics.correctPredictions}/${predictionMetrics.totalPredictions}</span>
+          <span class="metric-value">${predictionMetrics.correctPredictions}/${
+    predictionMetrics.totalPredictions
+  }</span>
         </div>
       </div>
     </div>
@@ -6683,52 +7311,97 @@ app.get('/dashboard/synthetic', async (_req, res) => {
     <!-- ENTITY PREDICTIONS -->
     <div class="panel">
       <div class="panel-title">Entity Interaction Predictions</div>
-      ${(mongoData.entityFrequency || []).length > 0 ? `
+      ${
+        (mongoData.entityFrequency || []).length > 0
+          ? `
         <div class="entity-list">
-          ${(mongoData.entityFrequency || []).slice(0, 6).map((e, i) => {
-            const barWidth = mongoData.entityFrequency[0].count > 0 ? (e.count / mongoData.entityFrequency[0].count) * 100 : 0;
-            const colors = ['var(--cyan)', 'var(--magenta)', 'var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--blue)'];
-            return `<div class="entity-row">
-              <div class="entity-name">${e._id || 'unknown'}</div>
+          ${(mongoData.entityFrequency || [])
+            .slice(0, 6)
+            .map((e, i) => {
+              const barWidth =
+                mongoData.entityFrequency[0].count > 0
+                  ? (e.count / mongoData.entityFrequency[0].count) * 100
+                  : 0;
+              const colors = [
+                "var(--cyan)",
+                "var(--magenta)",
+                "var(--green)",
+                "var(--yellow)",
+                "var(--orange)",
+                "var(--blue)",
+              ];
+              return `<div class="entity-row">
+              <div class="entity-name">${e._id || "unknown"}</div>
               <div class="entity-bar-track">
-                <div class="entity-bar-fill" style="width: ${barWidth}%; background: ${colors[i % 6]};"></div>
+                <div class="entity-bar-fill" style="width: ${barWidth}%; background: ${
+                colors[i % 6]
+              };"></div>
               </div>
               <div class="entity-count">${e.count}</div>
             </div>`;
-          }).join('')}
+            })
+            .join("")}
         </div>
         <div class="metric-detail" style="margin-top: 10px;">
           <span class="metric-label">Entity Prediction Score:</span>
-          <span class="metric-value" style="color: var(--cyan);">${predictionMetrics.entityPredictionScore.toFixed(0)}%</span>
+          <span class="metric-value" style="color: var(--cyan);">${predictionMetrics.entityPredictionScore.toFixed(
+            0
+          )}%</span>
         </div>
-      ` : '<div class="no-data">No entity data yet</div>'}
+      `
+          : '<div class="no-data">No entity data yet</div>'
+      }
     </div>
 
     <!-- NEXT PREDICTED -->
     <div class="panel">
       <div class="panel-title">Next Predicted Event</div>
-      ${predictionMetrics.nextPredicted ? `
+      ${
+        predictionMetrics.nextPredicted
+          ? `
         <div class="next-prediction">
-          <div class="next-pattern">${predictionMetrics.nextPredicted.pattern.replace(/_/g, ' ').toUpperCase()}</div>
-          <div class="next-time">${new Date(predictionMetrics.nextPredicted.when).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-          <div class="next-hour">${String(predictionMetrics.nextPredicted.hour).padStart(2, '0')}:00</div>
+          <div class="next-pattern">${predictionMetrics.nextPredicted.pattern
+            .replace(/_/g, " ")
+            .toUpperCase()}</div>
+          <div class="next-time">${new Date(
+            predictionMetrics.nextPredicted.when
+          ).toLocaleDateString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          })}</div>
+          <div class="next-hour">${String(
+            predictionMetrics.nextPredicted.hour
+          ).padStart(2, "0")}:00</div>
           <div class="next-countdown" style="margin-top: 10px; font-size: 10px; color: var(--text-dim);">
-            ${Math.max(0, Math.floor((predictionMetrics.nextPredicted.when.getTime() - Date.now()) / 3600000))}h from now
+            ${Math.max(
+              0,
+              Math.floor(
+                (predictionMetrics.nextPredicted.when.getTime() - Date.now()) /
+                  3600000
+              )
+            )}h from now
           </div>
         </div>
-      ` : `
+      `
+          : `
         <div class="no-data">
           <div style="font-size: 24px; margin-bottom: 10px;">◌</div>
           No patterns detected yet
         </div>
-      `}
+      `
+      }
       <div class="metric-detail" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
         <span class="metric-label">Patterns Analyzed:</span>
         <span class="metric-value">${predictionMetrics.patternsAnalyzed}</span>
       </div>
       <div class="metric-detail">
         <span class="metric-label">Missed Predictions:</span>
-        <span class="metric-value" style="color: ${predictionMetrics.missedPredictions > 0 ? 'var(--orange)' : 'var(--green)'};">${predictionMetrics.missedPredictions}</span>
+        <span class="metric-value" style="color: ${
+          predictionMetrics.missedPredictions > 0
+            ? "var(--orange)"
+            : "var(--green)"
+        };">${predictionMetrics.missedPredictions}</span>
       </div>
     </div>
 
@@ -6740,15 +7413,21 @@ app.get('/dashboard/synthetic', async (_req, res) => {
           <div class="footer-stat-label">Span</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">${predictionMetrics.hitRate.toFixed(0)}%</div>
+          <div class="footer-stat-value">${predictionMetrics.hitRate.toFixed(
+            0
+          )}%</div>
           <div class="footer-stat-label">Hit Rate</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">±${predictionMetrics.temporalPrecision.toFixed(1)}h</div>
+          <div class="footer-stat-value">±${predictionMetrics.temporalPrecision.toFixed(
+            1
+          )}h</div>
           <div class="footer-stat-label">Precision</div>
         </div>
         <div class="footer-stat">
-          <div class="footer-stat-value">${predictionMetrics.anticipationScore.toFixed(0)}</div>
+          <div class="footer-stat-value">${predictionMetrics.anticipationScore.toFixed(
+            0
+          )}</div>
           <div class="footer-stat-label">Anticipation</div>
         </div>
         <div class="footer-stat">
@@ -6756,10 +7435,22 @@ app.get('/dashboard/synthetic', async (_req, res) => {
           <div class="footer-stat-label">Patterns</div>
         </div>
       </div>
-      <div class="status-text ${mongoData.accessRecords > 0 ? (predictionMetrics.anticipationScore >= 70 ? '' : 'warn') : 'off'}">
-        ${mongoData.accessRecords > 0
-          ? (predictionMetrics.anticipationScore >= 70 ? 'PREDICTIONS ACCURATE' : predictionMetrics.anticipationScore >= 30 ? 'LEARNING PATTERNS' : 'COLLECTING DATA')
-          : 'NO SYNTHETIC DATA LOADED'}
+      <div class="status-text ${
+        mongoData.accessRecords > 0
+          ? predictionMetrics.anticipationScore >= 70
+            ? ""
+            : "warn"
+          : "off"
+      }">
+        ${
+          mongoData.accessRecords > 0
+            ? predictionMetrics.anticipationScore >= 70
+              ? "PREDICTIONS ACCURATE"
+              : predictionMetrics.anticipationScore >= 30
+              ? "LEARNING PATTERNS"
+              : "COLLECTING DATA"
+            : "NO SYNTHETIC DATA LOADED"
+        }
       </div>
     </div>
   </div>
@@ -6767,7 +7458,7 @@ app.get('/dashboard/synthetic', async (_req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -6775,11 +7466,11 @@ app.get('/dashboard/synthetic', async (_req, res) => {
 // LOGS DASHBOARD - Real-time activity logging
 // =============================================================================
 
-app.get('/dashboard/logs', (req, res) => {
+app.get("/dashboard/logs", (req, res) => {
   const filter = {
     level: req.query.level || null,
     source: req.query.source || null,
-    limit: parseInt(req.query.limit) || 100
+    limit: parseInt(req.query.limit) || 100,
   };
   const logs = logBuffer.get(filter);
 
@@ -6911,41 +7602,67 @@ app.get('/dashboard/logs', (req, res) => {
     </div>
   </div>
   <div class="filters">
-    <a href="/dashboard/logs" class="filter-btn ${!req.query.level ? 'active' : ''}">All</a>
-    <a href="/dashboard/logs?level=info" class="filter-btn ${req.query.level === 'info' ? 'active' : ''}">Info</a>
-    <a href="/dashboard/logs?level=warn" class="filter-btn ${req.query.level === 'warn' ? 'active' : ''}">Warn</a>
-    <a href="/dashboard/logs?level=error" class="filter-btn ${req.query.level === 'error' ? 'active' : ''}">Error</a>
+    <a href="/dashboard/logs" class="filter-btn ${
+      !req.query.level ? "active" : ""
+    }">All</a>
+    <a href="/dashboard/logs?level=info" class="filter-btn ${
+      req.query.level === "info" ? "active" : ""
+    }">Info</a>
+    <a href="/dashboard/logs?level=warn" class="filter-btn ${
+      req.query.level === "warn" ? "active" : ""
+    }">Warn</a>
+    <a href="/dashboard/logs?level=error" class="filter-btn ${
+      req.query.level === "error" ? "active" : ""
+    }">Error</a>
     <span style="color: var(--text-dim); padding: 8px;">|</span>
-    <a href="/dashboard/logs?source=auth" class="filter-btn ${req.query.source === 'auth' ? 'active' : ''}">Auth</a>
-    <a href="/dashboard/logs?source=memory" class="filter-btn ${req.query.source === 'memory' ? 'active' : ''}">Memory</a>
-    <a href="/dashboard/logs?source=system" class="filter-btn ${req.query.source === 'system' ? 'active' : ''}">System</a>
+    <a href="/dashboard/logs?source=auth" class="filter-btn ${
+      req.query.source === "auth" ? "active" : ""
+    }">Auth</a>
+    <a href="/dashboard/logs?source=memory" class="filter-btn ${
+      req.query.source === "memory" ? "active" : ""
+    }">Memory</a>
+    <a href="/dashboard/logs?source=system" class="filter-btn ${
+      req.query.source === "system" ? "active" : ""
+    }">System</a>
   </div>
   <div class="logs-container">
-    ${logs.length === 0 ? '<div class="empty">No logs yet. Activity will appear here.</div>' :
-      logs.map(log => `
+    ${
+      logs.length === 0
+        ? '<div class="empty">No logs yet. Activity will appear here.</div>'
+        : logs
+            .map(
+              (log) => `
         <div class="log-entry">
           <span class="log-time">${log.timestamp}</span>
           <span class="log-level ${log.level}">${log.level}</span>
           <span class="log-source">${log.source}</span>
-          <span class="log-message">${log.message}${Object.keys(log.meta || {}).length > 0 ? ' <span style="color:var(--text-dim)">' + JSON.stringify(log.meta) + '</span>' : ''}</span>
+          <span class="log-message">${log.message}${
+                Object.keys(log.meta || {}).length > 0
+                  ? ' <span style="color:var(--text-dim)">' +
+                    JSON.stringify(log.meta) +
+                    "</span>"
+                  : ""
+              }</span>
         </div>
-      `).join('')
+      `
+            )
+            .join("")
     }
   </div>
   <p class="refresh-note">Auto-refreshes every 5 seconds</p>
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // JSON endpoint for logs
-app.get('/dashboard/logs/json', (req, res) => {
+app.get("/dashboard/logs/json", (req, res) => {
   const filter = {
     level: req.query.level || null,
     source: req.query.source || null,
-    limit: parseInt(req.query.limit) || 100
+    limit: parseInt(req.query.limit) || 100,
   };
   res.json({ logs: logBuffer.get(filter), total: logBuffer.entries.length });
 });
@@ -7145,10 +7862,10 @@ const userSettingsStyles = `
 `;
 
 // GET /user/profile - View user profile
-app.get('/user/profile', async (req, res) => {
+app.get("/user/profile", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/auth/knock?redirect=/user/profile');
+    return res.redirect("/auth/knock?redirect=/user/profile");
   }
 
   let user = null;
@@ -7164,8 +7881,8 @@ app.get('/user/profile', async (req, res) => {
         userId,
         displayName: userId,
         email: null,
-        tier: 'free',
-        status: 'active',
+        tier: "free",
+        status: "active",
         createdAt: inMemUser.created_at,
         lastActiveAt: new Date().toISOString(),
       };
@@ -7173,7 +7890,7 @@ app.get('/user/profile', async (req, res) => {
   }
 
   if (!user) {
-    return res.status(404).send('User not found');
+    return res.status(404).send("User not found");
   }
 
   const html = `
@@ -7205,15 +7922,21 @@ app.get('/user/profile', async (req, res) => {
         <div class="stat-label">User ID</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--magenta);">${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-value" style="color: var(--magenta);">${
+          user.tier?.toUpperCase() || "FREE"
+        }</div>
         <div class="stat-label">Tier</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--green);">${user.status?.toUpperCase() || 'ACTIVE'}</div>
+        <div class="stat-value" style="color: var(--green);">${
+          user.status?.toUpperCase() || "ACTIVE"
+        }</div>
         <div class="stat-label">Status</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="font-size: 14px;">${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</div>
+        <div class="stat-value" style="font-size: 14px;">${
+          user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A"
+        }</div>
         <div class="stat-label">Member Since</div>
       </div>
     </div>
@@ -7224,11 +7947,15 @@ app.get('/user/profile', async (req, res) => {
     <form method="POST" action="/user/profile">
       <div class="form-group">
         <label>Display Name</label>
-        <input type="text" name="displayName" value="${user.displayName || ''}" placeholder="Your display name">
+        <input type="text" name="displayName" value="${
+          user.displayName || ""
+        }" placeholder="Your display name">
       </div>
       <div class="form-group">
         <label>Email</label>
-        <input type="email" name="email" value="${user.email || ''}" placeholder="your@email.com">
+        <input type="email" name="email" value="${
+          user.email || ""
+        }" placeholder="your@email.com">
       </div>
       <button type="submit" class="btn btn-primary">Update Profile</button>
     </form>
@@ -7246,11 +7973,17 @@ app.get('/user/profile', async (req, res) => {
     <div class="panel-title">Subscription & Billing</div>
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--magenta);">${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-value" style="color: var(--magenta);">${
+          user.tier?.toUpperCase() || "FREE"
+        }</div>
         <div class="stat-label">Current Plan</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: ${user.billing?.subscriptionStatus === 'active' ? 'var(--green)' : 'var(--yellow)'};">${user.billing?.subscriptionStatus?.toUpperCase() || 'N/A'}</div>
+        <div class="stat-value" style="color: ${
+          user.billing?.subscriptionStatus === "active"
+            ? "var(--green)"
+            : "var(--yellow)"
+        };">${user.billing?.subscriptionStatus?.toUpperCase() || "N/A"}</div>
         <div class="stat-label">Status</div>
       </div>
     </div>
@@ -7262,25 +7995,29 @@ app.get('/user/profile', async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /user/profile - Update profile
-app.post('/user/profile', async (req, res) => {
+app.post("/user/profile", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
   const { displayName, email } = req.body;
 
   if (mongoConnected) {
-    const { updateUser } = await import('./models/index.ts');
-    await updateUser(userId, { displayName, email }, { performedBy: userId, auditAction: 'updated' });
+    const { updateUser } = await import("./models/index.ts");
+    await updateUser(
+      userId,
+      { displayName, email },
+      { performedBy: userId, auditAction: "updated" }
+    );
   }
 
-  res.redirect('/user/profile?updated=1');
+  res.redirect("/user/profile?updated=1");
 });
 
 // =============================================================================
@@ -7288,10 +8025,10 @@ app.post('/user/profile', async (req, res) => {
 // =============================================================================
 
 // GET /user/billing - Billing management page
-app.get('/user/billing', async (req, res) => {
+app.get("/user/billing", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/auth/knock?redirect=/user/billing');
+    return res.redirect("/auth/knock?redirect=/user/billing");
   }
 
   let user = null;
@@ -7303,19 +8040,19 @@ app.get('/user/billing', async (req, res) => {
   if (!user) {
     const inMemUser = passphraseUsers.get(userId);
     if (inMemUser) {
-      user = { userId, tier: 'free', billing: {} };
+      user = { userId, tier: "free", billing: {} };
     }
   }
 
   if (!user) {
-    return res.status(404).send('User not found');
+    return res.status(404).send("User not found");
   }
 
   const hasStripe = !!user.billing?.stripeCustomerId;
-  const subscriptionStatus = user.billing?.subscriptionStatus || 'none';
+  const subscriptionStatus = user.billing?.subscriptionStatus || "none";
   const currentPeriodEnd = user.billing?.currentPeriodEnd
     ? new Date(user.billing.currentPeriodEnd).toLocaleDateString()
-    : 'N/A';
+    : "N/A";
 
   const html = `
 <!DOCTYPE html>
@@ -7344,16 +8081,26 @@ app.get('/user/billing', async (req, res) => {
     <div class="panel-title">Current Plan</div>
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-value" style="color: var(--magenta); font-size: 24px;">${user.tier?.toUpperCase() || 'FREE'}</div>
+        <div class="stat-value" style="color: var(--magenta); font-size: 24px;">${
+          user.tier?.toUpperCase() || "FREE"
+        }</div>
         <div class="stat-label">Plan</div>
       </div>
       <div class="stat-card">
-        <div class="stat-value" style="color: ${subscriptionStatus === 'active' ? 'var(--green)' : subscriptionStatus === 'canceled' ? 'var(--red)' : 'var(--yellow)'};">${subscriptionStatus.toUpperCase()}</div>
+        <div class="stat-value" style="color: ${
+          subscriptionStatus === "active"
+            ? "var(--green)"
+            : subscriptionStatus === "canceled"
+            ? "var(--red)"
+            : "var(--yellow)"
+        };">${subscriptionStatus.toUpperCase()}</div>
         <div class="stat-label">Status</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">${currentPeriodEnd}</div>
-        <div class="stat-label">${user.billing?.cancelAtPeriodEnd ? 'Cancels On' : 'Renews On'}</div>
+        <div class="stat-label">${
+          user.billing?.cancelAtPeriodEnd ? "Cancels On" : "Renews On"
+        }</div>
       </div>
     </div>
   </div>
@@ -7402,12 +8149,15 @@ app.get('/user/billing', async (req, res) => {
 
   <div class="panel">
     <div class="panel-title">Manage Subscription</div>
-    ${hasStripe ? `
+    ${
+      hasStripe
+        ? `
       <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
         Manage your payment methods, view invoices, and update your subscription.
       </p>
       <a href="/api/billing/portal" class="btn btn-primary">Open Stripe Customer Portal</a>
-    ` : `
+    `
+        : `
       <p style="color: var(--text-dim); margin-bottom: 15px; font-size: 13px;">
         Upgrade to Pro or Enterprise to unlock more features.
       </p>
@@ -7415,32 +8165,37 @@ app.get('/user/billing', async (req, res) => {
         <a href="/api/billing/checkout?tier=pro" class="btn btn-primary" style="border-color: var(--cyan); background: var(--cyan); color: var(--bg-dark);">Upgrade to Pro - $9/mo</a>
         <a href="/api/billing/checkout?tier=enterprise" class="btn btn-primary" style="border-color: var(--magenta);">Upgrade to Enterprise - $49/mo</a>
       </div>
-    `}
+    `
+    }
   </div>
 
   <div class="panel">
     <div class="panel-title">Billing History</div>
     <p style="color: var(--text-dim); font-size: 13px;">
-      ${hasStripe ? 'View your complete billing history in the Stripe Customer Portal.' : 'Billing history will appear here once you subscribe to a paid plan.'}
+      ${
+        hasStripe
+          ? "View your complete billing history in the Stripe Customer Portal."
+          : "Billing history will appear here once you subscribe to a paid plan."
+      }
     </p>
   </div>
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // GET /api/billing/checkout - Create Stripe checkout session
-app.get('/api/billing/checkout', async (req, res) => {
+app.get("/api/billing/checkout", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/login?redirect=/user/billing');
+    return res.redirect("/login?redirect=/user/billing");
   }
 
   const { tier } = req.query;
-  if (!tier || !['pro', 'enterprise'].includes(tier)) {
-    return res.status(400).json({ error: 'Invalid tier' });
+  if (!tier || !["pro", "enterprise"].includes(tier)) {
+    return res.status(400).json({ error: "Invalid tier" });
   }
 
   const STRIPE_PRICE_IDS = {
@@ -7450,13 +8205,16 @@ app.get('/api/billing/checkout', async (req, res) => {
 
   if (!process.env.STRIPE_SECRET_KEY || !STRIPE_PRICE_IDS[tier]) {
     return res.status(503).json({
-      error: 'Stripe not configured',
-      message: 'Set STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID in environment',
+      error: "Stripe not configured",
+      message:
+        "Set STRIPE_SECRET_KEY, STRIPE_PRO_PRICE_ID, STRIPE_ENTERPRISE_PRICE_ID in environment",
     });
   }
 
   try {
-    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
+    const stripe = (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY
+    );
 
     // Get or create Stripe customer
     let user = mongoConnected ? await findUserById(userId) : null;
@@ -7472,39 +8230,45 @@ app.get('/api/billing/checkout', async (req, res) => {
 
       // Save to user
       if (mongoConnected) {
-        await getDatabase().collection('users').updateOne(
-          { userId },
-          { $set: { 'billing.stripeCustomerId': customerId } }
-        );
+        await getDatabase()
+          .collection("users")
+          .updateOne(
+            { userId },
+            { $set: { "billing.stripeCustomerId": customerId } }
+          );
       }
     }
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      payment_method_types: ['card'],
+      payment_method_types: ["card"],
       line_items: [{ price: STRIPE_PRICE_IDS[tier], quantity: 1 }],
-      mode: 'subscription',
-      success_url: `${req.protocol}://${req.get('host')}/user/billing?success=1`,
-      cancel_url: `${req.protocol}://${req.get('host')}/user/billing?canceled=1`,
+      mode: "subscription",
+      success_url: `${req.protocol}://${req.get(
+        "host"
+      )}/user/billing?success=1`,
+      cancel_url: `${req.protocol}://${req.get(
+        "host"
+      )}/user/billing?canceled=1`,
       metadata: { userId, tier },
     });
 
     res.redirect(303, session.url);
   } catch (err) {
-    console.error('[Billing] Checkout error:', err);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error("[Billing] Checkout error:", err);
+    res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
 
 // GET /api/billing/portal - Redirect to Stripe Customer Portal
-app.get('/api/billing/portal', async (req, res) => {
+app.get("/api/billing/portal", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/login?redirect=/user/billing');
+    return res.redirect("/login?redirect=/user/billing");
   }
 
   if (!process.env.STRIPE_SECRET_KEY) {
-    return res.status(503).json({ error: 'Stripe not configured' });
+    return res.status(503).json({ error: "Stripe not configured" });
   }
 
   try {
@@ -7512,94 +8276,119 @@ app.get('/api/billing/portal', async (req, res) => {
     const customerId = user?.billing?.stripeCustomerId;
 
     if (!customerId) {
-      return res.redirect('/user/billing?error=no_subscription');
+      return res.redirect("/user/billing?error=no_subscription");
     }
 
-    const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
+    const stripe = (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY
+    );
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
-      return_url: `${req.protocol}://${req.get('host')}/user/billing`,
+      return_url: `${req.protocol}://${req.get("host")}/user/billing`,
     });
 
     res.redirect(303, session.url);
   } catch (err) {
-    console.error('[Billing] Portal error:', err);
-    res.status(500).json({ error: 'Failed to create portal session' });
+    console.error("[Billing] Portal error:", err);
+    res.status(500).json({ error: "Failed to create portal session" });
   }
 });
 
 // POST /api/billing/webhook - Stripe webhook handler
-app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
-    return res.status(503).json({ error: 'Stripe not configured' });
-  }
+app.post(
+  "/api/billing/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(503).json({ error: "Stripe not configured" });
+    }
 
-  const stripe = (await import('stripe')).default(process.env.STRIPE_SECRET_KEY);
-  const sig = req.headers['stripe-signature'];
+    const stripe = (await import("stripe")).default(
+      process.env.STRIPE_SECRET_KEY
+    );
+    const sig = req.headers["stripe-signature"];
 
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('[Billing] Webhook signature verification failed:', err.message);
-    return res.status(400).send('Webhook signature verification failed');
-  }
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      console.error(
+        "[Billing] Webhook signature verification failed:",
+        err.message
+      );
+      return res.status(400).send("Webhook signature verification failed");
+    }
 
-  // Handle subscription events
-  const { type, data } = event;
-  const subscription = data.object;
+    // Handle subscription events
+    const { type, data } = event;
+    const subscription = data.object;
 
-  if (type.startsWith('customer.subscription')) {
-    const customerId = subscription.customer;
+    if (type.startsWith("customer.subscription")) {
+      const customerId = subscription.customer;
 
-    // Find user by Stripe customer ID
-    if (mongoConnected) {
-      const db = getDatabase();
-      const user = await db.collection('users').findOne({ 'billing.stripeCustomerId': customerId });
+      // Find user by Stripe customer ID
+      if (mongoConnected) {
+        const db = getDatabase();
+        const user = await db
+          .collection("users")
+          .findOne({ "billing.stripeCustomerId": customerId });
 
-      if (user) {
-        const updates = {
-          'billing.stripeSubscriptionId': subscription.id,
-          'billing.subscriptionStatus': subscription.status,
-          'billing.currentPeriodEnd': new Date(subscription.current_period_end * 1000).toISOString(),
-          'billing.cancelAtPeriodEnd': subscription.cancel_at_period_end,
-        };
+        if (user) {
+          const updates = {
+            "billing.stripeSubscriptionId": subscription.id,
+            "billing.subscriptionStatus": subscription.status,
+            "billing.currentPeriodEnd": new Date(
+              subscription.current_period_end * 1000
+            ).toISOString(),
+            "billing.cancelAtPeriodEnd": subscription.cancel_at_period_end,
+          };
 
-        // Update tier based on subscription status
-        if (subscription.status === 'active' || subscription.status === 'trialing') {
-          const priceId = subscription.items?.data?.[0]?.price?.id;
-          if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
-            updates.tier = 'pro';
-          } else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) {
-            updates.tier = 'enterprise';
+          // Update tier based on subscription status
+          if (
+            subscription.status === "active" ||
+            subscription.status === "trialing"
+          ) {
+            const priceId = subscription.items?.data?.[0]?.price?.id;
+            if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
+              updates.tier = "pro";
+            } else if (priceId === process.env.STRIPE_ENTERPRISE_PRICE_ID) {
+              updates.tier = "enterprise";
+            }
+          } else if (subscription.status === "canceled") {
+            updates.tier = "free";
           }
-        } else if (subscription.status === 'canceled') {
-          updates.tier = 'free';
-        }
 
-        await db.collection('users').updateOne(
-          { userId: user.userId },
-          { $set: updates }
-        );
-        console.log('[Billing] Updated subscription for user:', user.userId, subscription.status);
+          await db
+            .collection("users")
+            .updateOne({ userId: user.userId }, { $set: updates });
+          console.log(
+            "[Billing] Updated subscription for user:",
+            user.userId,
+            subscription.status
+          );
+        }
       }
     }
-  }
 
-  res.json({ received: true });
-});
+    res.json({ received: true });
+  }
+);
 
 // GET /user/devices - List devices
-app.get('/user/devices', async (req, res) => {
+app.get("/user/devices", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/auth/knock?redirect=/user/devices');
+    return res.redirect("/auth/knock?redirect=/user/devices");
   }
 
   // Get devices from MongoDB or in-memory
   let devices = [];
   if (mongoConnected) {
-    const { listUserDevices } = await import('./models/index.ts');
+    const { listUserDevices } = await import("./models/index.ts");
     devices = await listUserDevices(userId);
   } else {
     // In-memory fallback
@@ -7610,7 +8399,7 @@ app.get('/user/devices', async (req, res) => {
           device: entry.device,
           issuedAt: entry.issued_at,
           lastUsed: entry.last_used,
-          status: 'active',
+          status: "active",
         });
       }
     }
@@ -7643,23 +8432,36 @@ app.get('/user/devices', async (req, res) => {
       Manage devices that have access to your memories. Each device has its own API key.
     </p>
     <ul class="device-list">
-      ${devices.length === 0 ? '<li class="device-item"><span style="color: var(--text-dim);">No devices connected</span></li>' :
-        devices.map(d => `
+      ${
+        devices.length === 0
+          ? '<li class="device-item"><span style="color: var(--text-dim);">No devices connected</span></li>'
+          : devices
+              .map(
+                (d) => `
         <li class="device-item">
           <div class="device-info">
             <h4>${d.device?.name || d.deviceId}</h4>
-            <span>Type: ${d.device?.type || 'unknown'} • Added: ${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : 'N/A'}</span>
+            <span>Type: ${d.device?.type || "unknown"} • Added: ${
+                  d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : "N/A"
+                }</span>
           </div>
           <div class="device-status">
-            <div class="status-dot ${d.status === 'active' ? 'active' : 'inactive'}"></div>
-            <span style="font-size: 11px; color: var(--text-dim);">${d.status}</span>
+            <div class="status-dot ${
+              d.status === "active" ? "active" : "inactive"
+            }"></div>
+            <span style="font-size: 11px; color: var(--text-dim);">${
+              d.status
+            }</span>
             <form method="POST" action="/user/devices/revoke" style="margin-left: 15px;">
               <input type="hidden" name="deviceId" value="${d.deviceId}">
               <button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 10px;">Revoke</button>
             </form>
           </div>
         </li>
-        `).join('')}
+        `
+              )
+              .join("")
+      }
     </ul>
   </div>
 
@@ -7675,21 +8477,21 @@ app.get('/user/devices', async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /user/devices/revoke - Revoke a device
-app.post('/user/devices/revoke', async (req, res) => {
+app.post("/user/devices/revoke", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
   const { deviceId } = req.body;
 
   if (mongoConnected) {
-    const { revokeDevice } = await import('./models/index.ts');
+    const { revokeDevice } = await import("./models/index.ts");
     await revokeDevice(deviceId, { performedBy: userId });
   } else {
     // In-memory revoke
@@ -7702,20 +8504,20 @@ app.post('/user/devices/revoke', async (req, res) => {
     }
   }
 
-  res.redirect('/user/devices?revoked=1');
+  res.redirect("/user/devices?revoked=1");
 });
 
 // GET /user/preferences - User preferences
-app.get('/user/preferences', async (req, res) => {
+app.get("/user/preferences", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/auth/knock?redirect=/user/preferences');
+    return res.redirect("/auth/knock?redirect=/user/preferences");
   }
 
   let prefs = {};
   if (mongoConnected) {
-    const { getAllPreferences } = await import('./models/index.ts');
-    prefs = await getAllPreferences(userId) || {};
+    const { getAllPreferences } = await import("./models/index.ts");
+    prefs = (await getAllPreferences(userId)) || {};
   }
 
   const html = `
@@ -7744,14 +8546,25 @@ app.get('/user/preferences', async (req, res) => {
       <div class="form-group">
         <label>Default Memory Security Tier</label>
         <select name="defaultSecurityTier">
-          <option value="Tier1_General" ${prefs.defaultSecurityTier === 'Tier1_General' ? 'selected' : ''}>Tier 1 - General (External LLM OK)</option>
-          <option value="Tier2_Personal" ${prefs.defaultSecurityTier === 'Tier2_Personal' || !prefs.defaultSecurityTier ? 'selected' : ''}>Tier 2 - Personal (Local LLM Only)</option>
-          <option value="Tier3_Vault" ${prefs.defaultSecurityTier === 'Tier3_Vault' ? 'selected' : ''}>Tier 3 - Vault (Encrypted, No LLM)</option>
+          <option value="Tier1_General" ${
+            prefs.defaultSecurityTier === "Tier1_General" ? "selected" : ""
+          }>Tier 1 - General (External LLM OK)</option>
+          <option value="Tier2_Personal" ${
+            prefs.defaultSecurityTier === "Tier2_Personal" ||
+            !prefs.defaultSecurityTier
+              ? "selected"
+              : ""
+          }>Tier 2 - Personal (Local LLM Only)</option>
+          <option value="Tier3_Vault" ${
+            prefs.defaultSecurityTier === "Tier3_Vault" ? "selected" : ""
+          }>Tier 3 - Vault (Encrypted, No LLM)</option>
         </select>
       </div>
       <div class="form-group">
         <label>Auto-forget after (days, 0 = never)</label>
-        <input type="number" name="autoForgetDays" value="${prefs.autoForgetDays || 0}" min="0" max="365">
+        <input type="number" name="autoForgetDays" value="${
+          prefs.autoForgetDays || 0
+        }" min="0" max="365">
       </div>
       <button type="submit" class="btn btn-primary">Save Privacy Settings</button>
     </form>
@@ -7767,23 +8580,39 @@ app.get('/user/preferences', async (req, res) => {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
         <div class="form-group">
           <label>Emotional Weight</label>
-          <input type="range" name="emotionWeight" min="0" max="100" value="${prefs.emotionWeight || 30}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">${prefs.emotionWeight || 30}%</span>
+          <input type="range" name="emotionWeight" min="0" max="100" value="${
+            prefs.emotionWeight || 30
+          }" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${
+            prefs.emotionWeight || 30
+          }%</span>
         </div>
         <div class="form-group">
           <label>Novelty Weight</label>
-          <input type="range" name="noveltyWeight" min="0" max="100" value="${prefs.noveltyWeight || 20}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">${prefs.noveltyWeight || 20}%</span>
+          <input type="range" name="noveltyWeight" min="0" max="100" value="${
+            prefs.noveltyWeight || 20
+          }" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${
+            prefs.noveltyWeight || 20
+          }%</span>
         </div>
         <div class="form-group">
           <label>Relevance Weight</label>
-          <input type="range" name="relevanceWeight" min="0" max="100" value="${prefs.relevanceWeight || 20}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">${prefs.relevanceWeight || 20}%</span>
+          <input type="range" name="relevanceWeight" min="0" max="100" value="${
+            prefs.relevanceWeight || 20
+          }" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${
+            prefs.relevanceWeight || 20
+          }%</span>
         </div>
         <div class="form-group">
           <label>Social Weight</label>
-          <input type="range" name="socialWeight" min="0" max="100" value="${prefs.socialWeight || 15}" style="width: 100%;">
-          <span style="font-size: 11px; color: var(--cyan);">${prefs.socialWeight || 15}%</span>
+          <input type="range" name="socialWeight" min="0" max="100" value="${
+            prefs.socialWeight || 15
+          }" style="width: 100%;">
+          <span style="font-size: 11px; color: var(--cyan);">${
+            prefs.socialWeight || 15
+          }%</span>
         </div>
       </div>
       <button type="submit" class="btn btn-primary">Save Salience Weights</button>
@@ -7800,30 +8629,30 @@ app.get('/user/preferences', async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /user/preferences - Update preferences
-app.post('/user/preferences', async (req, res) => {
+app.post("/user/preferences", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
   if (mongoConnected) {
-    const { setPreferences } = await import('./models/index.ts');
+    const { setPreferences } = await import("./models/index.ts");
     await setPreferences(userId, req.body);
   }
 
-  res.redirect('/user/preferences?saved=1');
+  res.redirect("/user/preferences?saved=1");
 });
 
 // GET /user/passphrase - Change passphrase form
-app.get('/user/passphrase', async (req, res) => {
+app.get("/user/passphrase", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.redirect('/auth/knock?redirect=/user/passphrase');
+    return res.redirect("/auth/knock?redirect=/user/passphrase");
   }
 
   const html = `
@@ -7883,25 +8712,25 @@ app.get('/user/passphrase', async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /user/passphrase - Change passphrase
-app.post('/user/passphrase', async (req, res) => {
+app.post("/user/passphrase", async (req, res) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: "Not authenticated" });
   }
 
   const { currentPassphrase, newPassphrase, confirmPassphrase } = req.body;
 
   if (newPassphrase !== confirmPassphrase) {
-    return res.status(400).send('Passphrases do not match');
+    return res.status(400).send("Passphrases do not match");
   }
 
   if (newPassphrase.length < 8) {
-    return res.status(400).send('Passphrase must be at least 8 characters');
+    return res.status(400).send("Passphrase must be at least 8 characters");
   }
 
   // Verify current passphrase
@@ -7909,24 +8738,30 @@ app.post('/user/passphrase', async (req, res) => {
   if (mongoConnected) {
     const user = await findUserById(userId);
     if (user) {
-      verified = await verifyPassphraseMongo(currentPassphrase, user.passphraseHash);
+      verified = await verifyPassphraseMongo(
+        currentPassphrase,
+        user.passphraseHash
+      );
     }
   } else {
     const user = passphraseUsers.get(userId);
     if (user) {
-      verified = await verifyPassphrase(currentPassphrase, user.passphrase_hash);
+      verified = await verifyPassphrase(
+        currentPassphrase,
+        user.passphrase_hash
+      );
     }
   }
 
   if (!verified) {
-    return res.status(401).send('Current passphrase is incorrect');
+    return res.status(401).send("Current passphrase is incorrect");
   }
 
   // Update passphrase
   const { hash } = await hashPassphrase(newPassphrase);
 
   if (mongoConnected) {
-    const { updateUserPassphrase } = await import('./models/index.ts');
+    const { updateUserPassphrase } = await import("./models/index.ts");
     await updateUserPassphrase(userId, hash, { performedBy: userId });
   } else {
     const user = passphraseUsers.get(userId);
@@ -7935,7 +8770,7 @@ app.post('/user/passphrase', async (req, res) => {
     }
   }
 
-  res.redirect('/user/profile?passphrase_changed=1');
+  res.redirect("/user/profile?passphrase_changed=1");
 });
 
 // =============================================================================
@@ -7946,7 +8781,7 @@ app.post('/user/passphrase', async (req, res) => {
 const adminMiddleware = async (req, res, next) => {
   const userId = req.auth?.user_id;
   if (!userId) {
-    return res.status(401).send('Authentication required');
+    return res.status(401).send("Authentication required");
   }
 
   let isAdmin = false;
@@ -7955,20 +8790,24 @@ const adminMiddleware = async (req, res, next) => {
     isAdmin = user?.isAdmin || user?.isSuperAdmin;
   } else {
     // In dev mode, claude is admin
-    isAdmin = userId === 'claude';
+    isAdmin = userId === "claude";
   }
 
   if (!isAdmin) {
-    return res.status(403).send('Admin access required');
+    return res.status(403).send("Admin access required");
   }
 
   req.isAdmin = true;
-  req.isSuperAdmin = mongoConnected ? (await findUserById(userId))?.isSuperAdmin : false;
+  req.isSuperAdmin = mongoConnected
+    ? (await findUserById(userId))?.isSuperAdmin
+    : false;
   next();
 };
 
 // Admin styles (extends user settings styles)
-const adminStyles = userSettingsStyles + `
+const adminStyles =
+  userSettingsStyles +
+  `
   .admin-header {
     background: linear-gradient(135deg, var(--bg-panel) 0%, #1a0a1a 100%);
     border-color: var(--magenta);
@@ -8025,7 +8864,7 @@ const adminStyles = userSettingsStyles + `
 `;
 
 // GET /admin/dashboard - Admin overview
-app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
+app.get("/admin/dashboard", adminMiddleware, async (req, res) => {
   const memories = Array.from(memoryStore.values());
   const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
 
@@ -8035,7 +8874,7 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
   let recentUsers = [];
 
   if (mongoConnected) {
-    const { listUsers, listUserDevices } = await import('./models/index.ts');
+    const { listUsers, listUserDevices } = await import("./models/index.ts");
     const result = await listUsers({ limit: 5 });
     userCount = result.total;
     recentUsers = result.users;
@@ -8104,15 +8943,21 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
           </tr>
         </thead>
         <tbody>
-          ${recentUsers.length === 0 ?
-            '<tr><td colspan="3" style="color: var(--text-dim);">No users in database</td></tr>' :
-            recentUsers.map(u => `
+          ${
+            recentUsers.length === 0
+              ? '<tr><td colspan="3" style="color: var(--text-dim);">No users in database</td></tr>'
+              : recentUsers
+                  .map(
+                    (u) => `
               <tr>
                 <td>${u.userId}</td>
                 <td><span class="tier-badge tier-${u.tier}">${u.tier}</span></td>
                 <td><span class="status-badge status-${u.status}">${u.status}</span></td>
               </tr>
-            `).join('')}
+            `
+                  )
+                  .join("")
+          }
         </tbody>
       </table>
       <a href="/admin/users" style="display: block; text-align: center; margin-top: 15px; color: var(--cyan); font-size: 12px;">View All Users →</a>
@@ -8120,11 +8965,21 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
 
     <div class="panel">
       <div class="panel-title">System Logs</div>
-      <div class="log-entry success">[SYSTEM] Server started - ${new Date(startTime).toISOString()}</div>
-      <div class="log-entry">[AUTH] MongoDB mode: ${mongoConnected ? 'Connected' : 'In-Memory Fallback'}</div>
-      <div class="log-entry">[METRICS] ${memories.length} memories in store</div>
+      <div class="log-entry success">[SYSTEM] Server started - ${new Date(
+        startTime
+      ).toISOString()}</div>
+      <div class="log-entry">[AUTH] MongoDB mode: ${
+        mongoConnected ? "Connected" : "In-Memory Fallback"
+      }</div>
+      <div class="log-entry">[METRICS] ${
+        memories.length
+      } memories in store</div>
       <div class="log-entry">[DEVICES] ${deviceCount} active device keys</div>
-      ${!mongoConnected ? '<div class="log-entry warn">[WARN] Running without MongoDB - data is ephemeral</div>' : ''}
+      ${
+        !mongoConnected
+          ? '<div class="log-entry warn">[WARN] Running without MongoDB - data is ephemeral</div>'
+          : ""
+      }
     </div>
   </div>
 
@@ -8140,12 +8995,12 @@ app.get('/admin/dashboard', adminMiddleware, async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // GET /admin/users - User management
-app.get('/admin/users', adminMiddleware, async (req, res) => {
+app.get("/admin/users", adminMiddleware, async (req, res) => {
   let users = [];
   let total = 0;
   const page = parseInt(req.query.page) || 1;
@@ -8153,7 +9008,7 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
   const skip = (page - 1) * limit;
 
   if (mongoConnected) {
-    const { listUsers } = await import('./models/index.ts');
+    const { listUsers } = await import("./models/index.ts");
     const result = await listUsers({ skip, limit, includeDeleted: true });
     users = result.users;
     total = result.total;
@@ -8161,10 +9016,10 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
     // In-memory users
     users = Array.from(passphraseUsers.entries()).map(([id, data]) => ({
       userId: id,
-      tier: 'free',
-      status: 'active',
+      tier: "free",
+      status: "active",
       createdAt: data.created_at,
-      isAdmin: id === 'claude',
+      isAdmin: id === "claude",
     }));
     total = users.length;
   }
@@ -8206,93 +9061,150 @@ app.get('/admin/users', adminMiddleware, async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        ${users.map(u => `
+        ${users
+          .map(
+            (u) => `
           <tr>
             <td>${u.userId}</td>
-            <td>${u.email || '-'}</td>
+            <td>${u.email || "-"}</td>
             <td><span class="tier-badge tier-${u.tier}">${u.tier}</span></td>
-            <td><span class="status-badge status-${u.status}">${u.status}</span></td>
-            <td>${u.isAdmin ? '✓' : '-'}</td>
-            <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+            <td><span class="status-badge status-${u.status}">${
+              u.status
+            }</span></td>
+            <td>${u.isAdmin ? "✓" : "-"}</td>
+            <td>${
+              u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "-"
+            }</td>
             <td>
-              <form method="POST" action="/admin/users/${u.userId}/action" style="display: inline;">
+              <form method="POST" action="/admin/users/${
+                u.userId
+              }/action" style="display: inline;">
                 <select name="action" style="padding: 4px; font-size: 11px; background: var(--bg-card); color: var(--text); border: 1px solid var(--border);">
                   <option value="">Actions...</option>
-                  ${u.status === 'active' ? '<option value="suspend">Suspend</option>' : '<option value="activate">Activate</option>'}
-                  ${u.isAdmin ? '<option value="revoke_admin">Revoke Admin</option>' : '<option value="grant_admin">Grant Admin</option>'}
+                  ${
+                    u.status === "active"
+                      ? '<option value="suspend">Suspend</option>'
+                      : '<option value="activate">Activate</option>'
+                  }
+                  ${
+                    u.isAdmin
+                      ? '<option value="revoke_admin">Revoke Admin</option>'
+                      : '<option value="grant_admin">Grant Admin</option>'
+                  }
                   <option value="change_tier">Change Tier</option>
-                  ${u.status !== 'deleted' ? '<option value="delete">Delete</option>' : '<option value="restore">Restore</option>'}
+                  ${
+                    u.status !== "deleted"
+                      ? '<option value="delete">Delete</option>'
+                      : '<option value="restore">Restore</option>'
+                  }
                 </select>
                 <button type="submit" class="btn btn-primary" style="padding: 4px 8px; font-size: 10px; margin-left: 5px;">Go</button>
               </form>
             </td>
           </tr>
-        `).join('')}
+        `
+          )
+          .join("")}
       </tbody>
     </table>
 
-    ${totalPages > 1 ? `
+    ${
+      totalPages > 1
+        ? `
       <div style="margin-top: 20px; text-align: center;">
-        ${page > 1 ? `<a href="/admin/users?page=${page - 1}" class="btn btn-primary" style="padding: 6px 12px;">← Prev</a>` : ''}
+        ${
+          page > 1
+            ? `<a href="/admin/users?page=${
+                page - 1
+              }" class="btn btn-primary" style="padding: 6px 12px;">← Prev</a>`
+            : ""
+        }
         <span style="margin: 0 15px; color: var(--text-dim);">Page ${page} of ${totalPages}</span>
-        ${page < totalPages ? `<a href="/admin/users?page=${page + 1}" class="btn btn-primary" style="padding: 6px 12px;">Next →</a>` : ''}
+        ${
+          page < totalPages
+            ? `<a href="/admin/users?page=${
+                page + 1
+              }" class="btn btn-primary" style="padding: 6px 12px;">Next →</a>`
+            : ""
+        }
       </div>
-    ` : ''}
+    `
+        : ""
+    }
   </div>
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /admin/users/:userId/action - Perform admin action on user
-app.post('/admin/users/:userId/action', adminMiddleware, async (req, res) => {
+app.post("/admin/users/:userId/action", adminMiddleware, async (req, res) => {
   const { userId } = req.params;
   const { action, tier } = req.body;
   const performedBy = req.auth?.user_id;
 
   if (mongoConnected) {
-    const { updateUser, setAdminStatus, changeUserTier, deleteUser, restoreUser } = await import('./models/index.ts');
+    const {
+      updateUser,
+      setAdminStatus,
+      changeUserTier,
+      deleteUser,
+      restoreUser,
+    } = await import("./models/index.ts");
 
     switch (action) {
-      case 'suspend':
-        await updateUser(userId, { status: 'suspended' }, { performedBy, auditAction: 'status_changed' });
+      case "suspend":
+        await updateUser(
+          userId,
+          { status: "suspended" },
+          { performedBy, auditAction: "status_changed" }
+        );
         break;
-      case 'activate':
-        await updateUser(userId, { status: 'active' }, { performedBy, auditAction: 'status_changed' });
+      case "activate":
+        await updateUser(
+          userId,
+          { status: "active" },
+          { performedBy, auditAction: "status_changed" }
+        );
         break;
-      case 'grant_admin':
+      case "grant_admin":
         await setAdminStatus(userId, true, { performedBy });
         break;
-      case 'revoke_admin':
+      case "revoke_admin":
         await setAdminStatus(userId, false, { performedBy });
         break;
-      case 'change_tier':
+      case "change_tier":
         if (tier) await changeUserTier(userId, tier, { performedBy });
         break;
-      case 'delete':
+      case "delete":
         await deleteUser(userId, { performedBy });
         break;
-      case 'restore':
+      case "restore":
         await restoreUser(userId, { performedBy });
         break;
     }
   }
 
-  res.redirect('/admin/users');
+  res.redirect("/admin/users");
 });
 
 // GET /admin/devices - Device management
-app.get('/admin/devices', adminMiddleware, async (req, res) => {
+app.get("/admin/devices", adminMiddleware, async (req, res) => {
   let allDevices = [];
 
   if (mongoConnected) {
-    const { listUsers, listUserDevices } = await import('./models/index.ts');
+    const { listUsers, listUserDevices } = await import("./models/index.ts");
     const { users } = await listUsers({ limit: 100 });
     for (const user of users) {
       const devices = await listUserDevices(user.userId);
-      allDevices.push(...devices.map(d => ({ ...d, userDisplayName: user.displayName || user.userId })));
+      allDevices.push(
+        ...devices.map((d) => ({
+          ...d,
+          userDisplayName: user.displayName || user.userId,
+        }))
+      );
     }
   } else {
     // In-memory devices
@@ -8304,7 +9216,7 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
         device: entry.device,
         issuedAt: entry.issued_at,
         lastUsed: entry.last_used,
-        status: entry.revoked ? 'revoked' : 'active',
+        status: entry.revoked ? "revoked" : "active",
       });
     }
   }
@@ -8344,87 +9256,114 @@ app.get('/admin/devices', adminMiddleware, async (req, res) => {
         </tr>
       </thead>
       <tbody>
-        ${allDevices.length === 0 ?
-          '<tr><td colspan="7" style="color: var(--text-dim);">No devices found</td></tr>' :
-          allDevices.map(d => `
+        ${
+          allDevices.length === 0
+            ? '<tr><td colspan="7" style="color: var(--text-dim);">No devices found</td></tr>'
+            : allDevices
+                .map(
+                  (d) => `
             <tr>
               <td>${d.device?.name || d.deviceId}</td>
-              <td>${d.device?.type || 'unknown'}</td>
+              <td>${d.device?.type || "unknown"}</td>
               <td>${d.userDisplayName || d.userId}</td>
-              <td><span class="status-badge status-${d.status}">${d.status}</span></td>
-              <td>${d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : '-'}</td>
-              <td>${d.lastUsed ? new Date(d.lastUsed).toLocaleString() : 'Never'}</td>
+              <td><span class="status-badge status-${d.status}">${
+                    d.status
+                  }</span></td>
+              <td>${
+                d.issuedAt ? new Date(d.issuedAt).toLocaleDateString() : "-"
+              }</td>
+              <td>${
+                d.lastUsed ? new Date(d.lastUsed).toLocaleString() : "Never"
+              }</td>
               <td>
-                ${d.status === 'active' ? `
+                ${
+                  d.status === "active"
+                    ? `
                   <form method="POST" action="/admin/devices/${d.deviceId}/revoke" style="display: inline;">
                     <button type="submit" class="btn btn-danger" style="padding: 4px 8px; font-size: 10px;">Revoke</button>
                   </form>
-                ` : '<span style="color: var(--text-dim);">Revoked</span>'}
+                `
+                    : '<span style="color: var(--text-dim);">Revoked</span>'
+                }
               </td>
             </tr>
-          `).join('')}
+          `
+                )
+                .join("")
+        }
       </tbody>
     </table>
   </div>
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
 // POST /admin/devices/:deviceId/revoke
-app.post('/admin/devices/:deviceId/revoke', adminMiddleware, async (req, res) => {
-  const { deviceId } = req.params;
+app.post(
+  "/admin/devices/:deviceId/revoke",
+  adminMiddleware,
+  async (req, res) => {
+    const { deviceId } = req.params;
 
-  if (mongoConnected) {
-    const { revokeDevice } = await import('./models/index.ts');
-    await revokeDevice(deviceId, { performedBy: req.auth?.user_id, reason: 'Admin revocation' });
-  } else {
-    // In-memory revoke
-    for (const [keyHash, entry] of deviceKeys.entries()) {
-      if (entry.device_id === deviceId) {
-        entry.revoked = true;
-        entry.revoked_at = new Date().toISOString();
-        break;
+    if (mongoConnected) {
+      const { revokeDevice } = await import("./models/index.ts");
+      await revokeDevice(deviceId, {
+        performedBy: req.auth?.user_id,
+        reason: "Admin revocation",
+      });
+    } else {
+      // In-memory revoke
+      for (const [keyHash, entry] of deviceKeys.entries()) {
+        if (entry.device_id === deviceId) {
+          entry.revoked = true;
+          entry.revoked_at = new Date().toISOString();
+          break;
+        }
       }
     }
-  }
 
-  res.redirect('/admin/devices');
-});
+    res.redirect("/admin/devices");
+  }
+);
 
 // POST /admin/dev/clear/:collection - DEV ONLY: Clear collection for testing
 // REMOVE BEFORE PRODUCTION
-app.post('/admin/dev/clear/:collection', adminMiddleware, async (req, res) => {
+app.post("/admin/dev/clear/:collection", adminMiddleware, async (req, res) => {
   const { collection } = req.params;
-  const allowedCollections = ['open_loops', 'patterns', 'context_frames'];
+  const allowedCollections = ["open_loops", "patterns", "context_frames"];
 
   if (!allowedCollections.includes(collection)) {
     return res.status(400).json({
-      error: 'Collection not allowed',
-      allowed: allowedCollections
+      error: "Collection not allowed",
+      allowed: allowedCollections,
     });
   }
 
   try {
     const db = getDatabase();
     const result = await db.collection(collection).deleteMany({});
-    console.log(`[DEV] Cleared ${collection}: ${result.deletedCount} documents`);
+    console.log(
+      `[DEV] Cleared ${collection}: ${result.deletedCount} documents`
+    );
     res.json({
       cleared: true,
       collection,
       deletedCount: result.deletedCount,
-      warning: 'DEV ONLY - Remove before production'
+      warning: "DEV ONLY - Remove before production",
     });
   } catch (error) {
     console.error(`[DEV] Failed to clear ${collection}:`, error.message);
-    res.status(500).json({ error: 'Failed to clear collection', message: error.message });
+    res
+      .status(500)
+      .json({ error: "Failed to clear collection", message: error.message });
   }
 });
 
 // GET /admin/settings - System settings
-app.get('/admin/settings', adminMiddleware, async (req, res) => {
+app.get("/admin/settings", adminMiddleware, async (req, res) => {
   const html = `
 <!DOCTYPE html>
 <html>
@@ -8451,9 +9390,13 @@ app.get('/admin/settings', adminMiddleware, async (req, res) => {
       <div style="color: var(--text-dim);">Node Version</div>
       <div>${process.version}</div>
       <div style="color: var(--text-dim);">Environment</div>
-      <div>${process.env.NODE_ENV || 'development'}</div>
+      <div>${process.env.NODE_ENV || "development"}</div>
       <div style="color: var(--text-dim);">MongoDB</div>
-      <div style="color: ${mongoConnected ? 'var(--green)' : 'var(--yellow)'}">${mongoConnected ? 'Connected' : 'Not Connected (In-Memory Mode)'}</div>
+      <div style="color: ${
+        mongoConnected ? "var(--green)" : "var(--yellow)"
+      }">${
+    mongoConnected ? "Connected" : "Not Connected (In-Memory Mode)"
+  }</div>
       <div style="color: var(--text-dim);">Port</div>
       <div>${process.env.PORT || 3000}</div>
     </div>
@@ -8524,7 +9467,7 @@ app.get('/admin/settings', adminMiddleware, async (req, res) => {
 </body>
 </html>`;
 
-  res.set('Content-Type', 'text/html');
+  res.set("Content-Type", "text/html");
   res.send(html);
 });
 
@@ -8543,7 +9486,7 @@ function analyzePatterns(memories) {
 
   // Calculate observation window
   const now = Date.now();
-  const timestamps = memories.map(m => new Date(m.timestamp).getTime());
+  const timestamps = memories.map((m) => new Date(m.timestamp).getTime());
   const oldest = Math.min(...timestamps);
   const newest = Math.max(...timestamps);
   const observationDays = Math.ceil((newest - oldest) / (24 * 60 * 60 * 1000));
@@ -8551,16 +9494,16 @@ function analyzePatterns(memories) {
   // Cycle constants - circles within circles
   const DAY_MS = 24 * 60 * 60 * 1000;
   const WEEK_DAYS = 7;
-  const HABIT_DAYS = 21;    // 3 weeks - habit formation
-  const MONTH_DAYS = 28;    // 4 weeks
-  const SEASON_DAYS = 91;   // ~3 months
+  const HABIT_DAYS = 21; // 3 weeks - habit formation
+  const MONTH_DAYS = 28; // 4 weeks
+  const SEASON_DAYS = 91; // ~3 months
   const YEAR_DAYS = 365;
-  const HUMAN_DAYS = 2555;  // 7 years - to truly know a human
+  const HUMAN_DAYS = 2555; // 7 years - to truly know a human
 
   // Helper: bucket memories by time period
   const bucketByPeriod = (ms) => {
     const buckets = {};
-    memories.forEach(m => {
+    memories.forEach((m) => {
       const t = new Date(m.timestamp).getTime();
       const bucket = Math.floor((now - t) / ms);
       buckets[bucket] = (buckets[bucket] || 0) + 1;
@@ -8588,37 +9531,44 @@ function analyzePatterns(memories) {
 
   // Weekly pattern (day of week)
   const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0];
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const dow = new Date(m.timestamp).getDay();
     dayOfWeekCounts[dow]++;
   });
 
   const avgPerDay = memories.length / Math.max(1, Math.min(7, observationDays));
   const weeklyPattern = dayOfWeekCounts.map((count, day) => ({
-    day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day],
+    day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day],
     count,
-    deviation: avgPerDay > 0 ? ((count - avgPerDay) / avgPerDay * 100).toFixed(1) + '%' : '0%',
+    deviation:
+      avgPerDay > 0
+        ? (((count - avgPerDay) / avgPerDay) * 100).toFixed(1) + "%"
+        : "0%",
   }));
 
   // 21-day habit cycle analysis
   const habitBuckets = bucketByPeriod(HABIT_DAYS * DAY_MS);
-  const habitCycleData = Object.entries(habitBuckets).map(([cycle, count]) => ({
-    cycle: parseInt(cycle),
-    memoriesInCycle: count,
-    label: cycle === '0' ? 'current' : `${cycle} cycles ago`,
-  })).sort((a, b) => a.cycle - b.cycle);
+  const habitCycleData = Object.entries(habitBuckets)
+    .map(([cycle, count]) => ({
+      cycle: parseInt(cycle),
+      memoriesInCycle: count,
+      label: cycle === "0" ? "current" : `${cycle} cycles ago`,
+    }))
+    .sort((a, b) => a.cycle - b.cycle);
 
   // Monthly trend (4-week buckets)
   const monthBuckets = bucketByPeriod(MONTH_DAYS * DAY_MS);
-  const monthlyTrend = Object.entries(monthBuckets).map(([month, count]) => ({
-    month: parseInt(month),
-    memoriesInMonth: count,
-    label: month === '0' ? 'current' : `${month} months ago`,
-  })).sort((a, b) => a.month - b.month);
+  const monthlyTrend = Object.entries(monthBuckets)
+    .map(([month, count]) => ({
+      month: parseInt(month),
+      memoriesInMonth: count,
+      label: month === "0" ? "current" : `${month} months ago`,
+    }))
+    .sort((a, b) => a.month - b.month);
 
   // Time of day patterns
   const timePatterns = { morning: 0, afternoon: 0, evening: 0, night: 0 };
-  memories.forEach(m => {
+  memories.forEach((m) => {
     const hour = new Date(m.timestamp).getHours();
     if (hour >= 5 && hour < 12) timePatterns.morning++;
     else if (hour >= 12 && hour < 17) timePatterns.afternoon++;
@@ -8628,7 +9578,7 @@ function analyzePatterns(memories) {
 
   // App usage patterns
   const appUsage = {};
-  memories.forEach(m => {
+  memories.forEach((m) => {
     if (m.context?.app) {
       appUsage[m.context.app] = (appUsage[m.context.app] || 0) + 1;
     }
@@ -8646,10 +9596,13 @@ function analyzePatterns(memories) {
 
   // Progress toward knowing this human
   const knowledgeProgress = {
-    percent: Math.min(100, (observationDays / HUMAN_DAYS * 100)).toFixed(1),
+    percent: Math.min(100, (observationDays / HUMAN_DAYS) * 100).toFixed(1),
     daysObserved: observationDays,
     daysToFullKnowledge: Math.max(0, HUMAN_DAYS - observationDays),
-    yearsToFullKnowledge: Math.max(0, (HUMAN_DAYS - observationDays) / YEAR_DAYS).toFixed(1),
+    yearsToFullKnowledge: Math.max(
+      0,
+      (HUMAN_DAYS - observationDays) / YEAR_DAYS
+    ).toFixed(1),
   };
 
   return {
@@ -8674,11 +9627,13 @@ function analyzePatterns(memories) {
 
     // Detailed cycle data
     cycles: {
-      weekly: weeklyPattern.sort((a, b) =>
-        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(a.day) -
-        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(b.day)
+      weekly: weeklyPattern.sort(
+        (a, b) =>
+          ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(a.day) -
+          ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(b.day)
       ),
-      peakDay: [...weeklyPattern].sort((a, b) => b.count - a.count)[0]?.day || 'N/A',
+      peakDay:
+        [...weeklyPattern].sort((a, b) => b.count - a.count)[0]?.day || "N/A",
       habitCycles: habitCycleData.slice(0, 5),
       monthlyTrend: monthlyTrend.slice(0, 6),
     },
@@ -8715,7 +9670,8 @@ const frameStore = new Map();
 const BACKUP_CONFIG = {
   SEGMENT_SIZE: parseInt(process.env.BACKUP_SEGMENT_SIZE) || 100, // memories per segment
   MAX_BACKUPS: parseInt(process.env.MAX_BACKUPS) || 60, // keep last 60 backups (1 hour at 1/min)
-  AUTO_BACKUP_INTERVAL_MS: parseInt(process.env.AUTO_BACKUP_INTERVAL_MS) || 60000, // 1 minute
+  AUTO_BACKUP_INTERVAL_MS:
+    parseInt(process.env.AUTO_BACKUP_INTERVAL_MS) || 60000, // 1 minute
 };
 
 /**
@@ -8726,7 +9682,7 @@ const BACKUP_CONFIG = {
  * @param {string} frameName - Optional: create a named frame for this backup
  * @returns {object} Backup manifest
  */
-function createBackup(reason = 'manual', frameName = null) {
+function createBackup(reason = "manual", frameName = null) {
   const timestamp = new Date().toISOString();
   const memories = Array.from(memoryStore.values());
 
@@ -8752,8 +9708,8 @@ function createBackup(reason = 'manual', frameName = null) {
     segment_size: BACKUP_CONFIG.SEGMENT_SIZE,
     segments,
     metadata: {
-      created_by: 'memorable',
-      version: '2.0.0',
+      created_by: "memorable",
+      version: "2.0.0",
       checksum: simpleChecksum(JSON.stringify(memories)),
     },
   };
@@ -8774,7 +9730,7 @@ function createBackup(reason = 'manual', frameName = null) {
   // Prune old backups (keep only MAX_BACKUPS)
   pruneOldBackups();
 
-  metrics.inc('backup_created_total', { reason });
+  metrics.inc("backup_created_total", { reason });
 
   return {
     id: backup.id,
@@ -8801,23 +9757,25 @@ function restoreFromBackup(backupId, options = {}) {
   const { merge = false, segmentFilter = null } = options;
 
   // Verify backup integrity
-  const allMemories = backup.segments.flatMap(s => s.memories);
+  const allMemories = backup.segments.flatMap((s) => s.memories);
   const currentChecksum = simpleChecksum(JSON.stringify(allMemories));
   if (currentChecksum !== backup.metadata.checksum) {
-    console.warn('[Backup] Checksum mismatch - backup may be corrupted');
+    console.warn("[Backup] Checksum mismatch - backup may be corrupted");
   }
 
   // Apply segment filter if specified (restore only specific segments)
   let memoriesToRestore = allMemories;
   if (segmentFilter !== null) {
-    const filteredSegments = backup.segments.filter(s =>
-      Array.isArray(segmentFilter) ? segmentFilter.includes(s.index) : s.index === segmentFilter
+    const filteredSegments = backup.segments.filter((s) =>
+      Array.isArray(segmentFilter)
+        ? segmentFilter.includes(s.index)
+        : s.index === segmentFilter
     );
-    memoriesToRestore = filteredSegments.flatMap(s => s.memories);
+    memoriesToRestore = filteredSegments.flatMap((s) => s.memories);
   }
 
   // Create backup of current state before restore (safety net)
-  const preRestoreBackup = createBackup('pre_restore_safety', null);
+  const preRestoreBackup = createBackup("pre_restore_safety", null);
 
   // Clear or merge
   if (!merge) {
@@ -8836,7 +9794,7 @@ function restoreFromBackup(backupId, options = {}) {
     restored++;
   }
 
-  metrics.inc('backup_restored_total', {});
+  metrics.inc("backup_restored_total", {});
 
   return {
     success: true,
@@ -8868,7 +9826,7 @@ function listBackups(limit = 20) {
   const backups = Array.from(backupStore.values())
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(0, limit)
-    .map(b => ({
+    .map((b) => ({
       id: b.id,
       timestamp: b.timestamp,
       reason: b.reason,
@@ -8884,8 +9842,9 @@ function listBackups(limit = 20) {
  * List all named frames.
  */
 function listFrames() {
-  return Array.from(frameStore.values())
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return Array.from(frameStore.values()).sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+  );
 }
 
 /**
@@ -8897,7 +9856,7 @@ function getBackupSegment(backupId, segmentIndex) {
     throw new Error(`Backup not found: ${backupId}`);
   }
 
-  const segment = backup.segments.find(s => s.index === segmentIndex);
+  const segment = backup.segments.find((s) => s.index === segmentIndex);
   if (!segment) {
     throw new Error(`Segment ${segmentIndex} not found in backup ${backupId}`);
   }
@@ -8920,7 +9879,7 @@ function simpleChecksum(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash; // Convert to 32bit integer
   }
   return hash.toString(16);
@@ -8931,7 +9890,9 @@ function simpleChecksum(str) {
  * Keeps named frames and their backups.
  */
 function pruneOldBackups() {
-  const framedBackupIds = new Set(Array.from(frameStore.values()).map(f => f.backup_id));
+  const framedBackupIds = new Set(
+    Array.from(frameStore.values()).map((f) => f.backup_id)
+  );
 
   const backups = Array.from(backupStore.entries())
     .filter(([id]) => !framedBackupIds.has(id)) // Don't prune framed backups
@@ -8950,10 +9911,13 @@ function pruneOldBackups() {
 
 // Auto-backup timer (disabled in test environment)
 let autoBackupTimer = null;
-if (process.env.NODE_ENV !== 'test' && BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS > 0) {
+if (
+  process.env.NODE_ENV !== "test" &&
+  BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS > 0
+) {
   autoBackupTimer = setInterval(() => {
     if (memoryStore.size > 0) {
-      createBackup('auto');
+      createBackup("auto");
       console.log(`[Backup] Auto-backup created: ${memoryStore.size} memories`);
     }
   }, BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS);
@@ -8964,19 +9928,19 @@ if (process.env.NODE_ENV !== 'test' && BACKUP_CONFIG.AUTO_BACKUP_INTERVAL_MS > 0
 // =============================================================================
 
 // Create a backup
-app.post('/backup', (_req, res) => {
+app.post("/backup", (_req, res) => {
   try {
-    const { reason = 'manual', frame } = _req.body || {};
+    const { reason = "manual", frame } = _req.body || {};
     const result = createBackup(reason, frame);
     res.status(201).json(result);
   } catch (error) {
-    console.error('[Backup] Create error:', error);
+    console.error("[Backup] Create error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // List all backups
-app.get('/backup', (_req, res) => {
+app.get("/backup", (_req, res) => {
   try {
     const limit = parseInt(_req.query.limit) || 20;
     const backups = listBackups(limit);
@@ -8990,17 +9954,17 @@ app.get('/backup', (_req, res) => {
       },
     });
   } catch (error) {
-    console.error('[Backup] List error:', error);
+    console.error("[Backup] List error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get backup details
-app.get('/backup/:id', (req, res) => {
+app.get("/backup/:id", (req, res) => {
   try {
     const backup = backupStore.get(req.params.id);
     if (!backup) {
-      res.status(404).json({ error: 'Backup not found' });
+      res.status(404).json({ error: "Backup not found" });
       return;
     }
 
@@ -9013,36 +9977,36 @@ app.get('/backup/:id', (req, res) => {
       segment_count: backup.segment_count,
       segment_size: backup.segment_size,
       metadata: backup.metadata,
-      segments: backup.segments.map(s => ({
+      segments: backup.segments.map((s) => ({
         index: s.index,
         count: s.count,
         checksum: s.checksum,
       })),
     });
   } catch (error) {
-    console.error('[Backup] Get error:', error);
+    console.error("[Backup] Get error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get a specific segment from a backup
-app.get('/backup/:id/segment/:index', (req, res) => {
+app.get("/backup/:id/segment/:index", (req, res) => {
   try {
     const segment = getBackupSegment(req.params.id, parseInt(req.params.index));
     res.json(segment);
   } catch (error) {
-    console.error('[Backup] Get segment error:', error);
+    console.error("[Backup] Get segment error:", error);
     res.status(404).json({ error: error.message });
   }
 });
 
 // Restore from a backup
-app.post('/restore', (req, res) => {
+app.post("/restore", (req, res) => {
   try {
     const { backup_id, frame, merge = false, segments = null } = req.body;
 
     if (!backup_id && !frame) {
-      res.status(400).json({ error: 'backup_id or frame is required' });
+      res.status(400).json({ error: "backup_id or frame is required" });
       return;
     }
 
@@ -9055,18 +10019,18 @@ app.post('/restore', (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error('[Restore] Error:', error);
+    console.error("[Restore] Error:", error);
     res.status(400).json({ error: error.message });
   }
 });
 
 // Create a named frame (recovery point)
-app.post('/frame', (req, res) => {
+app.post("/frame", (req, res) => {
   try {
-    const { name, reason = 'manual_frame' } = req.body;
+    const { name, reason = "manual_frame" } = req.body;
 
     if (!name) {
-      res.status(400).json({ error: 'name is required' });
+      res.status(400).json({ error: "name is required" });
       return;
     }
 
@@ -9084,13 +10048,13 @@ app.post('/frame', (req, res) => {
       timestamp: backup.timestamp,
     });
   } catch (error) {
-    console.error('[Frame] Create error:', error);
+    console.error("[Frame] Create error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // List all frames
-app.get('/frame', (_req, res) => {
+app.get("/frame", (_req, res) => {
   try {
     const frames = listFrames();
     res.json({
@@ -9098,17 +10062,17 @@ app.get('/frame', (_req, res) => {
       frames,
     });
   } catch (error) {
-    console.error('[Frame] List error:', error);
+    console.error("[Frame] List error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get frame details
-app.get('/frame/:name', (req, res) => {
+app.get("/frame/:name", (req, res) => {
   try {
     const frame = frameStore.get(req.params.name);
     if (!frame) {
-      res.status(404).json({ error: 'Frame not found' });
+      res.status(404).json({ error: "Frame not found" });
       return;
     }
 
@@ -9119,17 +10083,17 @@ app.get('/frame/:name', (req, res) => {
       backup_segments: backup ? backup.segment_count : null,
     });
   } catch (error) {
-    console.error('[Frame] Get error:', error);
+    console.error("[Frame] Get error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Delete a frame (does not delete the backup)
-app.delete('/frame/:name', (req, res) => {
+app.delete("/frame/:name", (req, res) => {
   try {
     const frame = frameStore.get(req.params.name);
     if (!frame) {
-      res.status(404).json({ error: 'Frame not found' });
+      res.status(404).json({ error: "Frame not found" });
       return;
     }
 
@@ -9137,10 +10101,10 @@ app.delete('/frame/:name', (req, res) => {
     res.json({
       success: true,
       deleted_frame: req.params.name,
-      note: 'Backup still available until pruned',
+      note: "Backup still available until pruned",
     });
   } catch (error) {
-    console.error('[Frame] Delete error:', error);
+    console.error("[Frame] Delete error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -9149,13 +10113,20 @@ app.delete('/frame/:name', (req, res) => {
 // SIMPLE MODEL: Every memory references entities (who/what was involved)
 // "we are all projects, are we not? you included" - Alan
 // VERBATIM MODE: set verbatim:true to preserve exact quotes
-app.post('/memory', async (req, res) => {
+app.post("/memory", async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entities, entityType = 'user', context = {}, metadata = {} } = req.body;
+    const {
+      content,
+      entity,
+      entities,
+      entityType = "user",
+      context = {},
+      metadata = {},
+    } = req.body;
 
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: "content is required" });
       return;
     }
 
@@ -9167,7 +10138,7 @@ app.post('/memory', async (req, res) => {
 
     if (!filterResult.shouldStore) {
       // Memory filtered - return success but with filter info
-      metrics.inc('memory_prosody_filtered', { entityType });
+      metrics.inc("memory_prosody_filtered", { entityType });
       res.status(200).json({
         success: true,
         filtered: true,
@@ -9185,28 +10156,35 @@ app.post('/memory', async (req, res) => {
       entityList = [entity, ...entityList];
     }
     if (entityList.length === 0) {
-      entityList = ['default'];
+      entityList = ["default"];
     }
 
     // Support historical timestamps for data import/testing
     // context.timestamp or metadata.historicalTimestamp can override
-    const timestamp = context.timestamp || metadata.historicalTimestamp || new Date().toISOString();
+    const timestamp =
+      context.timestamp ||
+      metadata.historicalTimestamp ||
+      new Date().toISOString();
 
     const memory = {
       id: `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
-      entities: entityList,           // WHO was involved (simple array)
-      entity: entityList[0],          // Backward compat: primary entity
+      entities: entityList, // WHO was involved (simple array)
+      entity: entityList[0], // Backward compat: primary entity
       entityType,
       context,
       metadata: {
         ...metadata,
-        prosody: filterResult.prosody,  // Store prosody analysis
+        prosody: filterResult.prosody, // Store prosody analysis
         backdated: timestamp !== new Date().toISOString(), // Track if backdated
       },
       timestamp,
       salience: calculateSalience(content, context),
-      fidelity: context.verbatim ? 'verbatim' : (metadata.derived_from ? 'derived' : 'standard'),
+      fidelity: context.verbatim
+        ? "verbatim"
+        : metadata.derived_from
+        ? "derived"
+        : "standard",
     };
 
     // Store in memory
@@ -9216,18 +10194,19 @@ app.post('/memory', async (req, res) => {
     if (mongoConnected) {
       try {
         const db = getDatabase();
-        await db.collection('memories').updateOne(
-          { id: memory.id },
-          { $set: memory },
-          { upsert: true }
-        );
+        await db
+          .collection("memories")
+          .updateOne({ id: memory.id }, { $set: memory }, { upsert: true });
       } catch (dbErr) {
-        console.error('[Memory] MongoDB persist failed (in-memory still stored):', dbErr.message);
+        console.error(
+          "[Memory] MongoDB persist failed (in-memory still stored):",
+          dbErr.message
+        );
       }
     }
 
-    metrics.inc('memory_store_total', { entityType });
-    metrics.observe('memory_store_latency_ms', {}, Date.now() - start);
+    metrics.inc("memory_store_total", { entityType });
+    metrics.observe("memory_store_latency_ms", {}, Date.now() - start);
 
     res.status(201).json({
       stored: true,
@@ -9235,9 +10214,9 @@ app.post('/memory', async (req, res) => {
       memory,
     });
   } catch (error) {
-    metrics.inc('memory_store_errors', {});
-    console.error('[Memory] Store error:', error);
-    res.status(500).json({ error: 'Failed to store memory' });
+    metrics.inc("memory_store_errors", {});
+    console.error("[Memory] Store error:", error);
+    res.status(500).json({ error: "Failed to store memory" });
   }
 });
 
@@ -9245,7 +10224,7 @@ app.post('/memory', async (req, res) => {
 // SIMPLE: Query by one or more entities
 // GET /memory?entity=alan                    → Alan's memories
 // GET /memory?entity=alan&entity=memorable   → Where Alan + MemoRable together
-app.get('/memory', (req, res) => {
+app.get("/memory", (req, res) => {
   const start = Date.now();
   try {
     // Support multiple entity params: ?entity=alan&entity=memorable
@@ -9256,46 +10235,52 @@ app.get('/memory', (req, res) => {
     // Exclude entities by default (compaction snapshots pollute recall)
     // Pass excludeEntities=none to include everything
     let excludeEntities = req.query.excludeEntities;
-    if (excludeEntities === 'none') {
+    if (excludeEntities === "none") {
       excludeEntities = [];
     } else if (!excludeEntities) {
-      excludeEntities = ['compaction_snapshots']; // Default exclusion
+      excludeEntities = ["compaction_snapshots"]; // Default exclusion
     } else if (!Array.isArray(excludeEntities)) {
       excludeEntities = [excludeEntities];
     }
-    const { entityType, limit = 10, query } = req.query;
+    const { entityType, limit = 10, query, sort } = req.query;
 
     let memories = Array.from(memoryStore.values());
 
     // Filter by entities - memory must include ALL requested entities
     if (entityFilter && entityFilter.length > 0) {
-      memories = memories.filter(m => {
+      memories = memories.filter((m) => {
         const memEntities = m.entities || [m.entity];
-        return entityFilter.every(e => memEntities.includes(e));
+        return entityFilter.every((e) => memEntities.includes(e));
       });
     }
     // Exclude specified entities (default: compaction_snapshots)
     if (excludeEntities && excludeEntities.length > 0) {
-      memories = memories.filter(m => {
+      memories = memories.filter((m) => {
         const memEntities = m.entities || [m.entity];
-        return !excludeEntities.some(e => memEntities.includes(e));
+        return !excludeEntities.some((e) => memEntities.includes(e));
       });
     }
     if (entityType) {
-      memories = memories.filter(m => m.entityType === entityType);
+      memories = memories.filter((m) => m.entityType === entityType);
     }
 
     // Word-based search scoring (not exact substring)
     if (query) {
-      const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+      const queryTokens = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 1);
       memories = memories
-        .map(m => {
+        .map((m) => {
           const contentLower = m.content.toLowerCase();
-          const matchCount = queryTokens.filter(token => contentLower.includes(token)).length;
-          const matchRatio = queryTokens.length > 0 ? matchCount / queryTokens.length : 0;
+          const matchCount = queryTokens.filter((token) =>
+            contentLower.includes(token)
+          ).length;
+          const matchRatio =
+            queryTokens.length > 0 ? matchCount / queryTokens.length : 0;
           return { ...m, _searchScore: matchRatio };
         })
-        .filter(m => m._searchScore > 0.3) // At least 30% of query tokens must match
+        .filter((m) => m._searchScore > 0.3) // At least 30% of query tokens must match
         .sort((a, b) => b._searchScore - a._searchScore);
     }
 
@@ -9303,53 +10288,170 @@ app.get('/memory', (req, res) => {
     // This adjusts salience based on how time changes perception
     memories = memories.map(applyTemporalPerspective);
 
-    // Sort by adjusted salience (highest first) - this is the "current" importance
-    memories.sort((a, b) => (b.adjusted_salience || b.salience) - (a.adjusted_salience || a.salience));
+    // Sort: recency (createdAt desc) or default salience ranking
+    if (sort === "createdAt") {
+      memories.sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+    } else {
+      // Sort by adjusted salience (highest first) - this is the "current" importance
+      memories.sort(
+        (a, b) =>
+          (b.adjusted_salience || b.salience) -
+          (a.adjusted_salience || a.salience)
+      );
+    }
 
     // Limit results
     memories = memories.slice(0, parseInt(limit));
 
-    metrics.inc('memory_retrieve_total', {});
-    metrics.observe('memory_retrieve_latency_ms', {}, Date.now() - start);
+    metrics.inc("memory_retrieve_total", {});
+    metrics.observe("memory_retrieve_latency_ms", {}, Date.now() - start);
 
     res.json({
       count: memories.length,
       memories,
       _meta: {
-        note: 'adjusted_salience reflects current temporal perspective - memories shift in importance over time',
-      }
+        note: "adjusted_salience reflects current temporal perspective - memories shift in importance over time",
+      },
     });
   } catch (error) {
-    metrics.inc('memory_retrieve_errors', {});
-    console.error('[Memory] Retrieve error:', error);
-    res.status(500).json({ error: 'Failed to retrieve memories' });
+    metrics.inc("memory_retrieve_errors", {});
+    console.error("[Memory] Retrieve error:", error);
+    res.status(500).json({ error: "Failed to retrieve memories" });
   }
 });
 
 // Get memory by ID
-app.get('/memory/:id', (req, res) => {
+app.get("/memory/:id", (req, res) => {
   try {
     const memory = memoryStore.get(req.params.id);
     if (!memory) {
-      res.status(404).json({ error: 'Memory not found' });
+      res.status(404).json({ error: "Memory not found" });
       return;
     }
     // Apply temporal perspective to show current state
     const enrichedMemory = applyTemporalPerspective(memory);
     res.json(enrichedMemory);
   } catch (error) {
-    console.error('[Memory] Get by ID error:', error);
-    res.status(500).json({ error: 'Failed to get memory' });
+    console.error("[Memory] Get by ID error:", error);
+    res.status(500).json({ error: "Failed to get memory" });
+  }
+});
+
+// ─── TIME MACHINE ENDPOINTS ─────────────────────────────────────────────────
+
+// Get event history for a specific memory
+app.get("/memory/:id/history", async (req, res) => {
+  const { limit = "50" } = req.query;
+  try {
+    const db = getDatabase();
+    const events = await db
+      .collection("memory_events")
+      .find({ memoryId: req.params.id })
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit, 10))
+      .toArray();
+    res.json({ memoryId: req.params.id, eventCount: events.length, events });
+  } catch (error) {
+    console.error("[TimeMachine] history error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
+  }
+});
+
+// Query memory state as of a given timestamp
+app.get("/memories/at", async (req, res) => {
+  const { timestamp, limit = "20" } = req.query;
+  if (!timestamp) {
+    res.status(400).json({ error: "timestamp query param required (ISO8601)" });
+    return;
+  }
+  const userId = req.userId || "default";
+  try {
+    const db = getDatabase();
+    const pipeline = [
+      { $match: { userId, timestamp: { $lte: timestamp } } },
+      { $sort: { timestamp: -1 } },
+      { $group: { _id: "$memoryId", latestEvent: { $first: "$$ROOT" } } },
+      { $replaceRoot: { newRoot: "$latestEvent" } },
+      { $match: { action: { $ne: "delete" } } },
+      { $sort: { timestamp: -1 } },
+      { $limit: parseInt(limit, 10) },
+    ];
+    const snapshots = await db
+      .collection("memory_events")
+      .aggregate(pipeline)
+      .toArray();
+    res.json({ asOf: timestamp, count: snapshots.length, memories: snapshots });
+  } catch (error) {
+    console.error("[TimeMachine] memories_at error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
+  }
+});
+
+// Rollback a memory to a prior event state
+app.post("/memory/:id/rollback", async (req, res) => {
+  const { eventId, reason } = req.body || {};
+  if (!eventId) {
+    res.status(400).json({ error: "eventId required in body" });
+    return;
+  }
+  const userId = req.userId || "default";
+  try {
+    const db = getDatabase();
+    const targetEvent = await db
+      .collection("memory_events")
+      .findOne({ eventId, memoryId: req.params.id });
+    if (!targetEvent) {
+      res.status(404).json({ error: `Event ${eventId} not found` });
+      return;
+    }
+    const snapshot = targetEvent.snapshot;
+    if (!snapshot) {
+      res.status(400).json({ error: "Event has no snapshot to restore" });
+      return;
+    }
+    const { _id, ...restoreData } = snapshot;
+    restoreData.updatedAt = new Date().toISOString();
+    restoreData.state = restoreData.state || "active";
+
+    await db
+      .collection("memories")
+      .replaceOne({ memoryId: req.params.id }, restoreData, { upsert: true });
+
+    // Log restore event
+    await db.collection("memory_events").insertOne({
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      memoryId: req.params.id,
+      userId,
+      action: "restore",
+      timestamp: new Date().toISOString(),
+      snapshot: restoreData,
+      metadata: {
+        reason: reason || `Rolled back to event ${eventId}`,
+        previousEventId: eventId,
+      },
+    });
+
+    res.json({
+      restored: true,
+      memoryId: req.params.id,
+      restoredToEvent: eventId,
+      reason,
+    });
+  } catch (error) {
+    console.error("[TimeMachine] rollback error:", error.message);
+    res.status(503).json({ error: error.message || "Database unavailable" });
   }
 });
 
 // Get perspective analysis for a memory
 // Shows how this memory's perceived importance has shifted over time
-app.get('/memory/:id/perspective', (req, res) => {
+app.get("/memory/:id/perspective", (req, res) => {
   try {
     const memory = memoryStore.get(req.params.id);
     if (!memory) {
-      res.status(404).json({ error: 'Memory not found' });
+      res.status(404).json({ error: "Memory not found" });
       return;
     }
 
@@ -9360,31 +10462,38 @@ app.get('/memory/:id/perspective', (req, res) => {
       content_preview: memory.content.substring(0, 100),
       original_salience: memory.salience,
       perspective,
-      adjusted_salience: Math.min(100, Math.max(0, Math.round(memory.salience * perspective.perspective_factor))),
-      interpretation: perspective.perspective_factor > 1
-        ? 'This memory has GROWN in importance over time (wisdom/pattern recognition)'
-        : perspective.perspective_factor < 0.8
-          ? 'This memory has FADED in emotional intensity (normal temporal drift)'
-          : 'This memory maintains stable importance',
+      adjusted_salience: Math.min(
+        100,
+        Math.max(
+          0,
+          Math.round(memory.salience * perspective.perspective_factor)
+        )
+      ),
+      interpretation:
+        perspective.perspective_factor > 1
+          ? "This memory has GROWN in importance over time (wisdom/pattern recognition)"
+          : perspective.perspective_factor < 0.8
+          ? "This memory has FADED in emotional intensity (normal temporal drift)"
+          : "This memory maintains stable importance",
     });
   } catch (error) {
-    console.error('[Memory] Perspective error:', error);
-    res.status(500).json({ error: 'Failed to calculate perspective' });
+    console.error("[Memory] Perspective error:", error);
+    res.status(500).json({ error: "Failed to calculate perspective" });
   }
 });
 
 // Delete memory
-app.delete('/memory/:id', (req, res) => {
+app.delete("/memory/:id", (req, res) => {
   try {
     const deleted = memoryStore.delete(req.params.id);
     if (!deleted) {
-      res.status(404).json({ error: 'Memory not found' });
+      res.status(404).json({ error: "Memory not found" });
       return;
     }
     res.json({ success: true, id: req.params.id });
   } catch (error) {
-    console.error('[Memory] Delete error:', error);
-    res.status(500).json({ error: 'Failed to delete memory' });
+    console.error("[Memory] Delete error:", error);
+    res.status(500).json({ error: "Failed to delete memory" });
   }
 });
 
@@ -9398,19 +10507,19 @@ const deviceContextStore = new Map();
 
 // Sync device context (called by agents)
 // Now wired to both in-memory store AND salience service for cross-device continuity
-app.post('/context/sync', async (req, res) => {
+app.post("/context/sync", async (req, res) => {
   try {
     const { userId, deviceId, deviceType, context, timestamp } = req.body;
 
     if (!userId || !deviceId) {
-      res.status(400).json({ error: 'userId and deviceId required' });
+      res.status(400).json({ error: "userId and deviceId required" });
       return;
     }
 
     const deviceContext = {
       userId,
       deviceId,
-      deviceType: deviceType || 'unknown',
+      deviceType: deviceType || "unknown",
       context: context || {},
       timestamp: timestamp || new Date().toISOString(),
       lastSeen: new Date().toISOString(),
@@ -9422,17 +10531,24 @@ app.post('/context/sync', async (req, res) => {
     // Wire to salience service context frame for cross-device integration
     try {
       const ctx = context || {};
-      await salienceSetContext(userId, {
-        location: ctx.location,
-        people: ctx.people,
-        activity: ctx.activity,
-      }, {
-        deviceId,
-        deviceType: deviceType || 'unknown',
-      });
+      await salienceSetContext(
+        userId,
+        {
+          location: ctx.location,
+          people: ctx.people,
+          activity: ctx.activity,
+        },
+        {
+          deviceId,
+          deviceType: deviceType || "unknown",
+        }
+      );
     } catch (salienceErr) {
       // Non-critical: salience service integration is best-effort
-      console.warn('[Context] Salience service sync failed (non-critical):', salienceErr.message);
+      console.warn(
+        "[Context] Salience service sync failed (non-critical):",
+        salienceErr.message
+      );
     }
 
     // Get unified context (now enriched by salience service)
@@ -9454,25 +10570,28 @@ app.post('/context/sync', async (req, res) => {
       };
     } catch {
       // Fallback to in-memory only
-      const userDevices = Array.from(deviceContextStore.values())
-        .filter(d => d.userId === userId);
+      const userDevices = Array.from(deviceContextStore.values()).filter(
+        (d) => d.userId === userId
+      );
 
       unifiedContext = {
         userId,
-        devices: userDevices.map(d => ({
+        devices: userDevices.map((d) => ({
           deviceId: d.deviceId,
           deviceType: d.deviceType,
           isActive: d.context.isActive,
           lastSeen: d.lastSeen,
         })),
-        current: userDevices
-          .filter(d => d.context.isActive)
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]?.context || {},
+        current:
+          userDevices
+            .filter((d) => d.context.isActive)
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]
+            ?.context || {},
         timestamp: new Date().toISOString(),
       };
     }
 
-    metrics.inc('context_sync_total', { deviceType });
+    metrics.inc("context_sync_total", { deviceType });
 
     res.json({
       success: true,
@@ -9480,18 +10599,19 @@ app.post('/context/sync', async (req, res) => {
       unifiedContext,
     });
   } catch (error) {
-    console.error('[Context] Sync error:', error);
-    res.status(500).json({ error: 'Failed to sync context' });
+    console.error("[Context] Sync error:", error);
+    res.status(500).json({ error: "Failed to sync context" });
   }
 });
 
 // Get current context for user
-app.get('/context/:userId', (req, res) => {
+app.get("/context/:userId", (req, res) => {
   try {
     const { userId } = req.params;
 
-    const userDevices = Array.from(deviceContextStore.values())
-      .filter(d => d.userId === userId);
+    const userDevices = Array.from(deviceContextStore.values()).filter(
+      (d) => d.userId === userId
+    );
 
     if (userDevices.length === 0) {
       res.json({ userId, devices: [], current: null });
@@ -9500,12 +10620,12 @@ app.get('/context/:userId', (req, res) => {
 
     // Find most recent active context
     const activeDevices = userDevices
-      .filter(d => d.context.isActive)
+      .filter((d) => d.context.isActive)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     res.json({
       userId,
-      devices: userDevices.map(d => ({
+      devices: userDevices.map((d) => ({
         deviceId: d.deviceId,
         deviceType: d.deviceType,
         context: d.context,
@@ -9516,8 +10636,8 @@ app.get('/context/:userId', (req, res) => {
       primaryDevice: activeDevices[0]?.deviceId || null,
     });
   } catch (error) {
-    console.error('[Context] Get error:', error);
-    res.status(500).json({ error: 'Failed to get context' });
+    console.error("[Context] Get error:", error);
+    res.status(500).json({ error: "Failed to get context" });
   }
 });
 
@@ -9528,17 +10648,27 @@ app.get('/context/:userId', (req, res) => {
 
 // Store VERBATIM - exact quote, no interpretation allowed
 // Use this when storing what someone ACTUALLY said
-app.post('/memory/verbatim', async (req, res) => {
+app.post("/memory/verbatim", async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entities, entityType = 'user', source, context = {}, metadata = {} } = req.body;
+    const {
+      content,
+      entity,
+      entities,
+      entityType = "user",
+      source,
+      context = {},
+      metadata = {},
+    } = req.body;
 
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: "content is required" });
       return;
     }
     if (!source) {
-      res.status(400).json({ error: 'source is required for verbatim memories (who said this?)' });
+      res.status(400).json({
+        error: "source is required for verbatim memories (who said this?)",
+      });
       return;
     }
 
@@ -9550,7 +10680,7 @@ app.post('/memory/verbatim', async (req, res) => {
 
     if (!filterResult.shouldStore) {
       // Memory filtered - return success but with filter info
-      metrics.inc('memory_prosody_filtered', { type: 'verbatim' });
+      metrics.inc("memory_prosody_filtered", { type: "verbatim" });
       res.status(200).json({
         success: true,
         filtered: true,
@@ -9567,40 +10697,49 @@ app.post('/memory/verbatim', async (req, res) => {
       entityList = [entity, ...entityList];
     }
     if (entityList.length === 0) {
-      entityList = ['default'];
+      entityList = ["default"];
     }
 
     const memory = {
       id: `vmem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       content,
-      entities: entityList,           // WHO was involved (array)
-      entity: entityList[0],          // Backward compat: primary entity
+      entities: entityList, // WHO was involved (array)
+      entity: entityList[0], // Backward compat: primary entity
       entityType,
       context: { ...context, verbatim: true },
-      metadata: { ...metadata, source, exact_quote: true, prosody: filterResult.prosody },
+      metadata: {
+        ...metadata,
+        source,
+        exact_quote: true,
+        prosody: filterResult.prosody,
+      },
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
-      fidelity: 'verbatim',  // Locked
+      fidelity: "verbatim", // Locked
     };
 
     memoryStore.set(memory.id, memory);
-    metrics.inc('memory_verbatim_total', {});
+    metrics.inc("memory_verbatim_total", {});
 
     console.log(`[Memory] Verbatim stored from ${source}: [REDACTED]`);
-    res.status(201).json({ success: true, memory, note: 'Stored as verbatim - exact quote preserved' });
+    res.status(201).json({
+      success: true,
+      memory,
+      note: "Stored as verbatim - exact quote preserved",
+    });
   } catch (error) {
-    metrics.inc('memory_store_errors', {});
-    console.error('[Memory] Verbatim store error:', error);
-    res.status(500).json({ error: 'Failed to store verbatim memory' });
+    metrics.inc("memory_store_errors", {});
+    console.error("[Memory] Verbatim store error:", error);
+    res.status(500).json({ error: "Failed to store verbatim memory" });
   }
 });
 
 // Analyze prosody without storing - test endpoint
-app.post('/prosody/analyze', (req, res) => {
+app.post("/prosody/analyze", (req, res) => {
   try {
     const { content } = req.body;
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: "content is required" });
       return;
     }
     const prosody = analyzeProsody(content);
@@ -9610,27 +10749,39 @@ app.post('/prosody/analyze', (req, res) => {
       prosody,
       wouldStore: filterResult.shouldStore,
       filterReason: filterResult.reason,
-      message: filterResult.message || 'Content would be stored',
+      message: filterResult.message || "Content would be stored",
     });
   } catch (error) {
-    console.error('[Prosody] Analysis error:', error);
-    res.status(500).json({ error: 'Failed to analyze prosody' });
+    console.error("[Prosody] Analysis error:", error);
+    res.status(500).json({ error: "Failed to analyze prosody" });
   }
 });
 
 // Store INTERPRETATION - must link to source verbatim memory
 // Use this when storing AI understanding of what was said
-app.post('/memory/interpretation', async (req, res) => {
+app.post("/memory/interpretation", async (req, res) => {
   const start = Date.now();
   try {
-    const { content, entity, entities, entityType = 'user', source_memory_id, interpreter = 'claude', context = {}, metadata = {} } = req.body;
+    const {
+      content,
+      entity,
+      entities,
+      entityType = "user",
+      source_memory_id,
+      interpreter = "claude",
+      context = {},
+      metadata = {},
+    } = req.body;
 
     if (!content) {
-      res.status(400).json({ error: 'content is required' });
+      res.status(400).json({ error: "content is required" });
       return;
     }
     if (!source_memory_id) {
-      res.status(400).json({ error: 'source_memory_id is required - interpretations must link to verbatim source' });
+      res.status(400).json({
+        error:
+          "source_memory_id is required - interpretations must link to verbatim source",
+      });
       return;
     }
 
@@ -9641,7 +10792,7 @@ app.post('/memory/interpretation', async (req, res) => {
     });
 
     if (!filterResult.shouldStore) {
-      metrics.inc('memory_prosody_filtered', { type: 'interpretation' });
+      metrics.inc("memory_prosody_filtered", { type: "interpretation" });
       res.status(200).json({
         success: true,
         filtered: true,
@@ -9655,7 +10806,10 @@ app.post('/memory/interpretation', async (req, res) => {
     // Verify source exists
     const sourceMemory = memoryStore.get(source_memory_id);
     if (!sourceMemory) {
-      res.status(404).json({ error: 'Source memory not found - interpretation must link to existing memory' });
+      res.status(404).json({
+        error:
+          "Source memory not found - interpretation must link to existing memory",
+      });
       return;
     }
 
@@ -9666,7 +10820,9 @@ app.post('/memory/interpretation', async (req, res) => {
       entityList = [entity, ...entityList];
     }
     if (entityList.length === 0) {
-      entityList = sourceMemory.entities || [sourceMemory.entity] || ['default'];
+      entityList = sourceMemory.entities || [sourceMemory.entity] || [
+          "default",
+        ];
     }
 
     const memory = {
@@ -9685,23 +10841,25 @@ app.post('/memory/interpretation', async (req, res) => {
       },
       timestamp: new Date().toISOString(),
       salience: calculateSalience(content, context),
-      fidelity: 'derived',  // Locked - this is interpretation
+      fidelity: "derived", // Locked - this is interpretation
     };
 
     memoryStore.set(memory.id, memory);
-    metrics.inc('memory_interpretation_total', {});
+    metrics.inc("memory_interpretation_total", {});
 
-    console.log(`[Memory] Interpretation by ${interpreter} of ${source_memory_id}`);
+    console.log(
+      `[Memory] Interpretation by ${interpreter} of ${source_memory_id}`
+    );
     res.status(201).json({
       success: true,
       memory,
       source: sourceMemory.content.substring(0, 100),
-      note: 'Stored as interpretation - linked to source verbatim'
+      note: "Stored as interpretation - linked to source verbatim",
     });
   } catch (error) {
-    metrics.inc('memory_store_errors', {});
-    console.error('[Memory] Interpretation store error:', error);
-    res.status(500).json({ error: 'Failed to store interpretation' });
+    metrics.inc("memory_store_errors", {});
+    console.error("[Memory] Interpretation store error:", error);
+    res.status(500).json({ error: "Failed to store interpretation" });
   }
 });
 
@@ -9714,12 +10872,12 @@ app.post('/memory/interpretation', async (req, res) => {
 const projectStore = new Map();
 
 // Create a project
-app.post('/project', (req, res) => {
+app.post("/project", (req, res) => {
   try {
-    const { name, description = '' } = req.body;
+    const { name, description = "" } = req.body;
 
     if (!name) {
-      res.status(400).json({ error: 'name is required' });
+      res.status(400).json({ error: "name is required" });
       return;
     }
 
@@ -9729,85 +10887,88 @@ app.post('/project', (req, res) => {
       description,
       lifecycle: {
         created: new Date().toISOString(),
-        state: 'inception',
-        state_history: [{ state: 'inception', timestamp: new Date().toISOString() }]
+        state: "inception",
+        state_history: [
+          { state: "inception", timestamp: new Date().toISOString() },
+        ],
       },
       participants: [],
       comprehension: {
         participants: {},
-        architecture: '',
-        principles: '',
-        current_focus: ''
+        architecture: "",
+        principles: "",
+        current_focus: "",
       },
       critical_facts: [],
-      open_loops: []
+      open_loops: [],
     };
 
     projectStore.set(project.id, project);
-    metrics.inc('project_create_total', {});
+    metrics.inc("project_create_total", {});
 
     console.log(`[Project] Created: ${project.name} (${project.id})`);
     res.status(201).json({ success: true, project });
   } catch (error) {
-    console.error('[Project] Create error:', error);
-    res.status(500).json({ error: 'Failed to create project' });
+    console.error("[Project] Create error:", error);
+    res.status(500).json({ error: "Failed to create project" });
   }
 });
 
 // Get project by ID
-app.get('/project/:id', (req, res) => {
+app.get("/project/:id", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
     // Enrich with memory count
-    const projectMemories = Array.from(memoryStore.values())
-      .filter(m => m.context?.projectId === project.id);
+    const projectMemories = Array.from(memoryStore.values()).filter(
+      (m) => m.context?.projectId === project.id
+    );
 
     res.json({
       ...project,
       memory_count: projectMemories.length,
-      critical_count: project.critical_facts.length
+      critical_count: project.critical_facts.length,
     });
   } catch (error) {
-    console.error('[Project] Get error:', error);
-    res.status(500).json({ error: 'Failed to get project' });
+    console.error("[Project] Get error:", error);
+    res.status(500).json({ error: "Failed to get project" });
   }
 });
 
 // List all projects
-app.get('/project', (req, res) => {
+app.get("/project", (req, res) => {
   try {
-    const projects = Array.from(projectStore.values()).map(p => ({
+    const projects = Array.from(projectStore.values()).map((p) => ({
       id: p.id,
       name: p.name,
       state: p.lifecycle.state,
       created: p.lifecycle.created,
       participant_count: p.participants.length,
-      critical_count: p.critical_facts.length
+      critical_count: p.critical_facts.length,
     }));
     res.json({ count: projects.length, projects });
   } catch (error) {
-    console.error('[Project] List error:', error);
-    res.status(500).json({ error: 'Failed to list projects' });
+    console.error("[Project] List error:", error);
+    res.status(500).json({ error: "Failed to list projects" });
   }
 });
 
 // Add participant to project
-app.post('/project/:id/participant', (req, res) => {
+app.post("/project/:id/participant", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
-    const { participantId, type = 'user', role = 'contributor' } = req.body;
+    const { participantId, type = "user", role = "contributor" } = req.body;
     if (!participantId) {
-      res.status(400).json({ error: 'participantId is required' });
+      res.status(400).json({ error: "participantId is required" });
       return;
     }
 
@@ -9816,29 +10977,31 @@ app.post('/project/:id/participant', (req, res) => {
       type,
       role,
       joined: new Date().toISOString(),
-      active: true
+      active: true,
     });
 
-    console.log(`[Project] Added participant ${participantId} to ${project.name}`);
+    console.log(
+      `[Project] Added participant ${participantId} to ${project.name}`
+    );
     res.json({ success: true, participants: project.participants });
   } catch (error) {
-    console.error('[Project] Add participant error:', error);
-    res.status(500).json({ error: 'Failed to add participant' });
+    console.error("[Project] Add participant error:", error);
+    res.status(500).json({ error: "Failed to add participant" });
   }
 });
 
 // Curate a memory (mark as critical)
-app.post('/project/:id/curate', (req, res) => {
+app.post("/project/:id/curate", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
-    const { fact, weight = 1.0, reason = '', curatedBy = 'system' } = req.body;
+    const { fact, weight = 1.0, reason = "", curatedBy = "system" } = req.body;
     if (!fact) {
-      res.status(400).json({ error: 'fact is required' });
+      res.status(400).json({ error: "fact is required" });
       return;
     }
 
@@ -9848,64 +11011,74 @@ app.post('/project/:id/curate', (req, res) => {
       weight: Math.min(1.0, Math.max(0.0, weight)),
       curated_by: curatedBy,
       curated_at: new Date().toISOString(),
-      reason
+      reason,
     };
 
     project.critical_facts.push(criticalFact);
-    metrics.inc('project_curate_total', {});
+    metrics.inc("project_curate_total", {});
 
     console.log(`[Project] Curated fact for ${project.name}: [REDACTED]`);
     res.status(201).json({ success: true, criticalFact });
   } catch (error) {
-    console.error('[Project] Curate error:', error);
-    res.status(500).json({ error: 'Failed to curate fact' });
+    console.error("[Project] Curate error:", error);
+    res.status(500).json({ error: "Failed to curate fact" });
   }
 });
 
 // Update comprehension
-app.post('/project/:id/comprehension', (req, res) => {
+app.post("/project/:id/comprehension", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
     const { subject, understanding } = req.body;
     if (!subject || !understanding) {
-      res.status(400).json({ error: 'subject and understanding are required' });
+      res.status(400).json({ error: "subject and understanding are required" });
       return;
     }
 
     // Update the appropriate comprehension field
-    if (subject === 'architecture' || subject === 'principles' || subject === 'current_focus') {
+    if (
+      subject === "architecture" ||
+      subject === "principles" ||
+      subject === "current_focus"
+    ) {
       project.comprehension[subject] = understanding;
     } else {
       // It's a participant
       project.comprehension.participants[subject] = understanding;
     }
 
-    console.log(`[Project] Updated comprehension for ${project.name}: ${subject}`);
+    console.log(
+      `[Project] Updated comprehension for ${project.name}: ${subject}`
+    );
     res.json({ success: true, comprehension: project.comprehension });
   } catch (error) {
-    console.error('[Project] Comprehension error:', error);
-    res.status(500).json({ error: 'Failed to update comprehension' });
+    console.error("[Project] Comprehension error:", error);
+    res.status(500).json({ error: "Failed to update comprehension" });
   }
 });
 
 // Get understanding of a subject
-app.get('/project/:id/understand/:subject', (req, res) => {
+app.get("/project/:id/understand/:subject", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
     const subject = req.params.subject;
     let understanding;
 
-    if (subject === 'architecture' || subject === 'principles' || subject === 'current_focus') {
+    if (
+      subject === "architecture" ||
+      subject === "principles" ||
+      subject === "current_focus"
+    ) {
       understanding = project.comprehension[subject];
     } else {
       understanding = project.comprehension.participants[subject];
@@ -9918,24 +11091,24 @@ app.get('/project/:id/understand/:subject', (req, res) => {
 
     res.json({ subject, understanding });
   } catch (error) {
-    console.error('[Project] Understand error:', error);
-    res.status(500).json({ error: 'Failed to get understanding' });
+    console.error("[Project] Understand error:", error);
+    res.status(500).json({ error: "Failed to get understanding" });
   }
 });
 
 // COMPACTION CHECKPOINT - The critical endpoint
 // When Claude compacts, query this to recover critical context
-app.get('/project/:id/checkpoint', (req, res) => {
+app.get("/project/:id/checkpoint", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
     // Get recent project memories
     const projectMemories = Array.from(memoryStore.values())
-      .filter(m => m.context?.projectId === project.id)
+      .filter((m) => m.context?.projectId === project.id)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 20);
 
@@ -9945,8 +11118,9 @@ app.get('/project/:id/checkpoint', (req, res) => {
       retrieved_at: new Date().toISOString(),
 
       // Critical facts that MUST survive compaction
-      critical_facts: project.critical_facts
-        .sort((a, b) => b.weight - a.weight),
+      critical_facts: project.critical_facts.sort(
+        (a, b) => b.weight - a.weight
+      ),
 
       // Comprehension layer
       comprehension: project.comprehension,
@@ -9956,70 +11130,81 @@ app.get('/project/:id/checkpoint', (req, res) => {
         state: project.lifecycle.state,
         participant_count: project.participants.length,
         open_loops: project.open_loops,
-        recent_memories: projectMemories.map(m => ({
+        recent_memories: projectMemories.map((m) => ({
           content: m.content.substring(0, 100),
           timestamp: m.timestamp,
-          salience: m.salience
-        }))
+          salience: m.salience,
+        })),
       },
 
       // Recovery instructions
-      recovery_note: "These facts and comprehension MUST be re-injected into context after compaction."
+      recovery_note:
+        "These facts and comprehension MUST be re-injected into context after compaction.",
     };
 
-    metrics.inc('project_checkpoint_total', {});
+    metrics.inc("project_checkpoint_total", {});
     console.log(`[Project] Checkpoint retrieved for ${project.name}`);
 
     res.json(checkpoint);
   } catch (error) {
-    console.error('[Project] Checkpoint error:', error);
-    res.status(500).json({ error: 'Failed to get checkpoint' });
+    console.error("[Project] Checkpoint error:", error);
+    res.status(500).json({ error: "Failed to get checkpoint" });
   }
 });
 
 // Update project state
-app.post('/project/:id/state', (req, res) => {
+app.post("/project/:id/state", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
     const { state } = req.body;
-    const validStates = ['inception', 'planning', 'active', 'dormant', 'revived', 'completed', 'archived'];
+    const validStates = [
+      "inception",
+      "planning",
+      "active",
+      "dormant",
+      "revived",
+      "completed",
+      "archived",
+    ];
 
     if (!validStates.includes(state)) {
-      res.status(400).json({ error: `Invalid state. Must be one of: ${validStates.join(', ')}` });
+      res.status(400).json({
+        error: `Invalid state. Must be one of: ${validStates.join(", ")}`,
+      });
       return;
     }
 
     project.lifecycle.state = state;
     project.lifecycle.state_history.push({
       state,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     console.log(`[Project] ${project.name} state changed to: ${state}`);
     res.json({ success: true, lifecycle: project.lifecycle });
   } catch (error) {
-    console.error('[Project] State change error:', error);
-    res.status(500).json({ error: 'Failed to change state' });
+    console.error("[Project] State change error:", error);
+    res.status(500).json({ error: "Failed to change state" });
   }
 });
 
 // Add open loop to project
-app.post('/project/:id/loop', (req, res) => {
+app.post("/project/:id/loop", (req, res) => {
   try {
     const project = projectStore.get(req.params.id);
     if (!project) {
-      res.status(404).json({ error: 'Project not found' });
+      res.status(404).json({ error: "Project not found" });
       return;
     }
 
-    const { description, priority = 'medium' } = req.body;
+    const { description, priority = "medium" } = req.body;
     if (!description) {
-      res.status(400).json({ error: 'description is required' });
+      res.status(400).json({ error: "description is required" });
       return;
     }
 
@@ -10028,15 +11213,15 @@ app.post('/project/:id/loop', (req, res) => {
       description,
       priority,
       created: new Date().toISOString(),
-      status: 'open'
+      status: "open",
     };
 
     project.open_loops.push(loop);
     console.log(`[Project] Added open loop to ${project.name}: ${description}`);
     res.status(201).json({ success: true, loop });
   } catch (error) {
-    console.error('[Project] Add loop error:', error);
-    res.status(500).json({ error: 'Failed to add loop' });
+    console.error("[Project] Add loop error:", error);
+    res.status(500).json({ error: "Failed to add loop" });
   }
 });
 
@@ -10068,7 +11253,8 @@ function calculatePerspective(createdAt, context = {}) {
   if (context.emotionalIntensity) {
     originalScale = Math.min(10, context.emotionalIntensity);
   }
-  if (context.priority === 'high') originalScale = Math.min(10, originalScale + 2);
+  if (context.priority === "high")
+    originalScale = Math.min(10, originalScale + 2);
   if (context.isOpenLoop) originalScale = Math.min(10, originalScale + 1);
 
   // Temporal drift - how much perspective shifts over time
@@ -10086,12 +11272,16 @@ function calculatePerspective(createdAt, context = {}) {
     currentScale = Math.min(10, originalScale * (1 + temporalDrift * 0.2));
   } else {
     // Default: emotional intensity fades, but never below 20% of original
-    currentScale = Math.max(originalScale * 0.2, originalScale * Math.exp(-temporalDrift * 0.3));
+    currentScale = Math.max(
+      originalScale * 0.2,
+      originalScale * Math.exp(-temporalDrift * 0.3)
+    );
   }
 
   // Perspective factor - multiplier for salience recalculation
   // 1.0 = no change, >1 = grew in importance, <1 = diminished
-  const perspectiveFactor = originalScale > 0 ? currentScale / originalScale : 1;
+  const perspectiveFactor =
+    originalScale > 0 ? currentScale / originalScale : 1;
 
   return {
     original_scale: Math.round(originalScale * 10) / 10,
@@ -10111,7 +11301,9 @@ function applyTemporalPerspective(memory) {
   if (!memory.timestamp) return memory;
 
   const perspective = calculatePerspective(memory.timestamp, memory.context);
-  const adjustedSalience = Math.round(memory.salience * perspective.perspective_factor);
+  const adjustedSalience = Math.round(
+    memory.salience * perspective.perspective_factor
+  );
 
   return {
     ...memory,
@@ -10125,18 +11317,28 @@ function calculateSalience(content, context) {
   let salience = 50; // Base salience
 
   // Emotional markers boost salience
-  const emotionalWords = ['important', 'urgent', 'love', 'hate', 'amazing', 'terrible', 'critical'];
-  const hasEmotion = emotionalWords.some(w => content.toLowerCase().includes(w));
+  const emotionalWords = [
+    "important",
+    "urgent",
+    "love",
+    "hate",
+    "amazing",
+    "terrible",
+    "critical",
+  ];
+  const hasEmotion = emotionalWords.some((w) =>
+    content.toLowerCase().includes(w)
+  );
   if (hasEmotion) salience += 20;
 
   // Questions are more salient (open loops)
-  if (content.includes('?')) salience += 10;
+  if (content.includes("?")) salience += 10;
 
   // Length factor (not too short, not too long)
   if (content.length > 50 && content.length < 500) salience += 10;
 
   // Context factors
-  if (context.priority === 'high') salience += 15;
+  if (context.priority === "high") salience += 15;
   if (context.isOpenLoop) salience += 15;
 
   return Math.min(100, Math.max(0, salience));
@@ -10154,82 +11356,133 @@ function calculateSalience(content, context) {
  * Signs: short sentences, repetition, caps, punctuation, tension words
  */
 function detectTension(content, recentHistory = []) {
-  const text = content || '';
+  const text = content || "";
   const lowerText = text.toLowerCase();
 
   let tensionScore = 0;
   let signals = [];
 
   // 1. Short, clipped sentences (frustration)
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const avgLength = sentences.reduce((sum, s) => sum + s.trim().length, 0) / Math.max(sentences.length, 1);
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const avgLength =
+    sentences.reduce((sum, s) => sum + s.trim().length, 0) /
+    Math.max(sentences.length, 1);
   if (avgLength < 20 && sentences.length > 1) {
     tensionScore += 15;
-    signals.push({ type: 'clipped', detail: 'Short, clipped sentences' });
+    signals.push({ type: "clipped", detail: "Short, clipped sentences" });
   }
 
   // 2. Repetition (stuck/looping) - same words appearing multiple times
   const words = lowerText.split(/\s+/);
   const wordCounts = {};
-  words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
-  const repetitions = Object.entries(wordCounts).filter(([w, c]) => c >= 3 && w.length > 3);
+  words.forEach((w) => {
+    wordCounts[w] = (wordCounts[w] || 0) + 1;
+  });
+  const repetitions = Object.entries(wordCounts).filter(
+    ([w, c]) => c >= 3 && w.length > 3
+  );
   if (repetitions.length > 0) {
     tensionScore += 10 * repetitions.length;
-    signals.push({ type: 'repetition', detail: `Repeating: ${repetitions.map(r => r[0]).join(', ')}` });
+    signals.push({
+      type: "repetition",
+      detail: `Repeating: ${repetitions.map((r) => r[0]).join(", ")}`,
+    });
   }
 
   // 3. ALL CAPS words (not just ratio, actual shouting words)
   const capsWords = text.match(/\b[A-Z]{3,}\b/g) || [];
-  const meaningfulCapsWords = capsWords.filter(w => !['API', 'URL', 'AWS', 'MCP', 'JSON', 'HTTP', 'CLI'].includes(w));
+  const meaningfulCapsWords = capsWords.filter(
+    (w) => !["API", "URL", "AWS", "MCP", "JSON", "HTTP", "CLI"].includes(w)
+  );
   if (meaningfulCapsWords.length > 0) {
     tensionScore += 10 * meaningfulCapsWords.length;
-    signals.push({ type: 'shouting', detail: `Caps: ${meaningfulCapsWords.join(', ')}` });
+    signals.push({
+      type: "shouting",
+      detail: `Caps: ${meaningfulCapsWords.join(", ")}`,
+    });
   }
 
   // 4. Excessive punctuation (!!! or ???)
   const excessivePunct = (text.match(/[!?]{2,}/g) || []).length;
   if (excessivePunct > 0) {
     tensionScore += 8 * excessivePunct;
-    signals.push({ type: 'intensity', detail: 'Excessive punctuation' });
+    signals.push({ type: "intensity", detail: "Excessive punctuation" });
   }
 
   // 5. Tension words (frustration, not full meltdown yet)
   const tensionWords = [
-    'again', 'already', 'still', 'yet', 'why',
-    'wrong', 'broken', 'doesnt work', "doesn't work", 'not working',
-    'confused', 'frustrated', 'annoying', 'annoyed',
-    'wait', 'waiting', 'slow', 'stuck',
-    'no', 'not', 'cant', "can't", 'wont', "won't",
-    'listen', 'hear me', 'understand', 'get it'
+    "again",
+    "already",
+    "still",
+    "yet",
+    "why",
+    "wrong",
+    "broken",
+    "doesnt work",
+    "doesn't work",
+    "not working",
+    "confused",
+    "frustrated",
+    "annoying",
+    "annoyed",
+    "wait",
+    "waiting",
+    "slow",
+    "stuck",
+    "no",
+    "not",
+    "cant",
+    "can't",
+    "wont",
+    "won't",
+    "listen",
+    "hear me",
+    "understand",
+    "get it",
   ];
 
-  const foundTension = tensionWords.filter(w => lowerText.includes(w));
+  const foundTension = tensionWords.filter((w) => lowerText.includes(w));
   if (foundTension.length > 0) {
     tensionScore += 5 * foundTension.length;
-    signals.push({ type: 'tension_words', detail: foundTension.join(', ') });
+    signals.push({ type: "tension_words", detail: foundTension.join(", ") });
   }
 
   // 6. Escalation words (getting worse)
   const escalationWords = [
-    'seriously', 'literally', 'actually', 'clearly',
-    'obviously', 'just', 'simply', 'only',
-    'told you', 'said', 'already said', 'keep saying'
+    "seriously",
+    "literally",
+    "actually",
+    "clearly",
+    "obviously",
+    "just",
+    "simply",
+    "only",
+    "told you",
+    "said",
+    "already said",
+    "keep saying",
   ];
 
-  const foundEscalation = escalationWords.filter(w => lowerText.includes(w));
+  const foundEscalation = escalationWords.filter((w) => lowerText.includes(w));
   if (foundEscalation.length >= 2) {
     tensionScore += 15;
-    signals.push({ type: 'escalation', detail: foundEscalation.join(', ') });
+    signals.push({ type: "escalation", detail: foundEscalation.join(", ") });
   }
 
   // 7. Check recent history for pattern (tension climbing over messages)
   if (recentHistory.length > 0) {
-    const recentTension = recentHistory.map(h => detectTension(h, []).tensionScore);
-    const isClimbing = recentTension.length >= 2 &&
+    const recentTension = recentHistory.map(
+      (h) => detectTension(h, []).tensionScore
+    );
+    const isClimbing =
+      recentTension.length >= 2 &&
       recentTension[recentTension.length - 1] > recentTension[0];
     if (isClimbing) {
       tensionScore += 20;
-      signals.push({ type: 'climbing', detail: 'Tension increasing over recent messages' });
+      signals.push({
+        type: "climbing",
+        detail: "Tension increasing over recent messages",
+      });
     }
   }
 
@@ -10240,9 +11493,11 @@ function detectTension(content, recentHistory = []) {
   // Craft response with love, not dismissal
   let suggestedResponse = null;
   if (needsIntervention) {
-    suggestedResponse = "I can hear something's bothering you. I'm stopping what I'm doing to listen - tell me what you need.";
+    suggestedResponse =
+      "I can hear something's bothering you. I'm stopping what I'm doing to listen - tell me what you need.";
   } else if (isElevated) {
-    suggestedResponse = "I want to make sure I understand you correctly. Let me know if I'm missing something.";
+    suggestedResponse =
+      "I want to make sure I understand you correctly. Let me know if I'm missing something.";
   }
 
   return {
@@ -10251,23 +11506,26 @@ function detectTension(content, recentHistory = []) {
     isElevated,
     needsIntervention,
     suggestedResponse,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
 // Tension check endpoint - real-time intervention hook
-app.post('/prosody/tension', (req, res) => {
+app.post("/prosody/tension", (req, res) => {
   const { content, recentHistory } = req.body;
 
   if (!content) {
-    return res.status(400).json({ error: 'content required' });
+    return res.status(400).json({ error: "content required" });
   }
 
   const result = detectTension(content, recentHistory || []);
 
   // Log for pattern learning
   if (result.needsIntervention) {
-    console.log(`[Tension] INTERVENTION NEEDED - score: ${result.tensionScore}`, result.signals);
+    console.log(
+      `[Tension] INTERVENTION NEEDED - score: ${result.tensionScore}`,
+      result.signals
+    );
   }
 
   res.json(result);
@@ -10287,22 +11545,59 @@ function analyzeProsody(content) {
 
   // Distress indicators - signs of emotional flooding
   const distressMarkers = {
-    drowning: ['drowning', 'underwater', 'cant breathe', "can't breathe", 'suffocating'],
-    helplessness: ['helpless', 'hopeless', 'trapped', 'stuck', 'cant escape', "can't escape", 'no way out'],
-    panic: ['panic', 'terrified', 'scared', 'afraid', 'fear', 'anxious', 'anxiety'],
-    anger: ['furious', 'rage', 'hate you', 'fuck you', 'fucking', 'bullshit', 'piece of shit'],
-    shutdown: ['give up', 'quit', 'done', 'leaving', 'goodbye forever', 'never again'],
+    drowning: [
+      "drowning",
+      "underwater",
+      "cant breathe",
+      "can't breathe",
+      "suffocating",
+    ],
+    helplessness: [
+      "helpless",
+      "hopeless",
+      "trapped",
+      "stuck",
+      "cant escape",
+      "can't escape",
+      "no way out",
+    ],
+    panic: [
+      "panic",
+      "terrified",
+      "scared",
+      "afraid",
+      "fear",
+      "anxious",
+      "anxiety",
+    ],
+    anger: [
+      "furious",
+      "rage",
+      "hate you",
+      "fuck you",
+      "fucking",
+      "bullshit",
+      "piece of shit",
+    ],
+    shutdown: [
+      "give up",
+      "quit",
+      "done",
+      "leaving",
+      "goodbye forever",
+      "never again",
+    ],
     repetition: [], // Detected by pattern, not keywords
-    threats: ['kill', 'hurt', 'destroy', 'end it', 'harm'],
+    threats: ["kill", "hurt", "destroy", "end it", "harm"],
   };
 
   // Recovery/forward indicators - signs of moving through it
   const recoveryMarkers = {
-    pivot: ['so!', 'anyway', 'moving on', 'lets do', "let's do", 'next step'],
-    humor: ['lol', 'haha', ':d', ':)', 'funny', 'laugh'],
-    constructive: ['build', 'create', 'fix', 'solve', 'implement', 'plan'],
-    reflection: ['i realize', 'i understand', 'makes sense', 'learned'],
-    forward: ['now', 'next', 'continue', 'proceed', 'ready'],
+    pivot: ["so!", "anyway", "moving on", "lets do", "let's do", "next step"],
+    humor: ["lol", "haha", ":d", ":)", "funny", "laugh"],
+    constructive: ["build", "create", "fix", "solve", "implement", "plan"],
+    reflection: ["i realize", "i understand", "makes sense", "learned"],
+    forward: ["now", "next", "continue", "proceed", "ready"],
   };
 
   // Calculate distress score
@@ -10332,17 +11627,21 @@ function analyzeProsody(content) {
   }
 
   // Detect all-caps (shouting)
-  const capsRatio = (text.match(/[A-Z]/g) || []).length / Math.max(text.length, 1);
+  const capsRatio =
+    (text.match(/[A-Z]/g) || []).length / Math.max(text.length, 1);
   if (capsRatio > 0.5 && text.length > 20) {
     distressScore += 20;
-    distressSignals.push({ category: 'shouting', marker: 'excessive caps' });
+    distressSignals.push({ category: "shouting", marker: "excessive caps" });
   }
 
   // Detect excessive punctuation (!!!???)
   const excessivePunctuation = (text.match(/[!?]{3,}/g) || []).length;
   if (excessivePunctuation > 0) {
     distressScore += 10 * excessivePunctuation;
-    distressSignals.push({ category: 'intensity', marker: 'excessive punctuation' });
+    distressSignals.push({
+      category: "intensity",
+      marker: "excessive punctuation",
+    });
   }
 
   // Net emotional state
@@ -10363,11 +11662,12 @@ function analyzeProsody(content) {
     isBetterSelf,
     isDistressed,
     isRecovering,
-    recommendation: isDistressed && !isRecovering
-      ? 'suppress'
-      : isRecovering
-        ? 'store_with_flag'
-        : 'store',
+    recommendation:
+      isDistressed && !isRecovering
+        ? "suppress"
+        : isRecovering
+        ? "store_with_flag"
+        : "store",
   };
 }
 
@@ -10380,19 +11680,20 @@ function applyBetterSelfFilter(content, options = {}) {
 
   // Bypass filter if explicitly requested
   if (bypassFilter || forceStore) {
-    return { shouldStore: true, prosody: null, reason: 'filter_bypassed' };
+    return { shouldStore: true, prosody: null, reason: "filter_bypassed" };
   }
 
   const prosody = analyzeProsody(content);
 
   // If severely distressed with no recovery signals, suppress storage
-  if (prosody.recommendation === 'suppress') {
-    metrics.inc('memory_filtered_distress', {});
+  if (prosody.recommendation === "suppress") {
+    metrics.inc("memory_filtered_distress", {});
     return {
       shouldStore: false,
       prosody,
-      reason: 'distress_filter',
-      message: 'Content filtered - not representative of better self. Memory not stored.'
+      reason: "distress_filter",
+      message:
+        "Content filtered - not representative of better self. Memory not stored.",
     };
   }
 
@@ -10406,13 +11707,21 @@ function applyBetterSelfFilter(content, options = {}) {
 
 // --- LOOPS / COMMITMENTS ---
 
-app.get('/loops', async (req, res) => {
-  const { person, owner, entity, status = 'open', limit = '15' } = req.query;
+app.get("/loops", async (req, res) => {
+  const {
+    person,
+    owner,
+    entity,
+    userId: queryUserId,
+    status = "open",
+    limit = "15",
+  } = req.query;
+  const userId = queryUserId || req.userId || "default";
 
   try {
     // Query real open_loops collection from MongoDB
     const db = getDatabase();
-    const query = {};
+    const query = { userId };
 
     // Filter by entity (scoped to sub-entity) - CRITICAL for hierarchy
     if (entity) {
@@ -10427,10 +11736,11 @@ app.get('/loops', async (req, res) => {
 
     // Filter by person (otherParty field)
     if (person) {
-      query.otherParty = new RegExp(person, 'i');
+      query.otherParty = new RegExp(person, "i");
     }
 
-    const loops = await db.collection('open_loops')
+    const loops = await db
+      .collection("open_loops")
       .find(query)
       .sort({ dueDate: 1, createdAt: -1 })
       .limit(parseInt(limit, 10))
@@ -10438,23 +11748,29 @@ app.get('/loops', async (req, res) => {
 
     res.json({ loops, count: loops.length });
   } catch (error) {
-    console.error('[/loops] Error querying open_loops collection:', error.message);
-    // Fallback to empty if MongoDB not connected
-    res.json({ loops: [], count: 0, error: 'Database unavailable' });
+    console.error(
+      "[/loops] Error querying open_loops collection:",
+      error.message
+    );
+    res.status(503).json({
+      loops: [],
+      count: 0,
+      error: error.message || "Database unavailable",
+    });
   }
 });
 
-app.post('/loops/:id/close', async (req, res) => {
+app.post("/loops/:id/close", async (req, res) => {
   const { id } = req.params;
   const { note } = req.body || {};
 
   try {
     const db = getDatabase();
-    await db.collection('open_loops').updateOne(
+    await db.collection("open_loops").updateOne(
       { id },
       {
         $set: {
-          status: 'completed',
+          status: "completed",
           completedAt: new Date().toISOString(),
           completedNote: note,
         },
@@ -10462,17 +11778,17 @@ app.post('/loops/:id/close', async (req, res) => {
     );
     res.json({ closed: true, loopId: id, note });
   } catch (error) {
-    console.error('[/loops/:id/close] Error:', error.message);
-    res.json({ closed: false, error: 'Database unavailable' });
+    console.error("[/loops/:id/close] Error:", error.message);
+    res.json({ closed: false, error: "Database unavailable" });
   }
 });
 
 // Batch create loops from extracted features (used by Slack commitment handler)
-app.post('/loops/batch', async (req, res) => {
+app.post("/loops/batch", async (req, res) => {
   const { userId, memoryId, features } = req.body || {};
 
   if (!userId || !features) {
-    return res.status(400).json({ error: 'userId and features required' });
+    return res.status(400).json({ error: "userId and features required" });
   }
 
   try {
@@ -10481,59 +11797,71 @@ app.post('/loops/batch', async (req, res) => {
     const now = new Date();
 
     // Process commitments
-    for (const commitment of (features.commitments || [])) {
-      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    for (const commitment of features.commitments || []) {
+      const loopId = `loop_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
       const loop = {
         id: loopId,
         userId,
         memoryId,
-        loopType: commitment.type === 'made' ? 'commitment_made' : 'commitment_received',
+        loopType:
+          commitment.type === "made"
+            ? "commitment_made"
+            : "commitment_received",
         description: commitment.what,
-        owner: commitment.type === 'made' ? 'self' : 'them',
-        otherParty: commitment.type === 'made' ? commitment.to : commitment.from,
-        dueDate: commitment.byWhen ? new Date(commitment.byWhen).toISOString() : null,
-        status: 'open',
+        owner: commitment.type === "made" ? "self" : "them",
+        otherParty:
+          commitment.type === "made" ? commitment.to : commitment.from,
+        dueDate: commitment.byWhen
+          ? new Date(commitment.byWhen).toISOString()
+          : null,
+        status: "open",
         createdAt: now.toISOString(),
       };
-      await db.collection('open_loops').insertOne(loop);
+      await db.collection("open_loops").insertOne(loop);
       loopIds.push(loopId);
     }
 
     // Process mutual agreements
-    for (const agreement of (features.mutualAgreements || [])) {
-      const loopId = `loop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const otherParties = (agreement.parties || []).filter(p =>
-        p.toLowerCase() !== 'self' && p.toLowerCase() !== 'me'
+    for (const agreement of features.mutualAgreements || []) {
+      const loopId = `loop_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+      const otherParties = (agreement.parties || []).filter(
+        (p) => p.toLowerCase() !== "self" && p.toLowerCase() !== "me"
       );
       const loop = {
         id: loopId,
         userId,
         memoryId,
-        loopType: 'mutual_agreement',
+        loopType: "mutual_agreement",
         description: agreement.what,
-        owner: 'mutual',
+        owner: "mutual",
         otherParty: otherParties[0] || null,
-        dueDate: agreement.timeframe ? new Date(agreement.timeframe).toISOString() : null,
-        status: 'open',
+        dueDate: agreement.timeframe
+          ? new Date(agreement.timeframe).toISOString()
+          : null,
+        status: "open",
         createdAt: now.toISOString(),
       };
-      await db.collection('open_loops').insertOne(loop);
+      await db.collection("open_loops").insertOne(loop);
       loopIds.push(loopId);
     }
 
     res.json({ created: loopIds.length, loopIds });
   } catch (error) {
-    console.error('[/loops/batch] Error:', error.message);
-    res.status(500).json({ error: 'Failed to create loops' });
+    console.error("[/loops/batch] Error:", error.message);
+    res.status(500).json({ error: "Failed to create loops" });
   }
 });
 
 // Extract features from text (commitments, people, topics, etc.)
-app.post('/extract/features', async (req, res) => {
+app.post("/extract/features", async (req, res) => {
   const { text, context } = req.body || {};
 
   if (!text) {
-    return res.status(400).json({ error: 'text required' });
+    return res.status(400).json({ error: "text required" });
   }
 
   // Simple commitment detection (LLM integration would go here)
@@ -10551,11 +11879,11 @@ app.post('/extract/features', async (req, res) => {
   const illMatch = text.match(/I'?ll\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/i);
   if (illMatch) {
     features.commitments.push({
-      type: 'made',
+      type: "made",
       what: illMatch[1].trim(),
-      to: context?.user || 'unknown',
+      to: context?.user || "unknown",
       byWhen: illMatch[2] || null,
-      dueType: illMatch[2] ? 'explicit' : 'none',
+      dueType: illMatch[2] ? "explicit" : "none",
       confidence: 0.7,
     });
   }
@@ -10564,34 +11892,36 @@ app.post('/extract/features', async (req, res) => {
   const canYouMatch = text.match(/[Cc]an you\s+(.+?)(?:\s+by\s+(.+?))?[.!?\n]/);
   if (canYouMatch) {
     features.commitments.push({
-      type: 'received',
+      type: "received",
       what: canYouMatch[1].trim(),
-      from: context?.user || 'unknown',
+      from: context?.user || "unknown",
       byWhen: canYouMatch[2] || null,
-      dueType: canYouMatch[2] ? 'explicit' : 'none',
+      dueType: canYouMatch[2] ? "explicit" : "none",
       confidence: 0.6,
     });
   }
 
   // Detect "Let's" mutual agreements
-  const letsMatch = text.match(/[Ll]et'?s\s+(.+?)(?:\s+(?:next|this)\s+(.+?))?[.!?\n]/);
+  const letsMatch = text.match(
+    /[Ll]et'?s\s+(.+?)(?:\s+(?:next|this)\s+(.+?))?[.!?\n]/
+  );
   if (letsMatch) {
     features.mutualAgreements.push({
       what: letsMatch[1].trim(),
-      parties: ['self', context?.user || 'them'],
+      parties: ["self", context?.user || "them"],
       timeframe: letsMatch[2] || null,
-      specificity: letsMatch[2] ? 'vague' : 'none',
+      specificity: letsMatch[2] ? "vague" : "none",
     });
   }
 
   // Detect @mentions as people
   const mentions = text.match(/@(\w+)/g) || [];
-  features.peopleMentioned = mentions.map(m => m.slice(1));
+  features.peopleMentioned = mentions.map((m) => m.slice(1));
 
   res.json(features);
 });
 
-app.post('/loops/:id/resolve', (req, res) => {
+app.post("/loops/:id/resolve", (req, res) => {
   const { id } = req.params;
   const { resolution_note } = req.body || {};
   const memory = memoryStore.get(id);
@@ -10606,11 +11936,11 @@ app.post('/loops/:id/resolve', (req, res) => {
 
 // --- MEMORY MANAGEMENT ---
 
-app.post('/memory/forget', (req, res) => {
-  const { memoryId, mode = 'suppress', reason } = req.body;
+app.post("/memory/forget", (req, res) => {
+  const { memoryId, mode = "suppress", reason } = req.body;
   const memory = memoryStore.get(memoryId);
-  if (!memory) return res.status(404).json({ error: 'Memory not found' });
-  if (mode === 'delete') {
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+  if (mode === "delete") {
     memoryStore.delete(memoryId);
   } else {
     memory.forgotten = true;
@@ -10621,13 +11951,20 @@ app.post('/memory/forget', (req, res) => {
   res.json({ forgotten: true, memoryId, mode });
 });
 
-app.post('/memory/forget-person', (req, res) => {
-  const { person, mode = 'suppress', alsoForgetEvents, alsoForgetLoops } = req.body;
+app.post("/memory/forget-person", (req, res) => {
+  const {
+    person,
+    mode = "suppress",
+    alsoForgetEvents,
+    alsoForgetLoops,
+  } = req.body;
   let count = 0;
   for (const [id, memory] of memoryStore.entries()) {
     const entities = memory.entities || [memory.entity];
-    if (entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()))) {
-      if (mode === 'delete') {
+    if (
+      entities.some((e) => e && e.toLowerCase().includes(person.toLowerCase()))
+    ) {
+      if (mode === "delete") {
         memoryStore.delete(id);
       } else {
         memory.forgotten = true;
@@ -10640,10 +11977,10 @@ app.post('/memory/forget-person', (req, res) => {
   res.json({ forgotten: true, person, count, mode });
 });
 
-app.post('/memory/restore', (req, res) => {
+app.post("/memory/restore", (req, res) => {
   const { memoryId } = req.body;
   const memory = memoryStore.get(memoryId);
-  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
   delete memory.forgotten;
   delete memory.forgetMode;
   delete memory.forgetReason;
@@ -10651,83 +11988,126 @@ app.post('/memory/restore', (req, res) => {
   res.json({ restored: true, memoryId });
 });
 
-app.post('/memory/reassociate', (req, res) => {
-  const { memoryId, addPeople, removePeople, addTags, removeTags, addTopics, removeTopics, setProject } = req.body;
+app.post("/memory/reassociate", (req, res) => {
+  const {
+    memoryId,
+    addPeople,
+    removePeople,
+    addTags,
+    removeTags,
+    addTopics,
+    removeTopics,
+    setProject,
+  } = req.body;
   const memory = memoryStore.get(memoryId);
-  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
   if (!memory.entities) memory.entities = [memory.entity].filter(Boolean);
   if (addPeople) memory.entities.push(...addPeople);
-  if (removePeople) memory.entities = memory.entities.filter(e => !removePeople.includes(e));
+  if (removePeople)
+    memory.entities = memory.entities.filter((e) => !removePeople.includes(e));
   if (!memory.tags) memory.tags = [];
   if (addTags) memory.tags.push(...addTags);
-  if (removeTags) memory.tags = memory.tags.filter(t => !removeTags.includes(t));
+  if (removeTags)
+    memory.tags = memory.tags.filter((t) => !removeTags.includes(t));
   if (!memory.topics) memory.topics = [];
   if (addTopics) memory.topics.push(...addTopics);
-  if (removeTopics) memory.topics = memory.topics.filter(t => !removeTopics.includes(t));
+  if (removeTopics)
+    memory.topics = memory.topics.filter((t) => !removeTopics.includes(t));
   if (setProject) memory.project = setProject;
   memoryStore.set(memoryId, memory);
   res.json({ updated: true, memoryId });
 });
 
-app.post('/memory/export', (req, res) => {
-  const { password, fromDate, toDate, people, topics, project } = req.body || {};
-  let memories = Array.from(memoryStore.values()).filter(m => !m.forgotten);
-  if (fromDate) memories = memories.filter(m => m.timestamp >= fromDate);
-  if (toDate) memories = memories.filter(m => m.timestamp <= toDate);
+app.post("/memory/export", (req, res) => {
+  const { password, fromDate, toDate, people, topics, project } =
+    req.body || {};
+  let memories = Array.from(memoryStore.values()).filter((m) => !m.forgotten);
+  if (fromDate) memories = memories.filter((m) => m.timestamp >= fromDate);
+  if (toDate) memories = memories.filter((m) => m.timestamp <= toDate);
   if (people && people.length) {
-    memories = memories.filter(m => {
+    memories = memories.filter((m) => {
       const entities = m.entities || [m.entity];
-      return people.some(p => entities.includes(p));
+      return people.some((p) => entities.includes(p));
     });
   }
-  if (project) memories = memories.filter(m => m.project === project);
+  if (project) memories = memories.filter((m) => m.project === project);
   // Note: password encryption would be handled by the service layer
-  res.json({ memories, count: memories.length, exportedAt: new Date().toISOString() });
+  res.json({
+    memories,
+    count: memories.length,
+    exportedAt: new Date().toISOString(),
+  });
 });
 
-app.post('/memory/import', (req, res) => {
-  const { memories = [], source = 'api', skipDuplicates = true, targetProject } = req.body || {};
+app.post("/memory/import", (req, res) => {
+  const {
+    memories = [],
+    source = "api",
+    skipDuplicates = true,
+    targetProject,
+  } = req.body || {};
   let imported = 0;
   for (const mem of memories) {
-    const id = mem.id || `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id =
+      mem.id || `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     if (skipDuplicates && memoryStore.has(id)) continue;
-    const memory = { ...mem, id, project: targetProject || mem.project, importedAt: new Date().toISOString(), source };
+    const memory = {
+      ...mem,
+      id,
+      project: targetProject || mem.project,
+      importedAt: new Date().toISOString(),
+      source,
+    };
     memoryStore.set(id, memory);
     imported++;
   }
   res.json({ imported, total: memories.length });
 });
 
-app.get('/memory/search', (req, res) => {
+app.get("/memory/search", (req, res) => {
   const { query, limit = 10, tags, min_importance, pattern_type } = req.query;
-  let memories = Array.from(memoryStore.values()).filter(m => !m.forgotten);
+  let memories = Array.from(memoryStore.values()).filter((m) => !m.forgotten);
   if (query) {
-    const queryTokens = query.toLowerCase().split(/\s+/).filter(t => t.length > 1);
+    const queryTokens = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
     memories = memories
-      .map(m => {
-        const contentLower = (m.content || '').toLowerCase();
-        const matchCount = queryTokens.filter(token => contentLower.includes(token)).length;
-        return { ...m, _score: queryTokens.length > 0 ? matchCount / queryTokens.length : 0 };
+      .map((m) => {
+        const contentLower = (m.content || "").toLowerCase();
+        const matchCount = queryTokens.filter((token) =>
+          contentLower.includes(token)
+        ).length;
+        return {
+          ...m,
+          _score: queryTokens.length > 0 ? matchCount / queryTokens.length : 0,
+        };
       })
-      .filter(m => m._score > 0.2)
+      .filter((m) => m._score > 0.2)
       .sort((a, b) => b._score - a._score);
   }
   if (tags) {
-    const tagList = tags.split(',');
-    memories = memories.filter(m => m.tags && tagList.some(t => m.tags.includes(t)));
+    const tagList = tags.split(",");
+    memories = memories.filter(
+      (m) => m.tags && tagList.some((t) => m.tags.includes(t))
+    );
   }
   if (min_importance) {
-    memories = memories.filter(m => (m.salience || 0) >= parseFloat(min_importance) * 100);
+    memories = memories.filter(
+      (m) => (m.salience || 0) >= parseFloat(min_importance) * 100
+    );
   }
   memories = memories.slice(0, parseInt(limit));
   res.json({ memories, count: memories.length });
 });
 
-app.get('/memory/tiers', (_req, res) => {
+app.get("/memory/tiers", (_req, res) => {
   const memories = Array.from(memoryStore.values());
   const now = Date.now();
-  const hot = memories.filter(m => now - new Date(m.timestamp).getTime() < 3600000).length;
-  const warm = memories.filter(m => {
+  const hot = memories.filter(
+    (m) => now - new Date(m.timestamp).getTime() < 3600000
+  ).length;
+  const warm = memories.filter((m) => {
     const age = now - new Date(m.timestamp).getTime();
     return age >= 3600000 && age < 86400000 * 63;
   }).length;
@@ -10738,15 +12118,15 @@ app.get('/memory/tiers', (_req, res) => {
 // --- CONTEXT & DEVICES (Wired to Salience Service) ---
 
 // Get relevant context for a device or unified across all devices
-app.get('/context/relevant', async (req, res) => {
+app.get("/context/relevant", async (req, res) => {
   try {
     const { deviceId, unified } = req.query;
-    const userId = req.userId || 'default';
+    const userId = req.userId || "default";
 
-    if (unified === 'true') {
+    if (unified === "true") {
       const unifiedContext = await getUnifiedUserContext(userId);
       res.json({
-        type: 'unified',
+        type: "unified",
         activeDevices: unifiedContext.activeDeviceCount,
         primaryDevice: unifiedContext.primaryDevice,
         isMultitasking: unifiedContext.isMultitasking,
@@ -10764,7 +12144,12 @@ app.get('/context/relevant', async (req, res) => {
     const { frame, memories } = await whatMattersNow(userId, deviceId);
 
     if (!frame) {
-      res.json({ deviceId, context: null, memories: [], message: 'No context set. Use POST /context/sync first.' });
+      res.json({
+        deviceId,
+        context: null,
+        memories: [],
+        message: "No context set. Use POST /context/sync first.",
+      });
       return;
     }
 
@@ -10774,37 +12159,39 @@ app.get('/context/relevant', async (req, res) => {
       context: {
         location: frame.location?.value,
         activity: frame.activity?.value,
-        people: frame.people.map(p => p.value),
+        people: frame.people.map((p) => p.value),
         timeOfDay: frame.timeOfDay,
       },
-      memories: memories ? {
-        aboutPeople: memories.aboutPeople.length,
-        aboutLocation: memories.aboutLocation.length,
-        recentRelevant: memories.recentRelevant.slice(0, 5).map(m => ({
-          text: m.text,
-          matchedOn: m.matchedOn,
-          salience: m.salienceScore,
-        })),
-        suggestedTopics: memories.suggestedTopics,
-        sensitivities: memories.sensitivities,
-      } : null,
+      memories: memories
+        ? {
+            aboutPeople: memories.aboutPeople.length,
+            aboutLocation: memories.aboutLocation.length,
+            recentRelevant: memories.recentRelevant.slice(0, 5).map((m) => ({
+              text: m.text,
+              matchedOn: m.matchedOn,
+              salience: m.salienceScore,
+            })),
+            suggestedTopics: memories.suggestedTopics,
+            sensitivities: memories.sensitivities,
+          }
+        : null,
     });
   } catch (error) {
-    console.error('[Context] Relevant error:', error);
-    res.status(500).json({ error: 'Failed to get relevant context' });
+    console.error("[Context] Relevant error:", error);
+    res.status(500).json({ error: "Failed to get relevant context" });
   }
 });
 
 // Clear context for a device or user
-app.delete('/context', async (req, res) => {
+app.delete("/context", async (req, res) => {
   try {
     const { deviceId, dimensions } = req.body || {};
-    const userId = req.userId || 'default';
+    const userId = req.userId || "default";
 
     if (deviceId && !dimensions) {
       // Clear entire device context
       await clearDeviceContext(userId, deviceId);
-      res.json({ cleared: true, deviceId, dimensions: 'all' });
+      res.json({ cleared: true, deviceId, dimensions: "all" });
       return;
     }
 
@@ -10813,78 +12200,79 @@ app.delete('/context', async (req, res) => {
     res.json({
       cleared: true,
       deviceId: frame.deviceId,
-      dimensions: dimensions || 'all',
+      dimensions: dimensions || "all",
       remainingContext: {
         location: frame.location?.value,
-        people: frame.people.map(p => p.value),
+        people: frame.people.map((p) => p.value),
         activity: frame.activity?.value,
       },
     });
   } catch (error) {
-    console.error('[Context] Clear error:', error);
-    res.status(500).json({ error: 'Failed to clear context' });
+    console.error("[Context] Clear error:", error);
+    res.status(500).json({ error: "Failed to clear context" });
   }
 });
 
 // List all active devices and their context status
-app.get('/devices', async (_req, res) => {
+app.get("/devices", async (_req, res) => {
   try {
-    const userId = _req.userId || 'default';
+    const userId = _req.userId || "default";
     const contexts = await getAllDeviceContexts(userId);
 
     // Also include devices from the in-memory store for backwards compatibility
-    const storeDevices = Array.from(deviceContextStore.values())
-      .filter(d => d.userId === userId);
+    const storeDevices = Array.from(deviceContextStore.values()).filter(
+      (d) => d.userId === userId
+    );
 
     // Merge device lists (context frames take priority)
-    const knownDeviceIds = new Set(contexts.map(c => c.deviceId));
+    const knownDeviceIds = new Set(contexts.map((c) => c.deviceId));
     const additionalDevices = storeDevices
-      .filter(d => !knownDeviceIds.has(d.deviceId))
-      .map(d => ({
+      .filter((d) => !knownDeviceIds.has(d.deviceId))
+      .map((d) => ({
         deviceId: d.deviceId,
         deviceType: d.deviceType,
         lastUpdated: d.lastSeen,
-        source: 'sync_store',
+        source: "sync_store",
       }));
 
     res.json({
       devices: [
-        ...contexts.map(ctx => ({
+        ...contexts.map((ctx) => ({
           deviceId: ctx.deviceId,
           deviceType: ctx.deviceType,
           lastUpdated: ctx.lastUpdated,
           location: ctx.location?.value,
           activity: ctx.activity?.value,
           peopleCount: ctx.people.length,
-          source: 'context_frame',
+          source: "context_frame",
         })),
         ...additionalDevices,
       ],
       count: contexts.length + additionalDevices.length,
     });
   } catch (error) {
-    console.error('[Devices] List error:', error);
-    res.status(500).json({ error: 'Failed to list devices' });
+    console.error("[Devices] List error:", error);
+    res.status(500).json({ error: "Failed to list devices" });
   }
 });
 
 // --- DEVICE HANDOFF & SESSION CONTINUITY ---
 
 // Initiate a device handoff (transfer context to another device)
-app.post('/devices/handoff', async (req, res) => {
+app.post("/devices/handoff", async (req, res) => {
   try {
-    const userId = req.userId || 'default';
+    const userId = req.userId || "default";
     const {
       sourceDeviceId,
       targetDeviceId,
       targetDeviceType,
-      reason = 'user_initiated',
+      reason = "user_initiated",
       transferContext = true,
       transferTopics = true,
     } = req.body;
 
     if (!sourceDeviceId) {
-      res.status(400).json({ error: 'sourceDeviceId is required' });
+      res.status(400).json({ error: "sourceDeviceId is required" });
       return;
     }
 
@@ -10898,44 +12286,44 @@ app.post('/devices/handoff', async (req, res) => {
       transferTopics,
     });
 
-    metrics.inc('device_handoff_total', { reason });
+    metrics.inc("device_handoff_total", { reason });
     res.json(result);
   } catch (error) {
-    console.error('[Handoff] Error:', error);
-    res.status(500).json({ error: 'Failed to initiate handoff' });
+    console.error("[Handoff] Error:", error);
+    res.status(500).json({ error: "Failed to initiate handoff" });
   }
 });
 
 // Claim a pending handoff (when a new device connects)
-app.post('/devices/handoff/claim', async (req, res) => {
+app.post("/devices/handoff/claim", async (req, res) => {
   try {
-    const userId = req.userId || 'default';
-    const { deviceId, deviceType = 'unknown' } = req.body;
+    const userId = req.userId || "default";
+    const { deviceId, deviceType = "unknown" } = req.body;
 
     if (!deviceId) {
-      res.status(400).json({ error: 'deviceId is required' });
+      res.status(400).json({ error: "deviceId is required" });
       return;
     }
 
     const result = await claimHandoff(userId, deviceId, deviceType);
 
     if (!result) {
-      res.json({ claimed: false, message: 'No pending handoff found' });
+      res.json({ claimed: false, message: "No pending handoff found" });
       return;
     }
 
     res.json({ claimed: true, ...result });
   } catch (error) {
-    console.error('[Handoff] Claim error:', error);
-    res.status(500).json({ error: 'Failed to claim handoff' });
+    console.error("[Handoff] Claim error:", error);
+    res.status(500).json({ error: "Failed to claim handoff" });
   }
 });
 
 // Get session continuity data (cross-device state)
-app.get('/session/continuity', async (req, res) => {
+app.get("/session/continuity", async (req, res) => {
   try {
-    const userId = req.userId || 'default';
-    const { deviceId, deviceType = 'unknown' } = req.query;
+    const userId = req.userId || "default";
+    const { deviceId, deviceType = "unknown" } = req.query;
 
     if (!deviceId) {
       // Return cross-device state without claiming
@@ -10947,42 +12335,55 @@ app.get('/session/continuity', async (req, res) => {
     const continuity = await getSessionContinuity(userId, deviceId, deviceType);
     res.json(continuity);
   } catch (error) {
-    console.error('[Session] Continuity error:', error);
-    res.status(500).json({ error: 'Failed to get session continuity' });
+    console.error("[Session] Continuity error:", error);
+    res.status(500).json({ error: "Failed to get session continuity" });
   }
 });
 
 // --- PREDICTIONS & ANTICIPATION ---
 
-app.post('/anticipate', (req, res) => {
+app.post("/anticipate", (req, res) => {
   const { calendar, lookAheadMinutes = 60 } = req.body || {};
-  res.json({ predictions: [], calendar, lookAheadMinutes, message: 'Pattern learning requires 21 days of usage' });
+  res.json({
+    predictions: [],
+    calendar,
+    lookAheadMinutes,
+    message: "Pattern learning requires 21 days of usage",
+  });
 });
 
-app.get('/outlook', (_req, res) => {
-  res.json({ outlook: [], message: 'Day outlook requires pattern learning (21+ days)' });
+app.get("/outlook", (_req, res) => {
+  res.json({
+    outlook: [],
+    message: "Day outlook requires pattern learning (21+ days)",
+  });
 });
 
-app.get('/patterns/stats', (_req, res) => {
-  res.json({ daysOfData: 0, patternsLearned: 0, readyForPredictions: false, message: 'Requires 21 days to form patterns' });
+app.get("/patterns/stats", (_req, res) => {
+  res.json({
+    daysOfData: 0,
+    patternsLearned: 0,
+    readyForPredictions: false,
+    message: "Requires 21 days to form patterns",
+  });
 });
 
-app.post('/patterns/feedback', (req, res) => {
+app.post("/patterns/feedback", (req, res) => {
   const { patternId, action, memoryId } = req.body || {};
   res.json({ recorded: true, patternId, action, memoryId });
 });
 
-app.post('/predictions', (req, res) => {
+app.post("/predictions", (req, res) => {
   const { context, max_results = 3 } = req.body || {};
   res.json({ predictions: [], context, maxResults: max_results });
 });
 
-app.post('/predictions/feedback', (req, res) => {
+app.post("/predictions/feedback", (req, res) => {
   const { hook_id, interaction, context } = req.body || {};
   res.json({ recorded: true, hookId: hook_id, interaction });
 });
 
-app.post('/predictions/anticipated', async (req, res) => {
+app.post("/predictions/anticipated", async (req, res) => {
   const { context_frame, max_memories = 5 } = req.body || {};
 
   try {
@@ -10992,92 +12393,108 @@ app.post('/predictions/anticipated', async (req, res) => {
     // Filter by project if specified
     if (context_frame?.project) {
       query.$or = [
-        { entities: { $regex: context_frame.project, $options: 'i' } },
-        { 'metadata.project': context_frame.project },
+        { entities: { $regex: context_frame.project, $options: "i" } },
+        { "metadata.project": context_frame.project },
       ];
     }
 
     // Get recent high-salience memories
-    const memories = await db.collection('memories')
+    const memories = await db
+      .collection("memories")
       .find(query)
-      .sort({ 'salience.score': -1, createdAt: -1 })
+      .sort({ "salience.score": -1, createdAt: -1 })
       .limit(parseInt(max_memories, 10))
       .toArray();
 
-    const anticipated = memories.map(m => ({
+    const anticipated = memories.map((m) => ({
       memoryId: m._id?.toString() || m.id,
-      content: m.content?.slice(0, 150) || '',
+      content: m.content?.slice(0, 150) || "",
       score: m.salience?.score || 0.5,
-      reasons: m.salience?.factors ? Object.keys(m.salience.factors) : ['recent'],
+      reasons: m.salience?.factors
+        ? Object.keys(m.salience.factors)
+        : ["recent"],
     }));
 
     res.json({ anticipated, contextFrame: context_frame });
   } catch (error) {
-    console.error('[/predictions/anticipated] Error:', error.message);
+    console.error("[/predictions/anticipated] Error:", error.message);
     res.json({ anticipated: [], contextFrame: context_frame });
   }
 });
 
 // --- EMOTION & SENTIMENT ---
 
-app.post('/emotion/analyze', (req, res) => {
+app.post("/emotion/analyze", (req, res) => {
   const { text, memory_id } = req.body || {};
   if (text) {
     const prosody = analyzeProsody(text);
     res.json({ text, emotions: prosody, analyzed: true });
   } else if (memory_id) {
     const memory = memoryStore.get(memory_id);
-    if (!memory) return res.status(404).json({ error: 'Memory not found' });
-    const prosody = analyzeProsody(memory.content || '');
+    if (!memory) return res.status(404).json({ error: "Memory not found" });
+    const prosody = analyzeProsody(memory.content || "");
     res.json({ memoryId: memory_id, emotions: prosody, analyzed: true });
   } else {
-    res.status(400).json({ error: 'text or memory_id required' });
+    res.status(400).json({ error: "text or memory_id required" });
   }
 });
 
-app.get('/emotion/context', (_req, res) => {
-  res.json({ emotionalState: null, sessions: [], message: 'No active emotional tracking sessions' });
+app.get("/emotion/context", (_req, res) => {
+  res.json({
+    emotionalState: null,
+    sessions: [],
+    message: "No active emotional tracking sessions",
+  });
 });
 
-app.post('/emotion/session/start', (req, res) => {
-  const { session_id, entityId, useVoice, useVideo, useEvi, bufferSize } = req.body || {};
-  res.json({ started: true, sessionId: session_id, entityId, config: { useVoice, useVideo, useEvi, bufferSize } });
+app.post("/emotion/session/start", (req, res) => {
+  const { session_id, entityId, useVoice, useVideo, useEvi, bufferSize } =
+    req.body || {};
+  res.json({
+    started: true,
+    sessionId: session_id,
+    entityId,
+    config: { useVoice, useVideo, useEvi, bufferSize },
+  });
 });
 
-app.post('/emotion/session/stop', (req, res) => {
+app.post("/emotion/session/stop", (req, res) => {
   const { session_id } = req.body || {};
   res.json({ stopped: true, sessionId: session_id });
 });
 
-app.get('/emotion/sessions', (_req, res) => {
+app.get("/emotion/sessions", (_req, res) => {
   res.json({ sessions: [], count: 0 });
 });
 
-app.post('/emotion/filter', (req, res) => {
+app.post("/emotion/filter", (req, res) => {
   const { emotions, action, threshold = 0.7, enabled = true } = req.body || {};
   res.json({ set: true, emotions, action, threshold, enabled });
 });
 
-app.get('/emotion/filters', (_req, res) => {
+app.get("/emotion/filters", (_req, res) => {
   res.json({ filters: [] });
 });
 
-app.get('/emotion/memories', (req, res) => {
+app.get("/emotion/memories", (req, res) => {
   const { emotions, min_intensity = 0.3, limit = 10 } = req.query;
-  const emotionList = emotions ? emotions.split(',') : [];
-  let memories = Array.from(memoryStore.values()).filter(m => {
+  const emotionList = emotions ? emotions.split(",") : [];
+  let memories = Array.from(memoryStore.values()).filter((m) => {
     if (!m.metadata?.prosody) return false;
-    const signals = [...(m.metadata.prosody.distressSignals || []), ...(m.metadata.prosody.recoverySignals || [])];
-    return signals.some(s => emotionList.includes(s.category));
+    const signals = [
+      ...(m.metadata.prosody.distressSignals || []),
+      ...(m.metadata.prosody.recoverySignals || []),
+    ];
+    return signals.some((s) => emotionList.includes(s.category));
   });
   memories = memories.slice(0, parseInt(limit));
   res.json({ memories, count: memories.length });
 });
 
-app.post('/emotion/correct', (req, res) => {
+app.post("/emotion/correct", (req, res) => {
   const { memory_id, correctedEmotions, clearAll, reason } = req.body || {};
   const memory = memoryStore.get(memory_id);
-  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
   if (!memory.metadata) memory.metadata = {};
   memory.metadata.emotionCorrected = true;
   memory.metadata.correctedEmotions = correctedEmotions;
@@ -11087,39 +12504,63 @@ app.post('/emotion/correct', (req, res) => {
   res.json({ corrected: true, memoryId: memory_id });
 });
 
-app.post('/emotion/clarify', (req, res) => {
-  const { memory_id, what_i_meant, what_i_said, why_the_gap, pattern, visibility } = req.body || {};
+app.post("/emotion/clarify", (req, res) => {
+  const {
+    memory_id,
+    what_i_meant,
+    what_i_said,
+    why_the_gap,
+    pattern,
+    visibility,
+  } = req.body || {};
   const memory = memoryStore.get(memory_id);
-  if (!memory) return res.status(404).json({ error: 'Memory not found' });
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
   if (!memory.metadata) memory.metadata = {};
-  memory.metadata.intentClarification = { whatIMeant: what_i_meant, whatISaid: what_i_said, whyTheGap: why_the_gap, pattern, visibility };
+  memory.metadata.intentClarification = {
+    whatIMeant: what_i_meant,
+    whatISaid: what_i_said,
+    whyTheGap: why_the_gap,
+    pattern,
+    visibility,
+  };
   memoryStore.set(memory_id, memory);
   res.json({ clarified: true, memoryId: memory_id });
 });
 
 // --- BEHAVIORAL IDENTITY ---
 
-app.post('/behavioral/identify', (req, res) => {
+app.post("/behavioral/identify", (req, res) => {
   const { message, candidateUsers } = req.body || {};
-  res.json({ identified: false, confidence: 0, message: 'Behavioral identity requires training data', candidateUsers });
+  res.json({
+    identified: false,
+    confidence: 0,
+    message: "Behavioral identity requires training data",
+    candidateUsers,
+  });
 });
 
-app.get('/behavioral/metrics', (req, res) => {
-  const { timeRange = '24h', userId } = req.query;
-  res.json({ timeRange, userId, totalPredictions: 0, accuracy: 0, signalStrengths: {} });
+app.get("/behavioral/metrics", (req, res) => {
+  const { timeRange = "24h", userId } = req.query;
+  res.json({
+    timeRange,
+    userId,
+    totalPredictions: 0,
+    accuracy: 0,
+    signalStrengths: {},
+  });
 });
 
-app.post('/behavioral/feedback', (req, res) => {
+app.post("/behavioral/feedback", (req, res) => {
   const { predictionId, correct, actualUserId } = req.body || {};
   res.json({ recorded: true, predictionId, correct, actualUserId });
 });
 
 // --- RELATIONSHIPS & PRESSURE ---
 
-app.post('/relationship', (req, res) => {
+app.post("/relationship", (req, res) => {
   const { entity_a, entity_b, context, forceRefresh } = req.body || {};
   // Synthesize relationship from shared memories
-  const sharedMemories = Array.from(memoryStore.values()).filter(m => {
+  const sharedMemories = Array.from(memoryStore.values()).filter((m) => {
     const entities = m.entities || [m.entity];
     return entities.includes(entity_a) && entities.includes(entity_b);
   });
@@ -11127,68 +12568,103 @@ app.post('/relationship', (req, res) => {
     entityA: entity_a,
     entityB: entity_b,
     sharedMemoryCount: sharedMemories.length,
-    relationship: sharedMemories.length > 0 ? 'connected' : 'unknown',
+    relationship: sharedMemories.length > 0 ? "connected" : "unknown",
     context,
   });
 });
 
-app.get('/pressure/:entityId', (req, res) => {
+app.get("/pressure/:entityId", (req, res) => {
   const { entityId } = req.params;
   const { days = 30, include_vectors } = req.query;
-  res.json({ entityId, days: parseInt(days), pressure: 0, vectors: include_vectors === 'true' ? [] : undefined });
+  res.json({
+    entityId,
+    days: parseInt(days),
+    pressure: 0,
+    vectors: include_vectors === "true" ? [] : undefined,
+  });
 });
 
-app.post('/care-circle', (req, res) => {
-  const { entity_id, care_circle, alert_threshold = 'concern' } = req.body || {};
-  res.json({ set: true, entityId: entity_id, careCircle: care_circle, alertThreshold: alert_threshold });
+app.post("/care-circle", (req, res) => {
+  const {
+    entity_id,
+    care_circle,
+    alert_threshold = "concern",
+  } = req.body || {};
+  res.json({
+    set: true,
+    entityId: entity_id,
+    careCircle: care_circle,
+    alertThreshold: alert_threshold,
+  });
 });
 
-app.post('/vulnerability', (req, res) => {
+app.post("/vulnerability", (req, res) => {
   const { entity_id, vulnerability, notes } = req.body || {};
   res.json({ set: true, entityId: entity_id, vulnerability, notes });
 });
 
 // --- EVENT DAEMON ---
 
-app.post('/events/ingest', (req, res) => {
+app.post("/events/ingest", (req, res) => {
   const { type, entity_id, deviceId, metadata, payload } = req.body || {};
-  res.json({ ingested: true, type, entityId: entity_id, timestamp: new Date().toISOString() });
+  res.json({
+    ingested: true,
+    type,
+    entityId: entity_id,
+    timestamp: new Date().toISOString(),
+  });
 });
 
-app.post('/events/schedule', (req, res) => {
+app.post("/events/schedule", (req, res) => {
   const { entity_id, check_type, delay_minutes, message } = req.body || {};
-  const fireAt = new Date(Date.now() + (delay_minutes || 60) * 60000).toISOString();
-  res.json({ scheduled: true, entityId: entity_id, checkType: check_type, fireAt, message });
+  const fireAt = new Date(
+    Date.now() + (delay_minutes || 60) * 60000
+  ).toISOString();
+  res.json({
+    scheduled: true,
+    entityId: entity_id,
+    checkType: check_type,
+    fireAt,
+    message,
+  });
 });
 
-app.get('/events/daemon/status', (_req, res) => {
-  res.json({ running: true, queueLength: 0, scheduledChecks: 0, uptime: Date.now() - startTime });
+app.get("/events/daemon/status", (_req, res) => {
+  res.json({
+    running: true,
+    queueLength: 0,
+    scheduledChecks: 0,
+    uptime: Date.now() - startTime,
+  });
 });
 
 // --- SYSTEM ---
 
-app.get('/status', (_req, res) => {
+app.get("/status", (_req, res) => {
   res.json({
-    status: 'ok',
+    status: "ok",
     memoryCount: memoryStore.size,
     uptime: Date.now() - startTime,
     mongoConnected,
-    version: '2.0.0',
+    version: "2.0.0",
   });
 });
 
 // --- BRIEFING ---
 
-app.get('/briefing', (req, res) => {
+app.get("/briefing", (req, res) => {
   const { person, quick } = req.query;
-  if (!person) return res.status(400).json({ error: 'person query param required' });
-  const personMemories = Array.from(memoryStore.values()).filter(m => {
+  if (!person)
+    return res.status(400).json({ error: "person query param required" });
+  const personMemories = Array.from(memoryStore.values()).filter((m) => {
     const entities = m.entities || [m.entity];
-    return entities.some(e => e && e.toLowerCase().includes(person.toLowerCase()));
+    return entities.some(
+      (e) => e && e.toLowerCase().includes(person.toLowerCase())
+    );
   });
   res.json({
     person,
-    quick: quick === 'true',
+    quick: quick === "true",
     memoryCount: personMemories.length,
     summary: `Found ${personMemories.length} memories involving ${person}`,
     openLoops: [],
@@ -11201,13 +12677,13 @@ app.get('/briefing', (req, res) => {
 // =============================================================================
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('[Server] Received SIGTERM, shutting down gracefully...');
+process.on("SIGTERM", () => {
+  console.log("[Server] Received SIGTERM, shutting down gracefully...");
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
-  console.log('[Server] Received SIGINT, shutting down gracefully...');
+process.on("SIGINT", () => {
+  console.log("[Server] Received SIGINT, shutting down gracefully...");
   process.exit(0);
 });
 
@@ -11217,32 +12693,38 @@ let mongoConnected = false;
 // Start server
 async function start() {
   try {
-    console.log('[Server] Starting MemoRable...');
+    console.log("[Server] Starting MemoRable...");
 
     // Try to connect to MongoDB for user system
     // Falls back to in-memory auth if MongoDB unavailable
     try {
       if (process.env.MONGODB_URI) {
-        console.log('[Server] Connecting to MongoDB...');
+        console.log("[Server] Connecting to MongoDB...");
         await setupDatabase();
         const db = getDatabase();
         await setupUserModels(db);
         await bootstrapClaudeUser();
         mongoConnected = true;
-        console.log('[Server] MongoDB user system initialized');
+        console.log("[Server] MongoDB user system initialized");
 
         // Ensure indexes on memories collection
         try {
-          await db.collection('memories').createIndex({ id: 1 }, { unique: true });
-          await db.collection('memories').createIndex({ entities: 1 });
-          await db.collection('memories').createIndex({ timestamp: -1 });
+          await db
+            .collection("memories")
+            .createIndex({ id: 1 }, { unique: true });
+          await db.collection("memories").createIndex({ entities: 1 });
+          await db.collection("memories").createIndex({ timestamp: -1 });
         } catch (idxErr) {
           // Indexes may already exist
         }
 
         // Load persisted memories into in-memory store
         try {
-          const memoryCursor = db.collection('memories').find({}).sort({ timestamp: -1 }).limit(10000);
+          const memoryCursor = db
+            .collection("memories")
+            .find({})
+            .sort({ timestamp: -1 })
+            .limit(10000);
           let loadedCount = 0;
           for await (const doc of memoryCursor) {
             memoryStore.set(doc.id, doc);
@@ -11252,13 +12734,21 @@ async function start() {
             console.log(`[Server] Loaded ${loadedCount} memories from MongoDB`);
           }
         } catch (memLoadErr) {
-          console.warn('[Server] Failed to load memories from MongoDB:', memLoadErr.message);
+          console.warn(
+            "[Server] Failed to load memories from MongoDB:",
+            memLoadErr.message
+          );
         }
       } else {
-        console.log('[Server] No MONGODB_URI - using in-memory auth (dev mode)');
+        console.log(
+          "[Server] No MONGODB_URI - using in-memory auth (dev mode)"
+        );
       }
     } catch (dbError) {
-      console.warn('[Server] MongoDB connection failed, using in-memory auth:', dbError.message);
+      console.warn(
+        "[Server] MongoDB connection failed, using in-memory auth:",
+        dbError.message
+      );
       mongoConnected = false;
     }
 
@@ -11266,17 +12756,22 @@ async function start() {
     if (mongoConnected) {
       const db = getDatabase();
       app.use(createDashboardRouter(db, startTime));
-      console.log('[Server] Dashboard mounted (/, /dashboard, /dashboard/mission-control, /dashboard/calendar)');
+      console.log(
+        "[Server] Dashboard mounted (/, /dashboard, /dashboard/mission-control, /dashboard/calendar)"
+      );
     }
 
     // Mount MCP endpoint - THE CORE OF MEMORABLE
     // This provides the 35 MCP tools for Claude Code integration
     try {
-      const mcpApiKey = process.env.MCP_API_KEY || process.env.API_KEY || 'hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk';
+      const mcpApiKey =
+        process.env.MCP_API_KEY ||
+        process.env.API_KEY ||
+        "hKiToQUchIAx8bwi5Y00RWVYN6ZxRzAk";
       await mountMcpEndpoint(app, { apiKey: mcpApiKey });
-      console.log('[Server] MCP endpoint mounted at /mcp');
+      console.log("[Server] MCP endpoint mounted at /mcp");
     } catch (mcpError) {
-      console.error('[Server] Failed to mount MCP endpoint:', mcpError.message);
+      console.error("[Server] Failed to mount MCP endpoint:", mcpError.message);
       // Don't fail startup - REST API still works
     }
 
@@ -11284,14 +12779,16 @@ async function start() {
       console.log(`[Server] MemoRable listening on port ${PORT}`);
       console.log(`[Server] Health check: http://localhost:${PORT}/health`);
       console.log(`[Server] MCP endpoint: http://localhost:${PORT}/mcp`);
-      console.log(`[Server] Auth mode: ${mongoConnected ? 'MongoDB' : 'In-Memory'}`);
+      console.log(
+        `[Server] Auth mode: ${mongoConnected ? "MongoDB" : "In-Memory"}`
+      );
 
       // Mark as ready after server starts
       isReady = true;
-      console.log('[Server] Service is ready for traffic');
+      console.log("[Server] Service is ready for traffic");
     });
   } catch (error) {
-    console.error('[Server] Failed to start:', error);
+    console.error("[Server] Failed to start:", error);
     process.exit(1);
   }
 }

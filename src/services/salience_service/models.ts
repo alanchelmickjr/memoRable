@@ -10,6 +10,29 @@
  */
 
 // ============================================================================
+// TIME MACHINE — Append-only event log for memory mutations
+// ============================================================================
+
+/**
+ * Every memory mutation (create, update, delete, archive, restore) is logged.
+ * This enables point-in-time queries and rollback without snapshots.
+ * "AI that knows you like a friend, every time you talk to it."
+ */
+export interface MemoryEvent {
+  eventId: string;
+  memoryId: string;
+  userId: string;
+  action: 'create' | 'update' | 'delete' | 'archive' | 'restore';
+  timestamp: string; // ISO8601
+  snapshot: Record<string, unknown>; // full memory state at this point
+  metadata?: {
+    reason?: string;
+    sessionId?: string;
+    previousEventId?: string;
+  };
+}
+
+// ============================================================================
 // SALIENCE SCORING TYPES
 // ============================================================================
 

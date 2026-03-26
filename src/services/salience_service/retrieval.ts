@@ -474,15 +474,21 @@ export async function retrieveMemoriesByQuery(
   options: {
     limit?: number;
     minSalience?: number;
+    sortBy?: 'salience' | 'recency';
   } = {}
 ): Promise<ScoredMemory[]> {
   const limit = options.limit ?? 10;
   const minSalience = options.minSalience ?? 0;
+  const sortBy = options.sortBy ?? 'salience';
 
   try {
     // Text search with computed match quality scoring
     const searchTerms = query.split(/\s+/).filter(Boolean);
     const searchRegex = new RegExp(searchTerms.join('|'), 'i');
+
+    const sortSpec = sortBy === 'recency'
+      ? { createdAt: -1 as const }
+      : { salienceScore: -1 as const, createdAt: -1 as const };
 
     const memories = await collections.memories()
       .find({
@@ -495,7 +501,7 @@ export async function retrieveMemoriesByQuery(
         ],
         ...(minSalience > 0 ? { salienceScore: { $gte: minSalience } } : {}),
       } as any)
-      .sort({ salienceScore: -1, createdAt: -1 })
+      .sort(sortSpec as any)
       .limit(limit * 3)
       .toArray();
 
@@ -530,6 +536,11 @@ export async function retrieveMemoriesByQuery(
         encrypted: m.encrypted,
       };
     });
+
+    // Recency sort: skip salience re-ranking, return DB order (createdAt desc)
+    if (sortBy === 'recency') {
+      return candidates.slice(0, limit);
+    }
 
     return retrieveWithSalience(candidates, {
       query,

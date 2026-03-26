@@ -80,6 +80,14 @@ function getPainMemories() {
   return [];
 }
 
+function getStartupMemories() {
+  // Load startup-tagged memories — protocols, instructions, critical context
+  const result = mcpCall('recall_startup', { limit: 10 });
+  if (result?.startupMemories) return result.startupMemories;
+  if (Array.isArray(result)) return result;
+  return [];
+}
+
 // ─── Local Context (no cloud needed) ────────────────────────────────────────
 
 function detectProject() {
@@ -391,6 +399,19 @@ async function main() {
         for (const pain of painItems) {
           const text = (pain.text || pain.content || '').substring(0, 200);
           parts.push(`- ${text}`);
+        }
+        parts.push('');
+      }
+    } catch {}
+
+    // ── STARTUP MEMORIES: Protocols, instructions, critical context ──
+    try {
+      const startupMemories = getStartupMemories();
+      if (startupMemories.length > 0) {
+        parts.push('## Startup Protocols');
+        for (const mem of startupMemories) {
+          const text = (mem.text || mem.content || '').substring(0, 200);
+          if (text) parts.push(`- ${text}`);
         }
         parts.push('');
       }

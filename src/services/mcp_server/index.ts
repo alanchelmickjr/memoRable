@@ -143,7 +143,7 @@ import { eventDaemon, type ExternalEvent, type EventType } from '../event_daemon
 
 // Tier manager - Zipfian cache hierarchy (Hot/Warm/Cold)
 import { getTierManager, createMemoryDocument, type TierManager } from '../salience_service/tier_manager.js';
-import type { PredictiveMemoryDocument, StorageTier, NormalizedSalience } from '../salience_service/models.js';
+import type { PredictiveMemoryDocument, StorageTier, NormalizedSalience, MemoryEvent } from '../salience_service/models.js';
 
 // Configuration
 const CONFIG = {
@@ -1338,6 +1338,33 @@ async function initializeDb(): Promise<void> {
 }
 
 /**
+ * TIME MACHINE: Log a memory mutation event (append-only).
+ * Every create, update, delete, archive, restore is recorded.
+ */
+async function logMemoryEvent(
+  memoryId: string,
+  userId: string,
+  action: MemoryEvent['action'],
+  snapshot: Record<string, unknown>,
+  metadata?: MemoryEvent['metadata']
+): Promise<void> {
+  try {
+    const event: MemoryEvent = {
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      memoryId,
+      userId,
+      action,
+      timestamp: new Date().toISOString(),
+      snapshot,
+      metadata,
+    };
+    await collections.memoryEvents().insertOne(event as any);
+  } catch (err) {
+    logger.warn('[TimeMachine] Failed to log event (non-fatal):', err);
+  }
+}
+
+/**
  * Create the MCP server.
  */
 function createServer(): Server {
@@ -1454,6 +1481,11 @@ function createServer(): Server {
             minSalience: {
               type: 'number',
               description: 'Minimum salience score 0-100 (default: 0)',
+            },
+            sort: {
+              type: 'string',
+              enum: ['salience', 'recency'],
+              description: 'Sort order: "salience" (default) ranks by relevance+salience, "recency" sorts by createdAt descending',
             },
           },
           required: ['query'],
@@ -1591,6 +1623,88 @@ function createServer(): Server {
           readOnlyHint: true,
           destructiveHint: false,
           idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      // ====================================================================
+      // TIME MACHINE TOOLS — Forward and backward through memory state
+      // ====================================================================
+      {
+        name: 'memory_history',
+        description: 'Get the complete event history for a memory. Shows every mutation (create, update, delete, archive, restore) with timestamps and snapshots.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'The memory ID to get history for',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum events to return (default: 50)',
+            },
+          },
+          required: ['memoryId'],
+        },
+        annotations: {
+          title: 'Memory History',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'memories_at',
+        description: 'Query memory state as it existed at a specific point in time. Returns the most recent snapshot for each memory before the given timestamp.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            timestamp: {
+              type: 'string',
+              description: 'ISO8601 timestamp — show memory state as of this moment',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum memories to return (default: 20)',
+            },
+          },
+          required: ['timestamp'],
+        },
+        annotations: {
+          title: 'Memories At Time',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'rollback_memory',
+        description: 'Restore a memory to a prior state from the event log. Specify a memory ID and an event ID to restore to. Creates a new "restore" event — never destroys history.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            memoryId: {
+              type: 'string',
+              description: 'The memory to rollback',
+            },
+            eventId: {
+              type: 'string',
+              description: 'The event ID to restore to (get from memory_history)',
+            },
+            reason: {
+              type: 'string',
+              description: 'Why this rollback is being performed',
+            },
+          },
+          required: ['memoryId', 'eventId'],
+        },
+        annotations: {
+          title: 'Rollback Memory',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
           openWorldHint: false,
         },
       },
@@ -3349,6 +3463,10 @@ function createServer(): Server {
           try {
             await collections.memories().insertOne(memoryDoc as any);
             logger.info(`[MCP] Memory ${memoryId} stored (tier=${tier}, encrypted=${isEncrypted}, vectors=${!shouldSkipVectorStorage(tier)})`);
+            // TIME MACHINE: Log create event
+            await logMemoryEvent(memoryId, CONFIG.defaultUserId, 'create', memoryDoc as any, {
+              sessionId: getSessionId(),
+            });
           } catch (storageError) {
             logger.error(`[MCP] Failed to store memory ${memoryId}:`, storageError);
             throw new McpError(ErrorCode.InternalError, 'Failed to store memory in database');
@@ -3725,11 +3843,12 @@ function createServer(): Server {
         }
 
         case 'recall': {
-          const { query, limit = 10, person, minSalience = 0 } = args as {
+          const { query, limit = 10, person, minSalience = 0, sort = 'salience' } = args as {
             query: string;
             limit?: number;
             person?: string;
             minSalience?: number;
+            sort?: 'salience' | 'recency';
           };
 
           // FOUNDATION MODE: Route to HTTP API
@@ -3739,6 +3858,7 @@ function createServer(): Server {
                 limit,
                 entity: person,
                 minSalience,
+                sort: sort === 'recency' ? 'createdAt' : undefined,
               });
               return {
                 content: [{
@@ -3770,7 +3890,7 @@ function createServer(): Server {
           const memories = await retrieveMemoriesByQuery(
             CONFIG.defaultUserId,
             query,
-            { limit: limit * 2, minSalience } // Fetch extra for post-filtering
+            { limit: limit * 2, minSalience, sortBy: sort === 'recency' ? 'recency' : 'salience' }
           );
 
           // Filter by person if specified
@@ -4203,7 +4323,7 @@ function createServer(): Server {
           // FOUNDATION MODE: Route to HTTP API
           if (connectionMode === 'rest' && apiClient) {
             try {
-              const loops = await apiClient.listLoops({ owner, person, includeOverdue });
+              const loops = await apiClient.listLoops({ owner, person, includeOverdue, userId: CONFIG.defaultUserId });
               return {
                 content: [{
                   type: 'text',
@@ -4268,6 +4388,144 @@ function createServer(): Server {
                 text: JSON.stringify({ closed: true, loopId }),
               },
             ],
+          };
+        }
+
+        // ==================================================================
+        // TIME MACHINE HANDLERS
+        // ==================================================================
+        case 'memory_history': {
+          const { memoryId, limit: histLimit = 50 } = args as { memoryId: string; limit?: number };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ events: unknown[] }>('GET', `/memory/${memoryId}/history`, undefined, { limit: histLimit });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST memory_history failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          const events = await collections.memoryEvents()
+            .find({ memoryId })
+            .sort({ timestamp: -1 })
+            .limit(histLimit)
+            .toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                memoryId,
+                eventCount: events.length,
+                events: events.map((e: any) => ({
+                  eventId: e.eventId,
+                  action: e.action,
+                  timestamp: e.timestamp,
+                  metadata: e.metadata,
+                  snapshotKeys: Object.keys(e.snapshot || {}),
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'memories_at': {
+          const { timestamp, limit: atLimit = 20 } = args as { timestamp: string; limit?: number };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ memories: unknown[] }>('GET', '/memories/at', undefined, { timestamp, limit: atLimit });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST memories_at failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          // Aggregate: for each memoryId, get the latest event before the given timestamp
+          const pipeline = [
+            { $match: { userId: CONFIG.defaultUserId, timestamp: { $lte: timestamp } } },
+            { $sort: { timestamp: -1 as const } },
+            { $group: { _id: '$memoryId', latestEvent: { $first: '$$ROOT' } } },
+            { $replaceRoot: { newRoot: '$latestEvent' } },
+            // Exclude memories that were deleted before the timestamp
+            { $match: { action: { $ne: 'delete' } } },
+            { $sort: { timestamp: -1 as const } },
+            { $limit: atLimit },
+          ];
+
+          const snapshots = await collections.memoryEvents().aggregate(pipeline).toArray();
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                asOf: timestamp,
+                count: snapshots.length,
+                memories: snapshots.map((s: any) => ({
+                  memoryId: s.memoryId,
+                  action: s.action,
+                  timestamp: s.timestamp,
+                  text: s.snapshot?.text || s.snapshot?.content,
+                  salienceScore: s.snapshot?.salienceScore,
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'rollback_memory': {
+          const { memoryId, eventId, reason } = args as { memoryId: string; eventId: string; reason?: string };
+
+          if (connectionMode === 'rest' && apiClient) {
+            try {
+              const result = await apiClient.request<{ restored: boolean }>('POST', `/memory/${memoryId}/rollback`, { eventId, reason });
+              return { content: [{ type: 'text', text: JSON.stringify({ mode: 'rest', ...result }, null, 2) }] };
+            } catch (err) {
+              throw new McpError(ErrorCode.InternalError, `REST rollback_memory failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+            }
+          }
+
+          // Find the target event
+          const targetEvent = await collections.memoryEvents().findOne({ eventId, memoryId } as any);
+          if (!targetEvent) {
+            throw new McpError(ErrorCode.InvalidParams, `Event ${eventId} not found for memory ${memoryId}`);
+          }
+
+          const snapshot = (targetEvent as any).snapshot;
+          if (!snapshot) {
+            throw new McpError(ErrorCode.InvalidParams, `Event ${eventId} has no snapshot to restore`);
+          }
+
+          // Restore the memory to the snapshot state
+          const { _id, ...restoreData } = snapshot;
+          restoreData.updatedAt = new Date().toISOString();
+          restoreData.state = restoreData.state || 'active';
+
+          await collections.memories().replaceOne(
+            { memoryId } as any,
+            restoreData as any,
+            { upsert: true }
+          );
+
+          // Log the restore event
+          await logMemoryEvent(memoryId, CONFIG.defaultUserId, 'restore', restoreData, {
+            reason: reason || `Rolled back to event ${eventId}`,
+            previousEventId: eventId,
+            sessionId: getSessionId(),
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                restored: true,
+                memoryId,
+                restoredToEvent: eventId,
+                restoredTimestamp: (targetEvent as any).timestamp,
+                reason,
+              }, null, 2),
+            }],
           };
         }
 
