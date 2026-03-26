@@ -34,6 +34,7 @@ const CSS_VARS = `
 export function nav(active: string): string {
   const links = [
     { href: '/dashboard', label: 'Intelligence' },
+    { href: '/dashboard/loops', label: 'Commitments' },
     { href: '/dashboard/mission-control', label: 'Mission Control' },
     { href: '/dashboard/synthetic', label: 'Synthetic' },
     { href: '/dashboard/logs', label: 'Logs' },
