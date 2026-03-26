@@ -7885,6 +7885,28 @@ const userSettingsStyles = `
   }
   .alert-success { background: rgba(0, 255, 65, 0.1); border: 1px solid var(--green); color: var(--green); }
   .alert-error { background: rgba(255, 0, 64, 0.1); border: 1px solid var(--red); color: var(--red); }
+  @media (max-width: 768px) {
+    body { padding: 12px; }
+    .header { flex-direction: column; align-items: flex-start; gap: 12px; padding: 15px; }
+    .logo { font-size: 15px; }
+    .nav { flex-wrap: wrap; gap: 8px; }
+    .nav a { font-size: 12px; padding: 7px 12px; }
+    .stat-grid { grid-template-columns: 1fr 1fr; }
+    .stat-label { font-size: 11px; }
+    .form-group label { font-size: 13px; }
+    .device-item { flex-direction: column; align-items: flex-start; gap: 10px; }
+  }
+  @media (max-width: 480px) {
+    body { padding: 10px; }
+    .header { padding: 12px; }
+    .logo { font-size: 13px; letter-spacing: 1px; }
+    .nav a { font-size: 11px; padding: 6px 10px; }
+    .stat-grid { grid-template-columns: 1fr; }
+    .stat-value { font-size: 20px; }
+    .stat-label { font-size: 12px; }
+    .panel { padding: 15px; }
+    .btn { width: 100%; padding: 14px; font-size: 13px; }
+  }
 `;
 
 // GET /user/profile - View user profile
