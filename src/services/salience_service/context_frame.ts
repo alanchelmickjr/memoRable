@@ -36,7 +36,7 @@ interface RedisClientType {
   sMembers?(key: string): Promise<string[]>;
 }
 import { collections } from './database';
-import { retrieveMemoriesByQuery, getMemoriesForPerson } from './retrieval';
+import { retrieveMemoriesByQuery, retrieveForContextFrame, getMemoriesForPerson } from './retrieval';
 import { generateQuickBriefing } from './briefing_generator';
 import { getOpenLoops } from './open_loop_tracker';
 import { getUpcomingEventsForContact } from './timeline_tracker';
