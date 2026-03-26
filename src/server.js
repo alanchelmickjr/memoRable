@@ -1722,9 +1722,21 @@ app.get("/docs", (_req, res) => {
       .container { padding: 20px 15px; }
       h1 { font-size: 24px; }
       .section { padding: 20px; }
+      .section h2 { font-size: 16px; }
+      .section h3 { font-size: 15px; }
+      .section p { font-size: 15px; }
       .tool-grid { grid-template-columns: 1fr; }
-      .header { padding: 15px; }
+      .header { padding: 15px; flex-direction: column; gap: 12px; align-items: flex-start; }
       .logo { font-size: 18px; }
+      .nav-links { flex-wrap: wrap; gap: 8px; }
+      .nav-link { font-size: 12px; }
+      .quick-link { font-size: 14px; }
+    }
+    @media (max-width: 480px) {
+      h1 { font-size: 20px; }
+      .section { padding: 15px; }
+      .tool-name { font-size: 14px; }
+      .tool-desc { font-size: 13px; }
     }
   </style>
 </head>
