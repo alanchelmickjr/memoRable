@@ -82,5 +82,17 @@ export function createDashboardRouter(db: Db, startTime: number): Router {
     }
   });
 
+  // Commitment Tracker — open loops dashboard
+  router.get('/dashboard/loops', async (_req, res) => {
+    try {
+      const data = await getLoopsData(db);
+      res.set('Content-Type', 'text/html');
+      res.send(renderLoops(data));
+    } catch (err) {
+      console.error('[Dashboard] Loops error:', err);
+      res.status(500).send('Loops error — check MongoDB connection');
+    }
+  });
+
   return router;
 }
