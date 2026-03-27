@@ -1,0 +1,13 @@
+gradio>=4.0
+torch>=2.0
+transformers>=4.47
+peft>=0.14
+safetensors
+sentence-transformers
+chromadb
+PyMuPDF
+einops
+jaxtyping
+accelerate
+bitsandbytes
+sentencepiece
