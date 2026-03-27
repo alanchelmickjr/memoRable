@@ -25,10 +25,11 @@ HOST="${1:?Usage: deploy-edge.sh HOST [BRANCH]}"
 BRANCH="${2:-claude/foundry-demo}"
 GITHUB_REPO="https://github.com/alanchelmickjr/memoRable.git"
 INSTALL_DIR="/mnt/data/foundry"
-CONDA_DIR="/mnt/data/miniforge3"
-ENV_NAME="foundry"
-PYTHON_VER="3.10"
 HF_TOKEN="${HF_TOKEN:-}"
+# JetPack 5.x uses system Python 3.8 + NVIDIA's pre-built torch wheel
+VENV_DIR="$INSTALL_DIR/venv"
+TORCH_WHEEL_URL="https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch/torch-2.1.0a0+41361538.nv23.06-cp38-cp38-linux_aarch64.whl"
+SQLITE_URL="https://www.sqlite.org/2024/sqlite-autoconf-3450100.tar.gz"
 
 RED='\033[0;31m' GREEN='\033[0;32m' YELLOW='\033[1;33m' BLUE='\033[0;34m' NC='\033[0m'
 info()  { echo -e "${BLUE}[edge]${NC} $*"; }

@@ -1,8 +1,9 @@
 """
-Foundry Engine — simplified LoRA pipeline for the investor demo.
+Foundry Engine — LoRA pipeline for the investor demo.
 
-Extracted from src/services/lora_service/engine.py. Holds lora_dict in memory
-(no disk round-trip). Supports toggling LoRA on/off for the hallucination proof.
+Uses ModulatedPretrainedModel from doc-to-lora (the vendor's recommended API).
+Loads checkpoint, internalizes documents, generates with/without LoRA.
+The reset() properly restores original forward passes — no zero-weight hacks.
 """
 
 import logging
@@ -15,12 +16,11 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# Resolve vendor path relative to repo root
 REPO_ROOT = Path(__file__).resolve().parents[2]
 VENDOR_ROOT = REPO_ROOT / "vendors" / "doc-to-lora"
-CHECKPOINT_DIR = os.environ.get(
-    "LORA_CHECKPOINT_DIR",
-    str(VENDOR_ROOT / "trained_t2l" / "gemma_2b_t2l"),
+CHECKPOINT_PATH = os.environ.get(
+    "LORA_CHECKPOINT",
+    str(VENDOR_ROOT / "trained_d2l" / "gemma_2b_d2l" / "checkpoint-20000" / "pytorch_model.bin"),
 )
 
 
@@ -38,13 +38,12 @@ DEVICE = os.environ.get("LORA_DEVICE", detect_device())
 class FoundryEngine:
     """LoRA weight generation and inference for the Foundry demo."""
 
-    def __init__(self, checkpoint_dir: str = CHECKPOINT_DIR, device: str = DEVICE):
-        self.checkpoint_dir = checkpoint_dir
+    def __init__(self, checkpoint_path: str = CHECKPOINT_PATH, device: str = DEVICE):
+        self.checkpoint_path = checkpoint_path
         self.device = device
-        self._model = None       # TextToLoRA instance
-        self._lora_dict = None   # Real LoRA weights from last ingest
-        self._zero_dict = None   # Zero-valued weights (same shape) for "LoRA off"
-        self._lora_active = False
+        self._model = None       # ModulatedPretrainedModel
+        self._tokenizer = None
+        self._ingested = False
         self._ingested_text = None
 
     @property
@@ -53,10 +52,10 @@ class FoundryEngine:
 
     @property
     def is_ingested(self) -> bool:
-        return self._lora_dict is not None
+        return self._ingested
 
     def load(self) -> None:
-        """Load hypernetwork + base model. Call once at startup."""
+        """Load hypernetwork + base model from checkpoint. Call once at startup."""
         if self._model is not None:
             return
 
@@ -68,23 +67,21 @@ class FoundryEngine:
         os.chdir(str(VENDOR_ROOT))
 
         try:
-            from ctx_to_lora.data.definitions import CTX_AFFIXES
-            from ctx_to_lora.modeling.text_to_lora import TextToLoRA
+            from ctx_to_lora.model_loading import get_tokenizer
+            from ctx_to_lora.modeling.hypernet import ModulatedPretrainedModel
 
-            model_name = "google/gemma-2-2b-it"
-            prefix_tokens = torch.tensor(
-                CTX_AFFIXES[model_name]["prefix"], dtype=torch.long
+            logger.info(f"Loading checkpoint from {self.checkpoint_path} on {self.device}")
+
+            state_dict = torch.load(self.checkpoint_path, weights_only=False, map_location=self.device)
+            self._model = ModulatedPretrainedModel.from_state_dict(
+                state_dict,
+                train=False,
+                use_sequence_packing=False,
             )
+            self._model.reset()
+            self._tokenizer = get_tokenizer(self._model.base_model.name_or_path)
 
-            # bitsandbytes 4-bit doesn't work on MPS
-            load_in_4bit = self.device != "mps"
-
-            logger.info(f"Loading TextToLoRA on {self.device} (4bit={load_in_4bit})")
-            self._model = TextToLoRA(
-                model_name, prefix_tokens, device=self.device,
-                load_in_4bit=load_in_4bit,
-            )
-            logger.info("TextToLoRA loaded")
+            logger.info("ModulatedPretrainedModel loaded")
         finally:
             os.chdir(original_cwd)
 
@@ -97,30 +94,22 @@ class FoundryEngine:
         if not self.is_loaded:
             self.load()
 
+        # Reset any previous internalization
+        self._model.reset()
+        self._model.patch_lora_forward()
+
         start = time.time()
+        self._model.internalize(text)
+        elapsed = time.time() - start
 
-        with torch.no_grad():
-            self._lora_dict = self._model.generate_weights(text)
-
-        # Create zero-weight copy (same shape, contributes nothing)
-        self._zero_dict = {}
-        for module_name, ab in self._lora_dict.items():
-            self._zero_dict[module_name] = {
-                "A": torch.zeros_like(ab["A"]),
-                "B": torch.zeros_like(ab["B"]),
-            }
-
-        # Apply real weights
-        self._apply_weights(self._lora_dict)
-        self._lora_active = True
+        self._ingested = True
         self._ingested_text = text
 
-        elapsed = time.time() - start
         logger.info(f"Ingested document ({len(text)} chars) in {elapsed:.2f}s")
         return elapsed
 
     def generate(self, prompt: str, use_lora: bool = True,
-                 max_new_tokens: int = 512) -> tuple[str, float]:
+                 max_new_tokens: int = 512) -> tuple:
         """
         Generate text with or without LoRA weights.
 
@@ -135,57 +124,57 @@ class FoundryEngine:
         if not self.is_loaded:
             raise RuntimeError("Engine not loaded. Call load() first.")
 
-        # Toggle weights if needed
-        if use_lora and not self._lora_active and self._lora_dict is not None:
-            self._apply_weights(self._lora_dict)
-            self._lora_active = True
-        elif not use_lora and self._lora_active:
-            self._apply_weights(self._zero_dict)
-            self._lora_active = False
+        # Toggle LoRA state
+        if not use_lora and self._ingested:
+            # Temporarily reset to get base model behavior
+            saved_loras = self._model.generated_loras
+            self._model.generated_loras = None
+            self._model.reset()
 
         start = time.time()
 
-        tokenizer = self._model.tokenizer
-        input_ids = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
+        chat = [{"role": "user", "content": prompt}]
+        input_ids = self._tokenizer.apply_chat_template(
+            chat,
+            add_special_tokens=False,
+            return_attention_mask=False,
+            add_generation_prompt=True,
             return_tensors="pt",
-            return_dict=True,
-        )
-        input_ids = {k: v.to(self.device) for k, v in input_ids.items()}
+        ).to(self.device)
 
-        with torch.no_grad():
+        if use_lora and self._ingested:
+            # Generate with internalized LoRA
+            outputs = self._model.generate(
+                input_ids=input_ids,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+            )
+        else:
+            # Generate with base model only (no LoRA)
             outputs = self._model.base_model.generate(
-                **input_ids,
+                input_ids=input_ids,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,
             )
 
-        # Decode only the new tokens (skip the prompt)
-        prompt_len = input_ids["input_ids"].shape[1]
-        response = tokenizer.decode(
+        # Decode only new tokens
+        prompt_len = input_ids.shape[1]
+        response = self._tokenizer.decode(
             outputs[0][prompt_len:], skip_special_tokens=True
         )
 
         elapsed = time.time() - start
+
+        # Restore LoRA state if we temporarily disabled it
+        if not use_lora and self._ingested:
+            self._model.generated_loras = saved_loras
+            self._model.patch_lora_forward()
+
         return response, elapsed
-
-    def _apply_weights(self, lora_dict: dict) -> None:
-        """Apply LoRA weights to the base model layers."""
-        from ctx_to_lora.modeling.lora_layer import apply_lora_to_layers
-
-        apply_lora_to_layers(
-            self._model.base_model,
-            self._model.layer_indices,
-            lora_dict,
-            n_qs=torch.tensor([1], device=self.device),
-            position_ids=None,
-        )
 
     def reset(self) -> None:
         """Clear ingested document and LoRA weights."""
-        if self._lora_dict is not None and self._lora_active:
-            self._apply_weights(self._zero_dict)
-            self._lora_active = False
-        self._lora_dict = None
-        self._zero_dict = None
+        if self._model is not None:
+            self._model.reset()
+        self._ingested = False
         self._ingested_text = None
