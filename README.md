@@ -38,6 +38,34 @@ Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks 
 
 ---
 
+## O(1) Memory — The Core Breakthrough
+
+Every AI memory system today retrieves text chunks and stuffs them into the prompt. That's O(n) — cost scales with your knowledge base, every single query.
+
+MemoRable internalizes documents into model weights via hypernetwork LoRA generation. The knowledge isn't retrieved at query time — it's **baked into the model itself**.
+
+```
+                    Mem0 / RAG                    MemoRable
+                    ──────────                    ─────────
+How knowledge       Chunks stuffed into prompt    Internalized into weights
+reaches the model
+
+Tokens per query    ~1,500+ (scales with docs)    ~10 (question only)
+
+Cost per query      O(n) — grows with knowledge   O(1) — constant forever
+(at GPT-4o rates)   ~$0.0036                      ~$0.000015
+
+Multi-hop           Limited to retrieved chunks   Full document understanding
+reasoning
+
+Runs on edge        Needs cloud for large context Runs on $300 NVIDIA Jetson
+hardware
+```
+
+**Forget about paying to Remember.** MemoRable is context for life.
+
+---
+
 **MemoRable extends AI context intelligence and enterprise-grade security.** Salience scoring, commitment tracking, relationship awareness, and predictive memory - with data protection suitable for regulated industries.
 
 ```
