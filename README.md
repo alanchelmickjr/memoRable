@@ -17,7 +17,10 @@ Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks 
 
 **Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/) [![Gemma](https://img.shields.io/badge/Gemma_2-4285F4?style=flat&logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-> **PRE-RELEASE SOFTWARE** - Under active development. APIs may change, features may be incomplete. Star the repo and watch for v1.0 release.
+> [!CAUTION]
+> ## PRE-RELEASE SOFTWARE
+> **Under active development.** APIs may change, features may be incomplete. This is research software — not production-ready.
+> Star the repo and watch for v1.0 release.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
