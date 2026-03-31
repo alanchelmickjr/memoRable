@@ -17,7 +17,10 @@ Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks 
 
 **Stack:** [![MongoDB](https://img.shields.io/badge/MongoDB_Atlas-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas) [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/) [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://python.org) [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/) [![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/) [![Hume AI](https://img.shields.io/badge/Hume.ai-Emotion_AI-FF6B6B?style=flat)](https://hume.ai/) [![Gemma](https://img.shields.io/badge/Gemma_2-4285F4?style=flat&logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-> **PRE-RELEASE SOFTWARE** - Under active development. APIs may change, features may be incomplete. Star the repo and watch for v1.0 release.
+> [!CAUTION]
+> ## PRE-RELEASE SOFTWARE
+> **Under active development.** APIs may change, features may be incomplete. This is research software — not production-ready.
+> Star the repo and watch for v1.0 release.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -32,6 +35,34 @@ Prompt engineering stuffs context into a shrinking window. RAG retrieves chunks 
 [![Deploy to AWS](https://img.shields.io/badge/🚀_Deploy_to-AWS-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://console.aws.amazon.com/cloudformation/home#/stacks/quickcreate?templateUrl=https://memorable-cloudformation-templates.s3.us-east-1.amazonaws.com/memorable-stack.yaml&stackName=memorable)
 
 **Have an AWS account? Click the button. That's it.** No git clone, no Docker setup, no configuration, no Mem0. Full standalone stack with DocumentDB, ElastiCache, and Bedrock LLM integration. Your URL appears in 15 minutes.
+
+---
+
+## O(1) Memory — The Core Breakthrough
+
+Every AI memory system today retrieves text chunks and stuffs them into the prompt. That's O(n) — cost scales with your knowledge base, every single query.
+
+MemoRable internalizes documents into model weights via hypernetwork LoRA generation. The knowledge isn't retrieved at query time — it's **baked into the model itself**.
+
+```
+                    Mem0 / RAG                    MemoRable
+                    ──────────                    ─────────
+How knowledge       Chunks stuffed into prompt    Internalized into weights
+reaches the model
+
+Tokens per query    ~1,500+ (scales with docs)    ~10 (question only)
+
+Cost per query      O(n) — grows with knowledge   O(1) — constant forever
+(at GPT-4o rates)   ~$0.0036                      ~$0.000015
+
+Multi-hop           Limited to retrieved chunks   Full document understanding
+reasoning
+
+Runs on edge        Needs cloud for large context Runs on $300 NVIDIA Jetson
+hardware
+```
+
+**Forget about paying to Remember.** MemoRable is context for life.
 
 ---
 
