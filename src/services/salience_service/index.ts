@@ -105,6 +105,22 @@ export {
   type OpenLoopWithOverdue,
 } from './open_loop_tracker';
 export {
+  upsertRoutine,
+  listRoutines,
+  getRoutine,
+  suppressRoutine,
+  resumeRoutine,
+  pauseRoutine,
+  checkInRoutine,
+  getRecentCheckIns,
+  deleteRoutine,
+  getSurfacableRoutines,
+  formatRoutineLine,
+  type UpsertRoutineInput,
+  type ListRoutinesOptions,
+  type CheckInRoutineInput,
+} from './routine_tracker';
+export {
   createTimelineEventsFromFeatures,
   getUpcomingEventsForContact,
   getUpcomingEvents,
