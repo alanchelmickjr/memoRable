@@ -4569,6 +4569,152 @@ function createServer(): Server {
         }
 
         // ==================================================================
+        // ROUTINE HANDLERS (peers of loop handlers above)
+        // ==================================================================
+        case 'list_routines': {
+          const {
+            status,
+            category,
+            source,
+            dueWithinHours,
+          } = args as {
+            status?: 'active' | 'suppressed' | 'paused';
+            category?: string;
+            source?: string;
+            dueWithinHours?: number;
+          };
+
+          const routines = await listRoutines(CONFIG.defaultUserId, {
+            status,
+            category: category as any,
+            source: source as any,
+            dueWithinHours,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify(
+                routines.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  category: r.category,
+                  cadence: r.cadence,
+                  status: r.status,
+                  source: r.source,
+                  nextExpectedAt: r.nextExpectedAt,
+                  lastSeenAt: r.lastSeenAt,
+                  streak: r.streak,
+                  confidence: r.confidence,
+                  suppressUntil: r.suppressUntil,
+                })),
+                null,
+                2,
+              ),
+            }],
+          };
+        }
+
+        case 'upsert_routine': {
+          const input = args as {
+            name: string;
+            cadence: 'daily' | 'weekday' | 'weekend' | 'weekly' | 'biweekly' | 'monthly' | 'custom';
+            category?: string;
+            description?: string;
+            cadenceDetail?: string;
+            expectedTimeOfDay?: string;
+            daysOfWeek?: number[];
+            source?: string;
+            importExternalId?: string;
+            entities?: string[];
+          };
+
+          const routine = await upsertRoutine({
+            userId: CONFIG.defaultUserId,
+            name: input.name,
+            cadence: input.cadence,
+            category: input.category as any,
+            description: input.description,
+            cadenceDetail: input.cadenceDetail,
+            expectedTimeOfDay: input.expectedTimeOfDay,
+            daysOfWeek: input.daysOfWeek,
+            source: input.source as any,
+            importExternalId: input.importExternalId,
+            entities: input.entities,
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ upserted: true, routine }, null, 2),
+            }],
+          };
+        }
+
+        case 'suppress_routine': {
+          const { routineId, until } = args as { routineId: string; until?: string };
+          await suppressRoutine(routineId, until);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ suppressed: true, routineId, until }),
+            }],
+          };
+        }
+
+        case 'resume_routine': {
+          const { routineId } = args as { routineId: string };
+          await resumeRoutine(routineId);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ resumed: true, routineId }),
+            }],
+          };
+        }
+
+        case 'check_in_routine': {
+          const { routineId, occurredAt, memoryId, notes } = args as {
+            routineId: string;
+            occurredAt?: string;
+            memoryId?: string;
+            notes?: string;
+          };
+
+          const checkIn = await checkInRoutine({
+            routineId,
+            userId: CONFIG.defaultUserId,
+            occurredAt,
+            memoryId,
+            notes,
+          });
+
+          const routine = await getRoutine(routineId);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                checkedIn: true,
+                checkIn,
+                streak: routine?.streak,
+                nextExpectedAt: routine?.nextExpectedAt,
+              }, null, 2),
+            }],
+          };
+        }
+
+        case 'delete_routine': {
+          const { routineId } = args as { routineId: string };
+          await deleteRoutine(routineId);
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ deleted: true, routineId }),
+            }],
+          };
+        }
+
+        // ==================================================================
         // TIME MACHINE HANDLERS
         // ==================================================================
         case 'memory_history': {
