@@ -1621,6 +1621,173 @@ function createServer(): Server {
           openWorldHint: false,
         },
       },
+      // ======================================================================
+      // ROUTINES (recurring patterns, not one-shot commitments)
+      // ======================================================================
+      {
+        name: 'list_routines',
+        description:
+          'List recurring patterns/rituals for the user (morning briefing, weekly review, 3am consolidation, etc.). Unlike loops, routines cycle rather than close.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['active', 'suppressed', 'paused'],
+              description: 'Filter by status (default: active)',
+            },
+            category: {
+              type: 'string',
+              enum: ['ritual', 'check_in', 'review', 'maintenance', 'pattern', 'other'],
+              description: 'Filter by category',
+            },
+            source: {
+              type: 'string',
+              enum: ['user_defined', 'ai_learned', 'imported_claude_code', 'imported_other'],
+              description: 'Filter by where the routine came from',
+            },
+            dueWithinHours: {
+              type: 'number',
+              description: 'Only show routines due within this many hours',
+            },
+          },
+        },
+        annotations: {
+          title: 'List Routines',
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'upsert_routine',
+        description:
+          'Create or update a recurring routine. Use for user-defined rituals ("morning briefing at 9am weekdays") or to register imported AI-side routines.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Short label for the routine' },
+            cadence: {
+              type: 'string',
+              enum: ['daily', 'weekday', 'weekend', 'weekly', 'biweekly', 'monthly', 'custom'],
+              description: 'How often this routine recurs',
+            },
+            category: {
+              type: 'string',
+              enum: ['ritual', 'check_in', 'review', 'maintenance', 'pattern', 'other'],
+              description: 'Routine category (default: other)',
+            },
+            description: { type: 'string', description: 'Longer explanation' },
+            cadenceDetail: { type: 'string', description: 'Free-form detail (e.g., "Mon/Wed/Fri at 09:00")' },
+            expectedTimeOfDay: { type: 'string', description: 'HH:MM local time (optional)' },
+            daysOfWeek: {
+              type: 'array',
+              items: { type: 'number' },
+              description: 'For weekly/biweekly: 0=Sun..6=Sat',
+            },
+            source: {
+              type: 'string',
+              enum: ['user_defined', 'ai_learned', 'imported_claude_code', 'imported_other'],
+              description: 'Where this routine originated (default: user_defined)',
+            },
+            importExternalId: { type: 'string', description: 'External system ID for dedup on re-sync' },
+            entities: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Contact/entity IDs this routine involves',
+            },
+          },
+          required: ['name', 'cadence'],
+        },
+        annotations: {
+          title: 'Upsert Routine',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'suppress_routine',
+        description: 'Stop surfacing a routine in briefings, optionally until a given time. Use for "don\'t bug me about morning review this week".',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            routineId: { type: 'string', description: 'ID of the routine to suppress' },
+            until: {
+              type: 'string',
+              description: 'ISO8601 timestamp — suppress until this time. Omit for indefinite suppression.',
+            },
+          },
+          required: ['routineId'],
+        },
+        annotations: {
+          title: 'Suppress Routine',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'resume_routine',
+        description: 'Resume a suppressed or paused routine.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            routineId: { type: 'string', description: 'ID of the routine to resume' },
+          },
+          required: ['routineId'],
+        },
+        annotations: {
+          title: 'Resume Routine',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'check_in_routine',
+        description:
+          'Record that a routine happened. Updates streak, recomputes next expected occurrence, and (for learned routines) strengthens confidence.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            routineId: { type: 'string', description: 'ID of the routine that occurred' },
+            occurredAt: { type: 'string', description: 'ISO8601 time (default: now)' },
+            memoryId: { type: 'string', description: 'Memory that evidenced the check-in' },
+            notes: { type: 'string', description: 'Optional note about this occurrence' },
+          },
+          required: ['routineId'],
+        },
+        annotations: {
+          title: 'Check In Routine',
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      {
+        name: 'delete_routine',
+        description: 'Permanently delete a routine and its check-in history.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            routineId: { type: 'string', description: 'ID of the routine to delete' },
+          },
+          required: ['routineId'],
+        },
+        annotations: {
+          title: 'Delete Routine',
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
       {
         name: 'get_status',
         description: 'Get memory system status including open loops, relationships, and learned patterns.',
