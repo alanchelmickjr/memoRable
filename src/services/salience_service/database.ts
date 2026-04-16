@@ -309,6 +309,8 @@ export interface DetectedPatternDocument {
 export const collections = {
   memories: () => getCollection<MemoryDocument>('memories'),
   openLoops: () => getCollection<OpenLoop>('open_loops'),
+  routines: () => getCollection<Routine>('routines'),
+  routineCheckIns: () => getCollection<RoutineCheckIn>('routine_check_ins'),
   personTimelineEvents: () => getCollection<PersonTimelineEvent>('person_timeline_events'),
   relationshipPatterns: () => getCollection<RelationshipPattern>('relationship_patterns'),
   relationshipSnapshots: () => getCollection<RelationshipSnapshot>('relationship_snapshots'),
