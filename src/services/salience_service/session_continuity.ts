@@ -558,28 +558,26 @@ export async function getSessionContinuity(
 /**
  * Generate a continuity briefing when handing off between devices.
  * This is the "friend who catches you up" experience.
+ *
+ * Surfaces actual loop descriptions (not just counts) so a new session
+ * opens knowing WHAT is pending, not just THAT things are pending.
  */
-function generateContinuityBriefing(
+async function generateContinuityBriefing(
   sourceSession: DeviceSession | null,
-  targetDeviceType?: DeviceType
-): string {
+  _targetDeviceType?: DeviceType
+): Promise<string> {
   if (!sourceSession) {
     return 'No previous session to continue from. Starting fresh.';
   }
 
   const parts: string[] = [];
 
-  // Location context
   if (sourceSession.context.location) {
     parts.push(`You were at ${sourceSession.context.location}`);
   }
-
-  // Activity context
   if (sourceSession.context.activity) {
     parts.push(`doing ${sourceSession.context.activity}`);
   }
-
-  // People context
   if (sourceSession.context.people && sourceSession.context.people.length > 0) {
     parts.push(`with ${sourceSession.context.people.join(', ')}`);
   }
@@ -588,18 +586,30 @@ function generateContinuityBriefing(
     ? `Continuing from ${sourceSession.deviceType}: ${parts.join(', ')}.`
     : `Continuing from ${sourceSession.deviceType}.`;
 
-  // Conversation topics
   if (sourceSession.conversationTopics.length > 0) {
     const topicsStr = sourceSession.conversationTopics.slice(-3).join(', ');
     briefing += ` Recent topics: ${topicsStr}.`;
   }
 
-  // Active loops
+  // Active loops — surface descriptions, not just count
   if (sourceSession.activeLoopIds.length > 0) {
-    briefing += ` ${sourceSession.activeLoopIds.length} open loop(s) active.`;
+    try {
+      const loops = await fetchBriefingLoops(sourceSession.userId, sourceSession.activeLoopIds);
+      const shown = loops.slice(0, BRIEFING_LOOP_LIMIT);
+      if (shown.length > 0) {
+        const lines = shown.map(formatLoopLine).join('; ');
+        const remainder = loops.length - shown.length;
+        const tail = remainder > 0 ? ` (+${remainder} more)` : '';
+        briefing += ` Open loops: ${lines}${tail}.`;
+      } else {
+        briefing += ` ${sourceSession.activeLoopIds.length} open loop(s) active.`;
+      }
+    } catch (error) {
+      console.error('[SessionContinuity] Error fetching loop descriptions:', error);
+      briefing += ` ${sourceSession.activeLoopIds.length} open loop(s) active.`;
+    }
   }
 
-  // Session summary if available
   if (sourceSession.sessionSummary) {
     briefing += ` Session summary: ${sourceSession.sessionSummary}`;
   }
