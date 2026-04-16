@@ -28,6 +28,7 @@ import {
   STALENESS_CONFIG,
 } from './device_context';
 import { getOpenLoops, type OpenLoopWithOverdue } from './open_loop_tracker';
+import { getSurfacableRoutines, formatRoutineLine } from './routine_tracker';
 
 /**
  * Max loop descriptions rendered inline in a continuity briefing.
@@ -35,6 +36,12 @@ import { getOpenLoops, type OpenLoopWithOverdue } from './open_loop_tracker';
  * Full list is still accessible via list_loops MCP tool.
  */
 const BRIEFING_LOOP_LIMIT = 5;
+
+/** Max routines surfaced in the briefing (full list via list_routines). */
+const BRIEFING_ROUTINE_LIMIT = 3;
+
+/** Horizon for "what routines are due soon" in the continuity briefing. */
+const BRIEFING_ROUTINE_HORIZON_HOURS = 24;
 
 /**
  * Format a single loop for briefing display.
