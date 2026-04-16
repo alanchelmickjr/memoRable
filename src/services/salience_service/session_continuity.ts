@@ -379,7 +379,7 @@ export async function initiateHandoff(
   };
 
   // Generate a continuity briefing
-  const briefing = generateContinuityBriefing(sourceSession, targetDeviceType);
+  const briefing = await generateContinuityBriefing(sourceSession, targetDeviceType);
 
   const result: HandoffResult = {
     success: true,
