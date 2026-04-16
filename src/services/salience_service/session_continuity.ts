@@ -617,6 +617,24 @@ async function generateContinuityBriefing(
     }
   }
 
+  // Surfacable routines (due soon, not suppressed) — the recurring peer of loops
+  try {
+    const routines = await getSurfacableRoutines(
+      sourceSession.userId,
+      BRIEFING_ROUTINE_HORIZON_HOURS,
+    );
+    if (routines.length > 0) {
+      const shown = routines.slice(0, BRIEFING_ROUTINE_LIMIT);
+      const lines = shown.map((r) => formatRoutineLine(r)).join('; ');
+      const remainder = routines.length - shown.length;
+      const tail = remainder > 0 ? ` (+${remainder} more)` : '';
+      briefing += ` Routines: ${lines}${tail}.`;
+    }
+  } catch (error) {
+    console.error('[SessionContinuity] Error fetching routines:', error);
+    // Non-fatal — briefing still usable without routines
+  }
+
   if (sourceSession.sessionSummary) {
     briefing += ` Session summary: ${sourceSession.sessionSummary}`;
   }
