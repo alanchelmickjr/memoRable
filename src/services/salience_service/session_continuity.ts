@@ -482,7 +482,7 @@ export async function claimHandoff(
   }
 
   // Generate briefing
-  const briefing = generateContinuityBriefing(sourceSession, deviceType);
+  const briefing = await generateContinuityBriefing(sourceSession, deviceType);
 
   const result: HandoffResult = {
     success: true,
