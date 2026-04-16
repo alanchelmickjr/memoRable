@@ -55,6 +55,32 @@ const SALIENCE_COLLECTIONS: CollectionConfig[] = [
       { spec: { status: 1, nextReminder: 1 }, options: { sparse: true } },
     ],
   },
+  {
+    name: 'routines',
+    indexes: [
+      // "What routines does this user have right now"
+      { spec: { userId: 1, status: 1, nextExpectedAt: 1 } },
+      // Filter by category in briefings
+      { spec: { userId: 1, category: 1, status: 1 } },
+      // AI-learned pattern lookup (anticipation service integration)
+      { spec: { userId: 1, source: 1, confidence: -1 } },
+      // External import dedup (Claude Code Routines sync)
+      { spec: { userId: 1, source: 1, importExternalId: 1 }, options: { sparse: true } },
+      // Primary id lookup
+      { spec: { id: 1 }, options: { unique: true } },
+    ],
+  },
+  {
+    name: 'routine_check_ins',
+    indexes: [
+      // Streak queries — latest check-ins for a routine
+      { spec: { routineId: 1, occurredAt: -1 } },
+      // User-scoped history
+      { spec: { userId: 1, occurredAt: -1 } },
+      // Link back to the memory that evidenced the check-in
+      { spec: { memoryId: 1 }, options: { sparse: true } },
+    ],
+  },
   // ========================================================================
   // PREDICTIVE MEMORY SYSTEM COLLECTIONS (3×7 Temporal Model)
   // ========================================================================
