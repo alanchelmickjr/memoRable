@@ -27,6 +27,59 @@ import {
   DEVICE_REDIS_KEYS,
   STALENESS_CONFIG,
 } from './device_context';
+import { getOpenLoops, type OpenLoopWithOverdue } from './open_loop_tracker';
+
+/**
+ * Max loop descriptions rendered inline in a continuity briefing.
+ * Keep tight — this is a "less blind" assist, not a full dump.
+ * Full list is still accessible via list_loops MCP tool.
+ */
+const BRIEFING_LOOP_LIMIT = 5;
+
+/**
+ * Format a single loop for briefing display.
+ * "you owe Sarah: send the deck (urgent, overdue)"
+ */
+function formatLoopLine(loop: OpenLoopWithOverdue): string {
+  const who = loop.owner === 'self'
+    ? (loop.otherParty ? `you owe ${loop.otherParty}` : 'you owe')
+    : loop.owner === 'them'
+      ? (loop.otherParty ? `${loop.otherParty} owes you` : 'they owe you')
+      : loop.owner === 'mutual'
+        ? (loop.otherParty ? `mutual with ${loop.otherParty}` : 'mutual')
+        : 'open';
+
+  const tags: string[] = [];
+  if (loop.urgency === 'urgent' || loop.urgency === 'high') tags.push(loop.urgency);
+  if (loop.isOverdue) tags.push('overdue');
+  const tagStr = tags.length > 0 ? ` (${tags.join(', ')})` : '';
+
+  return `${who}: ${loop.description}${tagStr}`;
+}
+
+/**
+ * Fetch loops by IDs, sorted by priority: overdue > urgent > due soon > rest.
+ */
+async function fetchBriefingLoops(
+  userId: string,
+  loopIds: string[]
+): Promise<OpenLoopWithOverdue[]> {
+  if (loopIds.length === 0) return [];
+
+  const loops = await getOpenLoops(userId, { ids: loopIds, status: 'open' });
+
+  // Priority sort: overdue first, then by urgency, then by due date
+  const urgencyRank: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+  return loops.sort((a, b) => {
+    if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+    const ua = urgencyRank[a.urgency] ?? 2;
+    const ub = urgencyRank[b.urgency] ?? 2;
+    if (ua !== ub) return ua - ub;
+    const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+    const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+    return da - db;
+  });
+}
 
 // ============================================================================
 // TYPES

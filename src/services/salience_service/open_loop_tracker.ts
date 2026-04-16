@@ -618,6 +618,7 @@ export async function getOpenLoops(
     status?: OpenLoopStatus;
     loopType?: OpenLoopType;
     includeOverdue?: boolean;
+    ids?: string[];
   } = {}
 ): Promise<OpenLoopWithOverdue[]> {
   const query: any = { userId };
@@ -627,9 +628,10 @@ export async function getOpenLoops(
   if (options.owner) query.owner = options.owner;
   if (options.status) query.status = options.status;
   if (options.loopType) query.loopType = options.loopType;
+  if (options.ids && options.ids.length > 0) query.id = { $in: options.ids };
 
-  // Default to open loops only
-  if (!options.status) {
+  // Default to open loops only (unless specific ids requested - caller may want any status)
+  if (!options.status && !options.ids) {
     query.status = 'open';
   }
 
