@@ -15,6 +15,8 @@ import type {
   MemoryEvent,
   PredictiveMemoryDocument,
   DetectedPattern,
+  Routine,
+  RoutineCheckIn,
 } from './models';
 
 let db: Db | null = null;

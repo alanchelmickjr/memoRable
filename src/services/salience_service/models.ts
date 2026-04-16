@@ -347,6 +347,104 @@ export interface OpenLoop {
 }
 
 // ============================================================================
+// ROUTINES (recurring patterns, not closeable commitments)
+// ============================================================================
+
+/**
+ * A Routine is a recurring pattern or ritual that cycles rather than closes.
+ *
+ * Routines differ from OpenLoops:
+ *   - OpenLoop = one-shot commitment with a closing event ("send the deck")
+ *   - Routine  = repeating cadence with check-in events ("morning briefing")
+ *
+ * Sources:
+ *   - user_defined: Alan explicitly created it
+ *   - ai_learned:   anticipation_service detected a stable pattern
+ *   - imported:     synced from Claude Code Routines (or similar AI-side system)
+ *
+ * Both human-side and AI-side routines live in the same substrate — the sensor
+ * net doesn't care which side of the carbon/silicon line produced the pattern.
+ */
+export type RoutineCadence =
+  | 'daily'
+  | 'weekday'       // Mon-Fri
+  | 'weekend'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'custom';       // Free-form description, no auto-scheduling
+
+export type RoutineStatus = 'active' | 'suppressed' | 'paused';
+
+export type RoutineSource =
+  | 'user_defined'
+  | 'ai_learned'
+  | 'imported_claude_code'
+  | 'imported_other';
+
+export type RoutineCategory =
+  | 'ritual'         // Morning coffee, 3am wake
+  | 'check_in'       // Weekly 1:1, standup
+  | 'review'         // End-of-day, retrospective
+  | 'maintenance'    // Pre-commit checklist, weekly cleanup
+  | 'pattern'        // Learned behavior, no explicit intent
+  | 'other';
+
+/**
+ * A routine - a recurring pattern with check-in events.
+ */
+export interface Routine {
+  id: string;                   // UUID
+  userId: string;               // UUID
+
+  // What it is
+  name: string;                 // Short label ("Morning briefing")
+  description?: string;         // Longer explanation
+  category: RoutineCategory;
+
+  // Cadence
+  cadence: RoutineCadence;
+  cadenceDetail?: string;       // e.g., "Mon/Wed/Fri at 09:00", cron expr, or free-form
+  expectedTimeOfDay?: string;   // "HH:MM" local, optional
+  daysOfWeek?: number[];        // 0=Sun..6=Sat, for weekly/biweekly
+
+  // State
+  status: RoutineStatus;
+  source: RoutineSource;
+  confidence?: number;          // 0-1, only meaningful for ai_learned
+
+  // Timeline
+  createdAt: string;            // ISO8601
+  updatedAt: string;            // ISO8601
+  lastSeenAt?: string;          // ISO8601 - last time routine actually happened
+  nextExpectedAt?: string;      // ISO8601 - next scheduled occurrence
+  suppressUntil?: string;       // ISO8601 - don't surface until after this
+  streak?: number;              // Consecutive on-time check-ins
+
+  // Associations
+  entities?: string[];          // Contact IDs or entity refs this routine involves
+  sourceMemoryId?: string;      // Memory that spawned a learned routine
+  importExternalId?: string;    // ID in source system (Claude Code Routine id, etc.)
+
+  // Flexible metadata
+  metadata?: Record<string, any>;
+}
+
+/**
+ * A check-in event — the routine actually happened.
+ * These are lightweight and used for streak tracking + confidence updates.
+ */
+export interface RoutineCheckIn {
+  id: string;
+  routineId: string;
+  userId: string;
+  occurredAt: string;           // ISO8601
+  memoryId?: string;            // Memory that evidenced the check-in
+  onTime?: boolean;             // Within expected window
+  notes?: string;
+}
+
+// ============================================================================
 // PERSON TIMELINE EVENTS
 // ============================================================================
 
